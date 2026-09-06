@@ -5,6 +5,7 @@ import { SearchRouter } from '../../../main/ets/service/SearchRouter';
 import { AppConfig, ChatMsg, SearchHit } from '../../../main/ets/model/Types';
 import { PromptBuilder, HistoryTurn } from '../../../main/ets/service/PromptBuilder';
 import { LlmClient } from '../../../main/ets/service/LlmClient';
+import { SearchClient } from '../../../main/ets/service/SearchClient';
 
 export default function logicTest() {
   describe('logicTest', () => {
@@ -79,6 +80,18 @@ export default function logicTest() {
       const body = LlmClient.buildRequestBody('glm-4.7', msgs, true);
       expect(body.includes('"type":"web_search"')).assertTrue();
       expect(body.includes('"enable":true')).assertTrue();
+    });
+    it('parse_bocha_hits', 0, () => {
+      const j = '{"code":200,"data":{"webPages":{"value":[{"name":"安全电压","url":"https://a.b","summary":"36V以下"},{"name":"t2","url":"https://c.d","snippet":"snip"}]}}}';
+      const hits = SearchClient.parseBocha(j);
+      expect(hits.length === 2).assertTrue();
+      expect(hits[0].snippet === '36V以下').assertTrue();
+    });
+    it('parse_tavily_hits', 0, () => {
+      const j = '{"results":[{"title":"安全电压","url":"https://a.b","content":"36V以下"},{"title":"t2","url":"https://c.d","content":"x"}]}';
+      const hits = SearchClient.parseTavily(j);
+      expect(hits.length === 2).assertTrue();
+      expect(hits[0].title === '安全电压').assertTrue();
     });
   });
 }
