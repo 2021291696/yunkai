@@ -2,7 +2,8 @@ import { describe, it, expect } from '@ohos/hypium';
 import { HtmlGuard } from '../../../main/ets/service/HtmlGuard';
 import { HtmlExtractor } from '../../../main/ets/service/HtmlExtractor';
 import { SearchRouter } from '../../../main/ets/service/SearchRouter';
-import { AppConfig } from '../../../main/ets/model/Types';
+import { AppConfig, SearchHit } from '../../../main/ets/model/Types';
+import { PromptBuilder, HistoryTurn } from '../../../main/ets/service/PromptBuilder';
 
 export default function logicTest() {
   describe('logicTest', () => {
@@ -42,6 +43,28 @@ export default function logicTest() {
       const c = new AppConfig();
       c.baseUrl = 'https://api.deepseek.com/v1';
       expect(SearchRouter.resolve(c) === 2).assertTrue();
+    });
+    it('prompt_contains_history_and_turn_no', 0, () => {
+      const h = new HistoryTurn(); h.turnNo = 1; h.question = '什么是电'; h.plain = '电子流动';
+      const p = PromptBuilder.buildUserPrompt([h], '为什么会触电', []);
+      expect(p.includes('[第1轮]')).assertTrue();
+      expect(p.includes('电子流动')).assertTrue();
+      expect(p.includes('为什么会触电')).assertTrue();
+    });
+    it('prompt_contains_search_hits', 0, () => {
+      const s: SearchHit = { title: '安全用电', url: 'https://a.b', snippet: '36V以下是安全电压' };
+      const p = PromptBuilder.buildUserPrompt([], '安全电压是多少', [s]);
+      expect(p.includes('36V以下是安全电压')).assertTrue();
+      expect(p.includes('https://a.b')).assertTrue();
+    });
+    it('prompt_empty_history_no_block', 0, () => {
+      const p = PromptBuilder.buildUserPrompt([], '什么是光', []);
+      expect(p.includes('历史对话')).assertFalse();
+    });
+    it('read_retry_prompt_wraps_html', 0, () => {
+      const p = PromptBuilder.buildReadRetryPrompt(2, '<html>x</html>', '再讲细点');
+      expect(p.includes('第2轮完整HTML原文')).assertTrue();
+      expect(p.includes('<html>x</html>')).assertTrue();
     });
   });
 }
