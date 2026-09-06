@@ -93,5 +93,19 @@ export default function logicTest() {
       expect(hits.length === 2).assertTrue();
       expect(hits[0].title === '安全电压').assertTrue();
     });
+    it('parse_bing_hits', 0, () => {
+      const html = '<li class="b_algo"><h2 class=""><a target="_blank" href="https://baike.baidu.com/item/x" h="ID=SERP"><strong>安全电压</strong>_百度百科</a></h2><div class="b_caption"><p class="b_lineclamp2">安全电压是指不致使人直接致死或致残的电压&#0183;一般36V&ensp;以下</p></div></li><li class="b_algo"><h2><a href="https://zhihu.com/p/1">知乎讨论</a></h2><div><p>另一种说法</p></div></li>';
+      const hits = SearchClient.parseBing(html);
+      expect(hits.length === 2).assertTrue();
+      expect(hits[0].url === 'https://baike.baidu.com/item/x').assertTrue();
+      expect(hits[0].title.includes('安全电压')).assertTrue();
+      expect(hits[0].snippet.includes('36V') && hits[0].snippet.includes('·')).assertTrue();
+    });
+    it('router_bing_without_key_is_external', 0, () => {
+      const c = new AppConfig();
+      c.baseUrl = 'https://api.deepseek.com/v1';
+      c.searchProvider = 'bing';
+      expect(SearchRouter.resolve(c) === 1).assertTrue();
+    });
   });
 }

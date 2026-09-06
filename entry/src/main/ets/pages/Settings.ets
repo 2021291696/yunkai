@@ -167,7 +167,11 @@ struct Settings {
           .width('100%')
 
           Text('搜索源').fontSize(14).width('100%')
-          Row({ space: 18 }) {
+          Row({ space: 14 }) {
+            Radio({ value: 'bing', group: 'searchProvider' })
+              .checked(this.searchProvider === 'bing')
+              .onChange((on: boolean) => { if (on) { this.searchProvider = 'bing'; } })
+            Text('必应(免key)').fontSize(15)
             Radio({ value: 'bocha', group: 'searchProvider' })
               .checked(this.searchProvider === 'bocha')
               .onChange((on: boolean) => { if (on) { this.searchProvider = 'bocha'; } })
