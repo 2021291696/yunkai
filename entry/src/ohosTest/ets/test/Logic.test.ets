@@ -2,8 +2,9 @@ import { describe, it, expect } from '@ohos/hypium';
 import { HtmlGuard } from '../../../main/ets/service/HtmlGuard';
 import { HtmlExtractor } from '../../../main/ets/service/HtmlExtractor';
 import { SearchRouter } from '../../../main/ets/service/SearchRouter';
-import { AppConfig, SearchHit } from '../../../main/ets/model/Types';
+import { AppConfig, ChatMsg, SearchHit } from '../../../main/ets/model/Types';
 import { PromptBuilder, HistoryTurn } from '../../../main/ets/service/PromptBuilder';
+import { LlmClient } from '../../../main/ets/service/LlmClient';
 
 export default function logicTest() {
   describe('logicTest', () => {
@@ -65,6 +66,19 @@ export default function logicTest() {
       const p = PromptBuilder.buildReadRetryPrompt(2, '<html>x</html>', '再讲细点');
       expect(p.includes('第2轮完整HTML原文')).assertTrue();
       expect(p.includes('<html>x</html>')).assertTrue();
+    });
+    it('request_body_plain', 0, () => {
+      const msgs: ChatMsg[] = [{ role: 'system', content: 's' }, { role: 'user', content: 'q' }];
+      const body = LlmClient.buildRequestBody('glm-4.7', msgs, false);
+      expect(body.includes('"model":"glm-4.7"')).assertTrue();
+      expect(body.includes('"stream":false')).assertTrue();
+      expect(body.includes('web_search')).assertFalse();
+    });
+    it('request_body_with_web_search_tool', 0, () => {
+      const msgs: ChatMsg[] = [{ role: 'user', content: 'q' }];
+      const body = LlmClient.buildRequestBody('glm-4.7', msgs, true);
+      expect(body.includes('"type":"web_search"')).assertTrue();
+      expect(body.includes('"enable":true')).assertTrue();
     });
   });
 }
