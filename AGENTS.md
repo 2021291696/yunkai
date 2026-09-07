@@ -6,7 +6,7 @@
 ## 构建与测试
 - CLI 构建：`DEVECO_SDK_HOME='D:\Huawei\DevEcoStudio\sdk' node "D:/Huawei/DevEcoStudio/tools/hvigor/bin/hvigorw.js" --mode module -p product=default assembleHap`
 - 测试包构建：同命令加 `-p module=entry@ohosTest`；产物分别在 `entry/build/default/outputs/{default,ohosTest}/`
-- 单测（模拟器实跑）：`hdc shell aa test -b com.zhuolin.eli5harmony -m entry_test -s unittest OpenHarmonyTestRunner -s class logicTest`（当前 22/22）
+- 单测（模拟器实跑）：`hdc shell aa test -b com.zhuolin.eli5harmony -m entry_test -s unittest OpenHarmonyTestRunner -s class logicTest`（当前 42/42）
 - hdc 一律 Windows 反斜杠路径 + `MSYS_NO_PATHCONV=1`；模拟器 127.0.0.1:5555，真机序列号见记忆
 
 ## 技术栈与目录
@@ -26,5 +26,6 @@ ArkTS（API 26）+ ArkWeb。入口 `entry/src/main/ets/`：
 
 ## 当前状态（2026-09-07）
 - 模拟器全功能验证通过（22/22 单测 + UI 回归）；真机已装（旧版），待用户首配 key
-- 修复史：必应整句污染（extractKeywords）、sanitize 剥 `<script>`、搜索结果防注入包装、Chat 页玻璃化统一
-- 待办：真机首配 + 首跑；候选迭代：追问建议 / 测验模式 / 语音输入 / 生图配图
+- 修复史：必应整句污染（extractKeywords）、sanitize 剥 script、防注入、玻璃化、M1 桌面 agent 重构（AgentLoop/SkillStore/双模型分工）
+- 当前主模型 glm-5.3-flash（对话/工具调度），use_skill 后长文自动切 longModel（glm-4.7，AppConfig.longModel）
+- 待办：真机升级到 agent 版+重配；M2=文件读写+记忆库+SSE 流式+气泡 markdown 渲染；候选迭代：追问建议 / 测验模式 / 语音输入

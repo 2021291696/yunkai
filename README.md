@@ -22,11 +22,12 @@ DEVECO_SDK_HOME='D:\Huawei\DevEcoStudio\sdk' node 'D:\Huawei\DevEcoStudio\tools\
 
 ## 使用
 
-1. 设置页填 baseURL / API key / 模型名（首次建议 `https://open.bigmodel.cn/api/paas/v4` + 智谱 key）
+1. 设置页填 baseURL / API key / 模型名（首次建议 `https://open.bigmodel.cn/api/paas/v4` + 智谱 key；主模型建议 `glm-5.3-flash`——对话与工具调度快）
 2. 搜索源默认「必应(免key)」，无需额外注册
 3. 对话页底部「🌐 联网」胶囊控制每轮是否联网（开=橙色）
+4. **双模型分工**：@eli5 等技能触发的长文生成自动切换 `glm-4.7`（AppConfig.longModel，可改），因 glm-5.3-flash 始终深度思考、长页输出会吃满 token 预算
 
 ## 已知事项
 
-- 讲解生成通常 30-90 秒（非流式，可点取消）
+- 讲解生成通常 1-3 分钟（非流式，agent 多步+长文，可点取消）
 - API key 只存设备本地 Preferences，不进仓库
