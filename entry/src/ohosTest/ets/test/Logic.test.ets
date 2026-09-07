@@ -9,6 +9,7 @@ import { LlmClient } from '../../../main/ets/service/LlmClient';
 import { SearchClient } from '../../../main/ets/service/SearchClient';
 import { Db } from '../../../main/ets/store/Db';
 import { SkillRepo } from '../../../main/ets/store/SkillRepo';
+import { SkillImporter } from '../../../main/ets/service/SkillImporter';
 
 export default function logicTest() {
   describe('logicTest', () => {
@@ -186,6 +187,18 @@ export default function logicTest() {
       expect(dup === -1).assertTrue();
       await SkillRepo.remove(ctx, nid);
       expect((await SkillRepo.list(ctx)).length === before.length).assertTrue();
+    });
+    it('importer_parses_frontmatter', 0, () => {
+      const md = '---\nname:翻译\ndescription:中英互译\n---\n# 翻译\n你是翻译官。';
+      const s = SkillImporter.parse(md);
+      expect(s !== null && s!.name === '翻译' && s!.description === '中英互译' && s!.content.includes('翻译官')).assertTrue();
+    });
+    it('importer_fallback_no_frontmatter', 0, () => {
+      const s = SkillImporter.parse('# 写作助手\n帮你写文章。');
+      expect(s !== null && s!.name === '写作助手' && s!.content.length > 0).assertTrue();
+    });
+    it('importer_rejects_empty', 0, () => {
+      expect(SkillImporter.parse('   ') === null).assertTrue();
     });
   });
 }
