@@ -42,7 +42,8 @@ export class SkillRepo {
     return out;
   }
 
-  // INSERT skills(name, description, content, builtin)，返回新 id
+  // INSERT skills(name, description, content, builtin)；任何失败（如 name UNIQUE 冲突抛
+  // BusinessError）统一收敛为 -1，下游 UI 依赖该契约判断重名
   static async insert(ctx: common.Context, name: string, description: string,
     content: string, builtin: boolean): Promise<number> {
     const store = await Db.get(ctx);
@@ -52,7 +53,11 @@ export class SkillRepo {
       'content': content,
       'builtin': builtin ? 1 : 0
     };
-    return await store.insert('skills', bucket);
+    try {
+      return await store.insert('skills', bucket);
+    } catch (err) {
+      return -1;
+    }
   }
 
   // DELETE FROM skills WHERE id=?
@@ -73,25 +78,30 @@ export class SkillRepo {
     await SkillRepo.insert(ctx, skill.name, skill.description, skill.content, true);
   }
 
-  // 拆 frontmatter（--- 包围的 name/description 两行）与正文
+  // 拆 frontmatter 与正文：按行扫描，首行 --- 为开启栅栏，其后第一条 --- 行为闭合栅栏，
+  // 栅栏之间解析 name:/description: 两行；无配对栅栏时整篇按正文处理
   static parseMarkdown(text: string): AgentSkill {
     const skill = new AgentSkill();
-    let body = text.trim();
-    if (body.startsWith('---')) {
-      const close = body.indexOf('\n---', 3);
-      if (close > 0) {
-        const meta: string[] = body.substring(3, close).split('\n');
-        body = body.substring(close + 4).trim();
-        for (const line of meta) {
-          if (line.startsWith('name:')) {
-            skill.name = line.substring(5).trim();
-          } else if (line.startsWith('description:')) {
-            skill.description = line.substring(12).trim();
-          }
+    const lines: string[] = text.trim().split('\n');
+    let bodyStart = 0;
+    if (lines.length > 1 && lines[0].trim() === '---') {
+      let close = -1;
+      for (let i = 1; i < lines.length; i++) {
+        if (lines[i].trim() === '---') {
+          close = i;
+          break;
+        }
+        if (lines[i].startsWith('name:')) {
+          skill.name = lines[i].substring(5).trim();
+        } else if (lines[i].startsWith('description:')) {
+          skill.description = lines[i].substring(12).trim();
         }
       }
+      if (close > 0) {
+        bodyStart = close + 1;
+      }
     }
-    skill.content = body;
+    skill.content = lines.slice(bodyStart).join('\n').trim();
     return skill;
   }
 

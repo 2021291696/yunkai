@@ -161,6 +161,11 @@ export default function logicTest() {
       const ctx = AbilityDelegatorRegistry.getAbilityDelegator().getAppContext().getApplicationContext();
       await Db.get(ctx); // 建表
       await SkillRepo.seedIfEmpty(ctx);
+      // 上轮用例若中途中断会残留「测试技能」行，先清掉避免撞 UNIQUE
+      const leftover = await SkillRepo.getByName(ctx, '测试技能');
+      if (leftover !== null) {
+        await SkillRepo.remove(ctx, leftover.id);
+      }
       const all = await SkillRepo.list(ctx);
       expect(all.length >= 1).assertTrue();
       const eli5 = await SkillRepo.getByName(ctx, 'eli5');
@@ -169,6 +174,18 @@ export default function logicTest() {
       expect(nid > 0).assertTrue();
       await SkillRepo.remove(ctx, nid);
       expect((await SkillRepo.list(ctx)).length === all.length).assertTrue();
+    });
+    it('skill_repo_insert_duplicate_name_returns_minus_1', 0, async () => {
+      const ctx = AbilityDelegatorRegistry.getAbilityDelegator().getAppContext().getApplicationContext();
+      await Db.get(ctx);
+      const before = await SkillRepo.list(ctx);
+      const nid = await SkillRepo.insert(ctx, '重名测试技能', '描述', '正文', false);
+      expect(nid > 0).assertTrue();
+      // name UNIQUE 冲突：insert 收敛为 -1，表内数量不变
+      const dup = await SkillRepo.insert(ctx, '重名测试技能', '描述', '正文', false);
+      expect(dup === -1).assertTrue();
+      await SkillRepo.remove(ctx, nid);
+      expect((await SkillRepo.list(ctx)).length === before.length).assertTrue();
     });
   });
 }
