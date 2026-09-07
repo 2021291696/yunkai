@@ -1,6 +1,6 @@
 import { describe, it, expect } from '@ohos/hypium';
 import AbilityDelegatorRegistry from '@ohos.app.ability.abilityDelegatorRegistry';
-import { HtmlGuard } from '../../../main/ets/service/HtmlGuard';
+import { HtmlGuard, ReplyKind } from '../../../main/ets/service/HtmlGuard';
 import { HtmlExtractor } from '../../../main/ets/service/HtmlExtractor';
 import { SearchRouter } from '../../../main/ets/service/SearchRouter';
 import { AppConfig, ChatMsg, SearchHit, ToolCall, ToolDef } from '../../../main/ets/model/Types';
@@ -36,6 +36,17 @@ export default function logicTest() {
     it('marker_detection', 0, () => {
       expect(HtmlGuard.detectReadMarker('[[READ_HTML:2]]') === 2).assertTrue();
       expect(HtmlGuard.detectReadMarker('<html>[[READ_HTML:2]]</html>') === null).assertTrue();
+    });
+    it('reply_kind_detects_html', 0, () => {
+      expect(ReplyKind.detect('<!DOCTYPE html><html></html>') === 'html').assertTrue();
+      expect(ReplyKind.detect('普通文本回答') === 'text').assertTrue();
+    });
+    it('reply_kind_detects_html_prefix_case_insensitive', 0, () => {
+      expect(ReplyKind.detect('<!doctype HTML><html><body>x</body></html>') === 'html').assertTrue();
+      expect(ReplyKind.detect('<html><body>裸html前缀</body></html>') === 'html').assertTrue();
+    });
+    it('reply_kind_detects_text_with_inline_markup', 0, () => {
+      expect(ReplyKind.detect('<div>非文档的行内标签片段</div>') === 'text').assertTrue();
     });
     it('router_auto_default_bing_external', 0, () => {
       const c = new AppConfig();

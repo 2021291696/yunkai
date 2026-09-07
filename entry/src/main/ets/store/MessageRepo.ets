@@ -3,44 +3,39 @@ import { relationalStore } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
 import { Db } from './Db';
 import { Msg } from '../model/Types';
+import { HtmlExtractor } from '../service/HtmlExtractor';
 
 export class MessageRepo {
-  // INSERT messages(conversation_id,'user',问题原文,'',0,now)
-  static async addUser(ctx: common.UIAbilityContext, convId: number, question: string): Promise<void> {
-    const store = await Db.get(ctx);
-    const bucket: relationalStore.ValuesBucket = {
-      'conversation_id': convId,
-      'role': 'user',
-      'content': question,
-      'plain': '',
-      'turn_no': 0,
-      'created_at': Date.now()
-    };
-    await store.insert('messages', bucket);
-  }
-
-  // INSERT assistant 行；turnNo = 现有 assistant 最大 turn_no + 1，返回新 turnNo
-  static async addAssistant(ctx: common.UIAbilityContext, convId: number, html: string, plain: string): Promise<number> {
-    const existing: Msg[] = await MessageRepo.listByConv(ctx, convId);
-    let maxTurn: number = 0;
-    for (let i = 0; i < existing.length; i++) {
-      const m: Msg = existing[i];
-      if (m.role === 'assistant' && m.turnNo > maxTurn) {
-        maxTurn = m.turnNo;
+  // 统一入库入口（取代 addUser/addAssistant）：
+  // role='user'：turn_no=0、plain=''；role='assistant'：turnNo=现有 assistant 最大 turn_no+1，
+  // plain=剥标签纯文本（历史 prompt 与侧栏要点用）；kind='html'|'text' 渲染形态持久化
+  static async add(ctx: common.UIAbilityContext, convId: number, role: string,
+    content: string, kind: string): Promise<void> {
+    let turnNo: number = 0;
+    let plain: string = '';
+    if (role === 'assistant') {
+      const existing: Msg[] = await MessageRepo.listByConv(ctx, convId);
+      let maxTurn: number = 0;
+      for (let i = 0; i < existing.length; i++) {
+        const m: Msg = existing[i];
+        if (m.role === 'assistant' && m.turnNo > maxTurn) {
+          maxTurn = m.turnNo;
+        }
       }
+      turnNo = maxTurn + 1;
+      plain = HtmlExtractor.stripTags(content);
     }
-    const turnNo: number = maxTurn + 1;
     const store = await Db.get(ctx);
     const bucket: relationalStore.ValuesBucket = {
       'conversation_id': convId,
-      'role': 'assistant',
-      'content': html,
+      'role': role,
+      'content': content,
       'plain': plain,
       'turn_no': turnNo,
-      'created_at': Date.now()
+      'created_at': Date.now(),
+      'kind': kind
     };
     await store.insert('messages', bucket);
-    return turnNo;
   }
 
   // SELECT * FROM messages WHERE conversation_id=? ORDER BY id ASC → Msg[]
