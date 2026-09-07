@@ -41,6 +41,11 @@ struct Chat {
   }
 
   private async init(): Promise<void> {
+    if (this.convId <= 0) {
+      // 草稿会话：尚未落库，无历史可查
+      this.title = '新对话';
+      return;
+    }
     const convs: Conv[] = await ConversationRepo.list(this.ctx());
     for (let i = 0; i < convs.length; i++) {
       if (convs[i].id === this.convId) {
@@ -133,6 +138,10 @@ struct Chat {
       if (cfg.baseUrl === '' || cfg.apiKey === '' || cfg.model === '') {
         this.toast('请先在设置页配置 API 地址/密钥/模型');
         return;
+      }
+      // 草稿会话：首次发问才落库（点新对话即退不会留记录）
+      if (this.convId <= 0) {
+        this.convId = await ConversationRepo.create(this.ctx(), '新对话');
       }
       await MessageRepo.addUser(this.ctx(), this.convId, q);
       if (gen !== this.genId) { return; }

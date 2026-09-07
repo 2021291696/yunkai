@@ -36,9 +36,9 @@ struct Index {
     return `${d.getMonth() + 1}-${d.getDate()}`;
   }
 
-  private async newConversation(): Promise<void> {
-    const id: number = await ConversationRepo.create(this.ctx(), '新对话');
-    const p: Record<string, number> = { 'convId': id };
+  private newConversation(): void {
+    // 不预创建：convId=-1 表示未落库的草稿会话，Chat 页首次成功回答时才建记录
+    const p: Record<string, number> = { 'convId': -1 };
     router.pushUrl({ url: 'pages/Chat', params: p });
   }
 
