@@ -23,7 +23,7 @@ export class AppConfig {
   apiKey: string = '';
   model: string = '';
   searchMode: string = 'auto';        // auto | builtin | external
-  searchProvider: string = 'bocha';   // bocha | tavily
+  searchProvider: string = 'bing';    // bing(免key爬取) | bocha | tavily
   searchApiKey: string = '';
 }
 

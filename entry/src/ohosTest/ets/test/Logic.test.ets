@@ -30,20 +30,28 @@ export default function logicTest() {
       expect(HtmlGuard.detectReadMarker('[[READ_HTML:2]]') === 2).assertTrue();
       expect(HtmlGuard.detectReadMarker('<html>[[READ_HTML:2]]</html>') === null).assertTrue();
     });
-    it('router_auto_zhipu_builtin', 0, () => {
+    it('router_auto_default_bing_external', 0, () => {
       const c = new AppConfig();
       c.baseUrl = 'https://open.bigmodel.cn/api/paas/v4';
+      expect(SearchRouter.resolve(c) === 1).assertTrue();
+    });
+    it('router_auto_zhipu_fallback_builtin', 0, () => {
+      const c = new AppConfig();
+      c.baseUrl = 'https://open.bigmodel.cn/api/paas/v4';
+      c.searchProvider = 'bocha';
       expect(SearchRouter.resolve(c) === 0).assertTrue();
     });
     it('router_auto_external_without_zhipu', 0, () => {
       const c = new AppConfig();
       c.baseUrl = 'https://api.deepseek.com/v1';
+      c.searchProvider = 'bocha';
       c.searchApiKey = 'sk-x';
       expect(SearchRouter.resolve(c) === 1).assertTrue();
     });
     it('router_auto_none_without_key', 0, () => {
       const c = new AppConfig();
       c.baseUrl = 'https://api.deepseek.com/v1';
+      c.searchProvider = 'bocha';
       expect(SearchRouter.resolve(c) === 2).assertTrue();
     });
     it('prompt_contains_history_and_turn_no', 0, () => {
