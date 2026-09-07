@@ -2,6 +2,7 @@
 import { router, promptAction } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
 import { common } from '@kit.AbilityKit';
+import { buffer } from '@kit.ArkTS';
 import { AppConfig, ChatMsg, Conv, Msg, NetMode, SearchHit } from '../model/Types';
 import { ConfigStore } from '../store/ConfigStore';
 import { ConversationRepo } from '../store/ConversationRepo';
@@ -97,7 +98,18 @@ struct Chat {
   private async loadTurn(turnNo: number): Promise<void> {
     const html: string = await MessageRepo.getHtmlByTurn(this.ctx(), this.convId, turnNo);
     if (html !== '') {
-      this.html = html;
+      this.setHtml(html);
+    }
+  }
+
+  // 统一渲染入口：loadData 明文会把 CSS 的 #/% 当 URI 语法截断，必须 base64
+  private setHtml(html: string): void {
+    this.html = html;
+    try {
+      const b64: string = buffer.from(html, 'utf-8').toString('base64');
+      this.webCtrl.loadData(b64, 'text/html', 'base64');
+    } catch (err) {
+      // controller 未 attach 时忽略（onControllerAttached 里会补渲染）
     }
   }
 
@@ -176,6 +188,7 @@ struct Chat {
         if (convs[i].id === this.convId) { this.title = convs[i].title; break; }
       }
       this.html = html;
+      this.setHtml(html);
       await this.refreshTurns();
     } catch (e) {
       this.toast('出错了：' + (e as Error).message);
@@ -185,8 +198,7 @@ struct Chat {
   }
 
   private webSrc(): string {
-    if (this.html === '') { return 'about:blank'; }
-    return 'data:text/html;charset=utf-8,' + encodeURIComponent(this.html);
+    return 'about:blank';
   }
 
   build() {
@@ -203,6 +215,7 @@ struct Chat {
           Text(this.title)
             .fontSize(19)
             .fontWeight(FontWeight.Medium)
+            .fontColor('#FFFFFF')
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
             .layoutWeight(1)
@@ -221,6 +234,11 @@ struct Chat {
         Stack() {
           Web({ src: this.webSrc(), controller: this.webCtrl })
             .darkMode(WebDarkMode.Auto)
+            .onControllerAttached(() => {
+              if (this.html !== '') {
+                this.webCtrl.loadData(this.html, 'text/html', 'UTF-8');
+              }
+            })
             .width('100%')
           if (this.html === '') {
             Column({ space: 12 }) {
@@ -228,6 +246,7 @@ struct Chat {
               Text('问我任何问题')
                 .fontSize(20)
                 .fontWeight(FontWeight.Medium)
+                .fontColor('#FFFFFF')
               Text('我会用大白话和图讲给你听')
                 .fontSize(14)
                 .fontColor('#8A8A8A')
