@@ -10,6 +10,7 @@ export class ConfigStore {
     c.baseUrl = (await p.get('baseUrl', '')) as string;
     c.apiKey = (await p.get('apiKey', '')) as string;
     c.model = (await p.get('model', '')) as string;
+    c.longModel = (await p.get('longModel', 'glm-4.7')) as string;
     c.autoRoute = (await p.get('autoRoute', true)) as boolean;
     c.searchMode = (await p.get('searchMode', 'auto')) as string;
     c.searchProvider = (await p.get('searchProvider', 'bing')) as string;
@@ -22,6 +23,7 @@ export class ConfigStore {
     await p.put('baseUrl', cfg.baseUrl);
     await p.put('apiKey', cfg.apiKey);
     await p.put('model', cfg.model);
+    await p.put('longModel', cfg.longModel);
     await p.put('autoRoute', cfg.autoRoute);
     await p.put('searchMode', cfg.searchMode);
     await p.put('searchProvider', cfg.searchProvider);

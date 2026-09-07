@@ -367,6 +367,22 @@ export default function logicTest() {
       const c = await ConfigStore.load(ctx as object as common.UIAbilityContext);
       expect(c.searchProvider === 'bing').assertTrue();
     });
+    it('pick_model_routes_longform_after_use_skill', 0, () => {
+      // 双模型分工：默认主模型；use_skill 激活长文形态后切 longModel
+      const c = new AppConfig();
+      c.model = 'glm-5.3-flash';
+      c.longModel = 'glm-4.7';
+      expect(AgentLoop.pickModel(c, false) === 'glm-5.3-flash').assertTrue();
+      expect(AgentLoop.pickModel(c, true) === 'glm-4.7').assertTrue();
+    });
+    it('pick_model_falls_back_when_longmodel_empty', 0, () => {
+      // longModel 空串（未配置/旧档无键）→ 即使长文激活也回退主模型，绝不发空 model 请求
+      const c = new AppConfig();
+      c.model = 'glm-5.3-flash';
+      c.longModel = '';
+      expect(AgentLoop.pickModel(c, true) === 'glm-5.3-flash').assertTrue();
+      expect(AgentLoop.pickModel(c, false) === 'glm-5.3-flash').assertTrue();
+    });
     it('loop_autoroute_off_skips_skill_listing', 0, async () => {
       // autoRoute=false 且无 @指定：system prompt 不注入 [可用技能清单]，只留手动触发守则
       const ctx = AbilityDelegatorRegistry.getAbilityDelegator().getAppContext().getApplicationContext();

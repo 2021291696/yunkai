@@ -3,6 +3,8 @@
 // 驱动「模型 → 工具 → 模型」循环；工具失败以 '{"error":...}' 字符串回传给模型自行调整，
 // 绝不让循环崩溃；步数到 MAX_STEPS 后强制一次无 tools 收尾作答。
 // 每一步经 onEvent 上报 tool_start / tool_done / answer / limit，UI 层据此展示进度。
+// 双模型分工：对话与工具调度用 cfg.model（主模型）；本轮 use_skill 成功拿到说明书后，
+// 余下 LLM 调用切 cfg.longModel（长文模型，无思考、可出完整 eli5 页），选择收敛在 pickModel。
 // 可测性：run 末位可选参 fakeChat 注入假 LLM（生产不传，走真 LlmClient.chatMessage）。
 // 取消：run 末位可选参 isCancelled 轮询取消旗标，命中即抛 Error('AGENT_LOOP_CANCELLED')，
 // 由调用方（Chat 页）静默吞掉；引擎层中断保证后台不再烧 token / 跑工具副作用。
@@ -79,12 +81,16 @@ export class AgentLoop {
     messages.push(userMsg);
 
     // 可测性注入：fakeChat 存在时完全替代真实 LLM 请求
+    // 双模型分工：longFormActive 置真（use_skill 成功拿到说明书）后，本轮余下的 LLM 调用
+    // 切到 cfg.longModel（glm-4.7 无思考、可出完整长文）；模型选择收敛在 pickModel 单点。
     const llm = new LlmClient(cfg);
+    let longFormActive = false;
     const doChat = async (ms: ChatMsg[], ts: ToolDef[] | null): Promise<OpenAiMessage> => {
+      const model = AgentLoop.pickModel(cfg, longFormActive);
       if (fakeChat !== undefined) {
         return fakeChat(ms, ts);
       }
-      return llm.chatMessage(ms, ts);
+      return llm.chatMessage(ms, ts, model);
     };
 
     for (let step = 1; step <= MAX_STEPS; step++) {
@@ -98,6 +104,11 @@ export class AgentLoop {
           checkCancel();
           onEvent(AgentLoop.ev('tool_start', tc.function.name, tc.function.arguments));
           const out = await AgentLoop.execTool(tools, tc);
+          // use_skill 成功返回说明书（非 '{"error"' 开头）→ 本轮余下调用切长文模型；
+          // 失败/error 回传不切换，模型仍用主模型自行调整策略
+          if (tc.function.name === 'use_skill' && !out.startsWith('{"error"')) {
+            longFormActive = true;
+          }
           onEvent(AgentLoop.ev('tool_done', tc.function.name, out.substring(0, 80)));
           const tm: ChatMsg = { role: 'tool', tool_call_id: tc.id, content: out };
           messages.push(tm);
@@ -120,6 +131,17 @@ export class AgentLoop {
       finalContent = '已达到本轮工具步数上限，请稍后重试或换个问法';
     }
     return AgentLoop.result(finalContent, MAX_STEPS + 1);
+  }
+
+  // 双模型分工的模型选择单点（纯函数）：本轮是否已由 use_skill 激活长文形态。
+  // longFormActive=true 且 longModel 非空 → longModel；否则回退主模型 cfg.model
+  // （longModel 空串=未配置，照旧主模型，绝不发出空 model 请求）。
+  // static 公开供单测直测（纯函数无副作用，与 LlmClient.buildRequestBody 同例）。
+  static pickModel(cfg: AppConfig, longFormActive: boolean): string {
+    if (longFormActive && cfg.longModel !== '') {
+      return cfg.longModel;
+    }
+    return cfg.model;
   }
 
   // 单工具执行：未知名/抛异常都收敛为 '{"error":...}' 字符串回传给模型，绝不让循环崩溃

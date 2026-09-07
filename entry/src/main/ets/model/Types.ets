@@ -54,6 +54,7 @@ export class AppConfig {
   baseUrl: string = '';
   apiKey: string = '';
   model: string = '';
+  longModel: string = 'glm-4.7';      // use_skill 后长文生成模型；M1 不进设置 UI，M2 再做
   autoRoute: boolean = true;          // 技能自动路由；false=仅 @名字 手动触发技能
   searchMode: string = 'auto';        // 保留字段（auto|builtin|external）：agent 重构后 UI 三选已下线，
                                       // 键不迁移不删除避免 schema 变动；不再被设置页读写
