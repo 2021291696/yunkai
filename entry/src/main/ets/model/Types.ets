@@ -61,4 +61,13 @@ export class AppConfig {
   searchApiKey: string = '';
 }
 
+// Agent 技能配方：skills 表一行（内置 eli5 与用户自建技能共用）
+export class AgentSkill {
+  id: number = 0;
+  name: string = '';
+  description: string = '';
+  content: string = '';
+  builtin: boolean = false;
+}
+
 export enum NetMode { BUILTIN, EXTERNAL, NONE }

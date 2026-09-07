@@ -1,11 +1,11 @@
-// 数据库单例：eli5.db 两张表（会话/消息）
+// 数据库单例：eli5.db 三张表（会话/消息/技能）
 import { relationalStore } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
 
 export class Db {
   private static store: relationalStore.RdbStore | null = null;
 
-  static async get(ctx: common.UIAbilityContext): Promise<relationalStore.RdbStore> {
+  static async get(ctx: common.Context): Promise<relationalStore.RdbStore> {
     if (Db.store !== null) { return Db.store; }
     const cfg: relationalStore.StoreConfig = {
       name: 'eli5.db',
@@ -25,6 +25,13 @@ export class Db {
       plain TEXT NOT NULL DEFAULT '',
       turn_no INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL)`);
+    // schema v2：skills 表（Agent 技能配方）
+    await s.executeSql(`CREATE TABLE IF NOT EXISTS skills (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE,
+      description TEXT,
+      content TEXT,
+      builtin INTEGER DEFAULT 0)`);
     Db.store = s;
     return s;
   }

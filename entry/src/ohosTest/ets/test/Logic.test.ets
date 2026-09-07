@@ -1,4 +1,5 @@
 import { describe, it, expect } from '@ohos/hypium';
+import AbilityDelegatorRegistry from '@ohos.app.ability.abilityDelegatorRegistry';
 import { HtmlGuard } from '../../../main/ets/service/HtmlGuard';
 import { HtmlExtractor } from '../../../main/ets/service/HtmlExtractor';
 import { SearchRouter } from '../../../main/ets/service/SearchRouter';
@@ -6,6 +7,8 @@ import { AppConfig, ChatMsg, SearchHit, ToolCall, ToolDef } from '../../../main/
 import { PromptBuilder, HistoryTurn } from '../../../main/ets/service/PromptBuilder';
 import { LlmClient } from '../../../main/ets/service/LlmClient';
 import { SearchClient } from '../../../main/ets/service/SearchClient';
+import { Db } from '../../../main/ets/store/Db';
+import { SkillRepo } from '../../../main/ets/store/SkillRepo';
 
 export default function logicTest() {
   describe('logicTest', () => {
@@ -151,6 +154,21 @@ export default function logicTest() {
         expect(out.includes('<script')).assertFalse();
         expect(out.includes('正文')).assertTrue();
       }
+    });
+    it('skill_repo_crud_and_seed', 0, async () => {
+      // 注：getAppContext() 返回的模块级 Context 会被 getRdbStore 原生校验拒绝(401)，
+      // 必须升到 ApplicationContext 才能建库。
+      const ctx = AbilityDelegatorRegistry.getAbilityDelegator().getAppContext().getApplicationContext();
+      await Db.get(ctx); // 建表
+      await SkillRepo.seedIfEmpty(ctx);
+      const all = await SkillRepo.list(ctx);
+      expect(all.length >= 1).assertTrue();
+      const eli5 = await SkillRepo.getByName(ctx, 'eli5');
+      expect(eli5 !== null && eli5!.content.includes('章节')).assertTrue();
+      const nid = await SkillRepo.insert(ctx, '测试技能', '测试描述', '正文', false);
+      expect(nid > 0).assertTrue();
+      await SkillRepo.remove(ctx, nid);
+      expect((await SkillRepo.list(ctx)).length === all.length).assertTrue();
     });
   });
 }
