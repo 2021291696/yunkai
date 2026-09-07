@@ -52,7 +52,7 @@ struct Chat {
     // 最近一轮有内容就直接渲染（从列表重进不丢讲解）
     for (let i = this.turns.length - 1; i >= 0; i--) {
       if (this.turns[i].role === 'assistant') {
-        this.html = this.turns[i].content;
+        this.setHtml(this.turns[i].content);
         break;
       }
     }
@@ -103,14 +103,21 @@ struct Chat {
   }
 
   // 统一渲染入口：loadData 明文会把 CSS 的 #/% 当 URI 语法截断，必须 base64
+  // webReady/pendingHtml 双标志覆盖 attach 与 init 的两种到达顺序
+  private webReady: boolean = false;
+  private pendingHtml: string = '';
+
   private setHtml(html: string): void {
     this.html = html;
-    try {
-      const b64: string = buffer.from(html, 'utf-8').toString('base64');
-      this.webCtrl.loadData(b64, 'text/html', 'base64');
-    } catch (err) {
-      // controller 未 attach 时忽略（onControllerAttached 里会补渲染）
+    this.pendingHtml = html;
+    if (this.webReady) {
+      this.doLoad(html);
     }
+  }
+
+  private doLoad(html: string): void {
+    const b64: string = buffer.from(html, 'utf-8').toString('base64');
+    this.webCtrl.loadData(b64, 'text/html', 'base64');
   }
 
   private async send(): Promise<void> {
@@ -235,8 +242,9 @@ struct Chat {
           Web({ src: this.webSrc(), controller: this.webCtrl })
             .darkMode(WebDarkMode.Auto)
             .onControllerAttached(() => {
-              if (this.html !== '') {
-                this.webCtrl.loadData(this.html, 'text/html', 'UTF-8');
+              this.webReady = true;
+              if (this.pendingHtml !== '') {
+                this.doLoad(this.pendingHtml);
               }
             })
             .width('100%')
