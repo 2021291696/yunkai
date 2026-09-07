@@ -230,6 +230,23 @@ struct Settings {
         .shadow({ radius: 20, color: '#42342538', offsetY: 8 })
         .width('100%')
 
+        // ===== 技能库入口 =====
+        Row() {
+          Text('技能库').fontSize(15).fontColor('#3D3325')
+          Blank()
+          Text('›').fontSize(20).fontColor('#B25E00')
+        }
+        .padding({ left: 16, right: 16, top: 14, bottom: 14 })
+        .borderRadius(18)
+        .backgroundColor('#FFFFFF66')
+        .backgroundBlurStyle(BlurStyle.Regular)
+        .border({ width: 1, color: '#FFFFFFB8' })
+        .shadow({ radius: 20, color: '#42342538', offsetY: 8 })
+        .width('100%')
+        .onClick(() => {
+          router.pushUrl({ url: 'pages/SkillManage' });
+        })
+
         Button('保存', { type: ButtonType.Capsule })
           .width('100%')
           .height(46)

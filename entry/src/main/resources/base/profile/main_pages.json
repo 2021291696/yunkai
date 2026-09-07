@@ -3,6 +3,7 @@
     "pages/Index",
     "pages/Settings",
     "pages/Chat",
-    "pages/Canvas"
+    "pages/Canvas",
+    "pages/SkillManage"
   ]
 }

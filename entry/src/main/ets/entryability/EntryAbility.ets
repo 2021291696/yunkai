@@ -1,12 +1,17 @@
 import { AbilityConstant, ConfigurationConstant, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
+import { SkillRepo } from '../store/SkillRepo';
 
 const DOMAIN = 0x0000;
 
 export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onCreate');
+    // 首启播种内置 eli5 技能（幂等：list 非空即返回；失败不影响启动）
+    SkillRepo.seedIfEmpty(this.context).catch((err: Error) => {
+      hilog.error(DOMAIN, 'testTag', 'seedIfEmpty failed: %{public}s', err.message);
+    });
   }
 
   onDestroy(): void {
