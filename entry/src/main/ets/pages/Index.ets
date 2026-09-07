@@ -73,85 +73,129 @@ struct Index {
   }
 
   build() {
-    Column() {
-      // ===== 顶栏 =====
-      Row() {
-        Text('云开')
-          .fontSize(30)
-          .fontWeight(FontWeight.Bold)
-          .fontColor('#FFFFFF')
-          .layoutWeight(1)
-        Button('＋ 新对话')
-          .fontSize(15)
-          .height(38)
-          .backgroundColor('#0A84FF')
-          .onClick(() => {
-            this.newConversation();
-          })
-        Button('设置')
-          .fontSize(15)
-          .height(38)
-          .margin({ left: 10 })
-          .backgroundColor('#2C2C2E')
-          .onClick(() => {
-            router.pushUrl({ url: 'pages/Settings' });
-          })
+    // 暖纸光斑背景层：玻璃卡后面要有东西可虚化
+    Stack() {
+      Column() {
+        // 光斑：半透明大圆 + blur = 柔光（左上黄 / 右上蓝 / 底部珊瑚）
+        Column()
+          .width(360)
+          .height(360)
+          .position({ x: -80, y: 620 })
+          .borderRadius(260)
+          .backgroundColor('#4DFFD75E')
+          .blur(90)
+
+        Column()
+          .width(380)
+          .height(380)
+          .position({ x: 820, y: 40 })
+          .borderRadius(260)
+          .backgroundColor('#407CC4FF')
+          .blur(95)
+
+        Column()
+          .width(520)
+          .height(520)
+          .position({ x: 280, y: 1500 })
+          .borderRadius(320)
+          .backgroundColor('#47FF9D8A')
+          .blur(110)
+
+        // ===== 前景内容 =====
+        Column() {
+          // ===== 顶栏（半透明玻璃条） =====
+          Row() {
+            Text('云开')
+              .fontSize(30)
+              .fontWeight(FontWeight.Bold)
+              .fontColor('#3D3325')
+              .layoutWeight(1)
+            Button('＋ 新对话')
+              .fontSize(15)
+              .height(38)
+              .backgroundColor('#E8930C')
+              .onClick(() => {
+                this.newConversation();
+              })
+            Button('设置')
+              .fontSize(15)
+              .height(38)
+              .margin({ left: 10 })
+              .backgroundColor('#FFE9C7')
+              .fontColor('#7A5B1E')
+              .onClick(() => {
+                router.pushUrl({ url: 'pages/Settings' });
+              })
+          }
+          .width('100%')
+          .padding({ left: 18, right: 18, top: 16, bottom: 10 })
+
+          // ===== 会话列表 =====
+          if (this.convs.length === 0) {
+            Column({ space: 10 }) {
+              Text('🌤️').fontSize(64)
+              Text('有任何想懂的事，问我就好')
+                .fontSize(17)
+                .fontColor('#8A7A5A')
+              Text('点右上角「＋ 新对话」开始')
+                .fontSize(14)
+                .fontColor('#B09A72')
+            }
+            .width('100%')
+            .layoutWeight(1)
+            .justifyContent(FlexAlign.Center)
+          } else {
+            List({ space: 12 }) {
+              ForEach(this.convs, (c: Conv) => {
+                ListItem() {
+                  Column({ space: 4 }) {
+                    Text(c.title)
+                      .fontSize(17)
+                      .fontColor('#3D3325')
+                      .maxLines(1)
+                      .textOverflow({ overflow: TextOverflow.Ellipsis })
+                      .width('100%')
+                    Text(this.timeLabel(c.updatedAt))
+                      .fontSize(12)
+                      .fontColor('#A08C66')
+                      .width('100%')
+                  }
+                  .padding({ left: 16, right: 16, top: 13, bottom: 13 })
+                  .borderRadius(16)
+                  .backgroundColor('#FFFFFFA6')
+                  .backgroundBlurStyle(BlurStyle.Thin)
+                  .border({ width: 1, color: '#FFFFFFB8' })
+                  .shadow({
+                    radius: 22,
+                    color: '#42342540',
+                    offsetY: 10
+                  })
+                  .width('100%')
+                  .onClick(() => {
+                    this.openConversation(c.id);
+                  })
+                  .gesture(
+                    LongPressGesture()
+                      .onAction(() => {
+                        this.confirmDelete(c);
+                      })
+                  )
+                }
+              }, (c: Conv) => `${c.id}_${c.updatedAt}`)
+            }
+            .layoutWeight(1)
+            .width('100%')
+            .padding({ left: 14, right: 14 })
+          }
+        }
+        .width('100%')
+        .height('100%')
       }
       .width('100%')
-      .padding({ left: 18, right: 18, top: 16, bottom: 10 })
-
-      // ===== 会话列表 =====
-      if (this.convs.length === 0) {
-        Column({ space: 10 }) {
-          Text('🌤️').fontSize(64)
-          Text('有任何想懂的事，问我就好')
-            .fontSize(17)
-            .fontColor('#8A8A8A')
-          Text('点右上角「＋ 新对话」开始')
-            .fontSize(14)
-            .fontColor('#5A5A5A')
-        }
-        .width('100%')
-        .layoutWeight(1)
-        .justifyContent(FlexAlign.Center)
-      } else {
-        List({ space: 10 }) {
-          ForEach(this.convs, (c: Conv) => {
-            ListItem() {
-              Column({ space: 4 }) {
-                Text(c.title)
-                  .fontSize(17)
-                  .maxLines(1)
-                  .textOverflow({ overflow: TextOverflow.Ellipsis })
-                  .width('100%')
-                Text(this.timeLabel(c.updatedAt))
-                  .fontSize(12)
-                  .fontColor('#8A8A8A')
-                  .width('100%')
-              }
-              .padding({ left: 16, right: 16, top: 12, bottom: 12 })
-              .borderRadius(14)
-              .backgroundColor('#1C1C1E')
-              .width('100%')
-              .onClick(() => {
-                this.openConversation(c.id);
-              })
-              .gesture(
-                LongPressGesture()
-                  .onAction(() => {
-                    this.confirmDelete(c);
-                  })
-              )
-            }
-          }, (c: Conv) => `${c.id}_${c.updatedAt}`)
-        }
-        .layoutWeight(1)
-        .width('100%')
-        .padding({ left: 14, right: 14 })
-      }
+      .height('100%')
+      .backgroundColor('#FAF6EF')
     }
     .width('100%')
     .height('100%')
-    .backgroundColor('#000000')
   }
 }

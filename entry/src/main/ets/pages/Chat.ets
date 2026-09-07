@@ -224,14 +224,14 @@ struct Chat {
         Row({ space: 10 }) {
           Text('‹ 返回')
             .fontSize(16)
-            .fontColor('#0A84FF')
+            .fontColor('#B25E00')
             .onClick(() => {
               router.back();
             })
           Text(this.title)
             .fontSize(19)
             .fontWeight(FontWeight.Medium)
-            .fontColor('#FFFFFF')
+            .fontColor('#3D3325')
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
             .layoutWeight(1)
@@ -245,6 +245,9 @@ struct Chat {
         }
         .width('100%')
         .padding({ left: 14, right: 14, top: 12, bottom: 10 })
+        .backgroundColor('#F2EADCB0')
+        .backgroundBlurStyle(BlurStyle.Thin)
+        .border({ width: { bottom: 1 }, color: '#FFFFFFCC' })
 
         // ===== 讲解渲染区 =====
         Stack() {
@@ -271,7 +274,7 @@ struct Chat {
             .width('100%')
             .height('100%')
             .justifyContent(FlexAlign.Center)
-            .backgroundColor('#000000')
+            .backgroundColor('#FAF6EF')
           }
         }
         .layoutWeight(1)
@@ -300,6 +303,9 @@ struct Chat {
         .width('100%')
         .padding({ left: 14, right: 14, top: 8, bottom: 14 })
         .alignItems(VerticalAlign.Center)
+        .backgroundColor('#F2EADCB0')
+        .backgroundBlurStyle(BlurStyle.Thin)
+        .border({ width: { top: 1 }, color: '#FFFFFFCC' })
       }
       .width('100%')
       .height('100%')
@@ -327,7 +333,7 @@ struct Chat {
       if (this.showHistory) {
         Column() {
           Row() {
-            Text('历史讲解').fontSize(18).fontWeight(FontWeight.Bold).layoutWeight(1)
+            Text('历史讲解').fontSize(18).fontWeight(FontWeight.Bold).fontColor('#3D3325').layoutWeight(1)
             Text('收起 ✕').fontSize(15).fontColor('#0A84FF')
               .onClick(() => { this.showHistory = false; })
           }
@@ -335,7 +341,7 @@ struct Chat {
           .padding(16)
 
           if (this.turns.length === 0) {
-            Text('还没有讲解记录').fontSize(14).fontColor('#8A8A8A').padding(16)
+            Text('还没有讲解记录').fontSize(14).fontColor('#A08C66').padding(16)
           } else {
             List({ space: 8 }) {
               ForEach(this.turns, (m: Msg) => {
@@ -343,7 +349,7 @@ struct Chat {
                   ListItem() {
                     Column({ space: 4 }) {
                       Text(`第${m.turnNo}轮`)
-                        .fontSize(12).fontColor('#0A84FF')
+                        .fontSize(12).fontColor('#B25E00')
                       Text(this.questionOf(m.turnNo))
                         .fontSize(15)
                         .maxLines(2)
@@ -353,7 +359,7 @@ struct Chat {
                     .alignItems(HorizontalAlign.Start)
                     .padding(12)
                     .borderRadius(12)
-                    .backgroundColor('#1C1C1E')
+                    .backgroundColor('#FFFFFF8C')
                     .width('100%')
                     .onClick(() => { this.openTurn(m.turnNo); })
                   }
@@ -367,7 +373,8 @@ struct Chat {
         }
         .width('86%')
         .height('100%')
-        .backgroundColor('#111111')
+        .backgroundColor('#F7F1E6F5')
+        .backgroundBlurStyle(BlurStyle.Regular)
         .alignItems(HorizontalAlign.Start)
       }
     }

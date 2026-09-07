@@ -94,32 +94,55 @@ struct Settings {
   }
 
   build() {
-    Scroll() {
+    Stack() {
+      // 光斑：左上黄圆 + 右下珊瑚圆（blur 成柔光，给玻璃卡提供可虚化内容）
+      Column()
+        .width(360)
+        .height(360)
+        .position({ x: -80, y: 300 })
+        .borderRadius(260)
+        .backgroundColor('#4DFFD75E')
+        .blur(90)
+      Column()
+        .width(520)
+        .height(520)
+        .position({ x: 300, y: 1450 })
+        .borderRadius(320)
+        .backgroundColor('#47FF9D8A')
+        .blur(110)
+
+      Scroll() {
       Column({ space: 18 }) {
         Text('设置')
           .fontSize(26)
           .fontWeight(FontWeight.Bold)
-          .fontColor('#FFFFFF')
+          .fontColor('#3D3325')
           .width('100%')
 
         // ===== API 配置卡片 =====
         Column({ space: 12 }) {
-          Text('API 配置').fontSize(16).fontColor('#7A7A7A').width('100%')
+          Text('API 配置').fontSize(16).fontColor('#8A7350').width('100%')
           Text('API 地址').fontSize(14).width('100%')
           TextInput({ text: this.baseUrl, placeholder: 'https://open.bigmodel.cn/api/paas/v4' })
             .type(InputType.Normal)
             .width('100%')
+            .backgroundColor('#FFFFFFF2')
+            .borderRadius(12)
             .onChange((v: string) => { this.baseUrl = v; })
           Text('API 密钥').fontSize(14).width('100%')
           TextInput({ text: this.apiKey, placeholder: 'sk-...' })
             .type(InputType.Password)
             .width('100%')
+            .backgroundColor('#FFFFFFF2')
+            .borderRadius(12)
             .onChange((v: string) => { this.apiKey = v; })
           Text('模型名').fontSize(14).width('100%')
           Row({ space: 10 }) {
             TextInput({ text: this.model, placeholder: '如 glm-4.7 / deepseek-chat' })
               .type(InputType.Normal)
               .layoutWeight(1)
+              .backgroundColor('#FFFFFFF2')
+              .borderRadius(12)
               .onChange((v: string) => { this.model = v; })
             Button(this.fetchingModels ? '获取中…' : '获取模型列表')
               .enabled(!this.fetchingModels)
@@ -143,13 +166,16 @@ struct Settings {
         }
         .alignItems(HorizontalAlign.Start)
         .padding(16)
-        .borderRadius(16)
-        .backgroundColor('#1C1C1E')
+        .borderRadius(18)
+        .backgroundColor('#FFFFFF66')
+        .backgroundBlurStyle(BlurStyle.Regular)
+        .border({ width: 1, color: '#FFFFFFB8' })
+        .shadow({ radius: 20, color: '#42342538', offsetY: 8 })
         .width('100%')
 
         // ===== 联网方式卡片 =====
         Column({ space: 12 }) {
-          Text('联网搜索').fontSize(16).fontColor('#7A7A7A').width('100%')
+          Text('联网搜索').fontSize(16).fontColor('#8A7350').width('100%')
           Text('联网方式').fontSize(14).width('100%')
           Row({ space: 18 }) {
             Radio({ value: 'auto', group: 'searchMode' })
@@ -188,15 +214,20 @@ struct Settings {
           TextInput({ text: this.searchApiKey, placeholder: '博查或 Tavily 的 key' })
             .type(InputType.Password)
             .width('100%')
+            .backgroundColor('#FFFFFFF2')
+            .borderRadius(12)
             .onChange((v: string) => { this.searchApiKey = v; })
 
           Text('自动=智谱系模型用内置联网，其他模型走独立搜索（需密钥）')
-            .fontSize(12).fontColor('#8A8A8A').width('100%')
+            .fontSize(12).fontColor('#A08C66').width('100%')
         }
         .alignItems(HorizontalAlign.Start)
         .padding(16)
-        .borderRadius(16)
-        .backgroundColor('#1C1C1E')
+        .borderRadius(18)
+        .backgroundColor('#FFFFFF66')
+        .backgroundBlurStyle(BlurStyle.Regular)
+        .border({ width: 1, color: '#FFFFFFB8' })
+        .shadow({ radius: 20, color: '#42342538', offsetY: 8 })
         .width('100%')
 
         Button('保存', { type: ButtonType.Capsule })
@@ -213,6 +244,9 @@ struct Settings {
     .scrollable(ScrollDirection.Vertical)
     .width('100%')
     .height('100%')
-    .backgroundColor('#000000')
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor('#FAF6EF')
   }
 }
