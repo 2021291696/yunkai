@@ -99,6 +99,7 @@ struct Settings {
         Text('设置')
           .fontSize(26)
           .fontWeight(FontWeight.Bold)
+          .fontColor('#FFFFFF')
           .width('100%')
 
         // ===== API 配置卡片 =====

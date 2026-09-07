@@ -79,6 +79,7 @@ struct Index {
         Text('云开')
           .fontSize(30)
           .fontWeight(FontWeight.Bold)
+          .fontColor('#FFFFFF')
           .layoutWeight(1)
         Button('＋ 新对话')
           .fontSize(15)
