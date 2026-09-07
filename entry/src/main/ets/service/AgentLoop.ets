@@ -4,6 +4,12 @@
 // 绝不让循环崩溃；步数到 MAX_STEPS 后强制一次无 tools 收尾作答。
 // 每一步经 onEvent 上报 tool_start / tool_done / answer / limit，UI 层据此展示进度。
 // 可测性：run 末位可选参 fakeChat 注入假 LLM（生产不传，走真 LlmClient.chatMessage）。
+// 取消：run 末位可选参 isCancelled 轮询取消旗标，命中即抛 Error('AGENT_LOOP_CANCELLED')，
+// 由调用方（Chat 页）静默吞掉；引擎层中断保证后台不再烧 token / 跑工具副作用。
+// 【M2 待办】skill description 注入防御：技能 description 来自用户/导入内容，直接拼进 system prompt
+//   可能夹带 prompt injection（「忽略以上指令」类）；上线前需转义/长度截断/敏感内容过滤。
+// 【M2 待办】多工具并发与 tool 结果预算截断：同一轮 tool_calls 目前串行执行；且 tool 结果全文回填
+//   可能撑爆上下文，需按预算截断/摘要（单条上限 + 本轮总预算）。
 import { common } from '@kit.AbilityKit';
 import { AppConfig, AgentSkill, ChatMsg, JsonSchema, ToolCall, ToolDef } from '../model/Types';
 import { LlmClient, OpenAiMessage } from './LlmClient';
@@ -41,10 +47,19 @@ const AGENT_SYSTEM: string = '你是运行在用户桌面上的智能助手，�
   '4. 技能（skill）是写好的详细操作说明书；一旦调用 use_skill 拿到说明书，必须严格照它执行。';
 
 export class AgentLoop {
-  // 核心循环入口；fakeChat 仅测试注入，生产路径必须不传
+  // 取消检查：isCancelled 命中即抛专用取消 Error，调用方静默吞（引擎层中断，结果直接丢弃）
+  private static readonly CANCELLED_MSG: string = 'AGENT_LOOP_CANCELLED';
+
+  // 核心循环入口；fakeChat 仅测试注入，生产路径必须不传；isCancelled 为取消轮询旗标（末位可选参）
   static async run(cfg: AppConfig, ctx: common.Context, history: ChatMsg[], question: string,
     forcedSkill: AgentSkill | null, onEvent: (e: LoopEvent) => void,
-    fakeChat?: (messages: ChatMsg[], tools: ToolDef[] | null) => Promise<OpenAiMessage>): Promise<LoopResult> {
+    fakeChat?: (messages: ChatMsg[], tools: ToolDef[] | null) => Promise<OpenAiMessage>,
+    isCancelled?: () => boolean): Promise<LoopResult> {
+    const checkCancel = (): void => {
+      if (isCancelled !== undefined && isCancelled()) {
+        throw new Error(AgentLoop.CANCELLED_MSG);
+      }
+    };
     const tools: AgentTool[] = BuiltinTools.createAll(ctx, cfg, forcedSkill);
     const toolDefs: ToolDef[] = [];
     for (const t of tools) {
@@ -71,12 +86,14 @@ export class AgentLoop {
     };
 
     for (let step = 1; step <= MAX_STEPS; step++) {
+      checkCancel();
       const msg = await doChat(messages, toolDefs.length > 0 ? toolDefs : null);
       if (msg.tool_calls !== undefined && msg.tool_calls.length > 0) {
         const asst: ChatMsg = { role: 'assistant', content: msg.content, tool_calls: msg.tool_calls };
         messages.push(asst);
         const calls: ToolCall[] = msg.tool_calls;
         for (const tc of calls) {
+          checkCancel();
           onEvent(AgentLoop.ev('tool_start', tc.function.name, tc.function.arguments));
           const out = await AgentLoop.execTool(tools, tc);
           onEvent(AgentLoop.ev('tool_done', tc.function.name, out.substring(0, 80)));
@@ -88,10 +105,16 @@ export class AgentLoop {
       onEvent(AgentLoop.ev('answer', '', ''));
       return AgentLoop.result(msg.content, step);
     }
-    // 步数到顶：kind='limit' 后做一次无 tools 收尾，强制模型直接作答
+    // 步数到顶：kind='limit' 后追加收束指令并做一次无 tools 收尾，强制模型直接作答
     onEvent(AgentLoop.ev('limit', '', ''));
+    const finishMsg: ChatMsg = { role: 'user', content: '已达步数上限，请基于已有工具结果直接给出最终回答。' };
+    messages.push(finishMsg);
     const final = await doChat(messages, null);
-    return AgentLoop.result(final.content, MAX_STEPS + 1);
+    let finalContent = final.content;
+    if (finalContent === '') {
+      finalContent = '已达到本轮工具步数上限，请稍后重试或换个问法';
+    }
+    return AgentLoop.result(finalContent, MAX_STEPS + 1);
   }
 
   // 单工具执行：未知名/抛异常都收敛为 '{"error":...}' 字符串回传给模型，绝不让循环崩溃

@@ -290,5 +290,30 @@ export default function logicTest() {
       expect(kinds.indexOf('limit') >= 0).assertTrue();
       expect(r.steps === 11).assertTrue();
     });
+    it('loop_cancel_throws_and_stops_fake', 0, async () => {
+      // fake 第1轮回 tool_calls；fake 被调过 1 次后 isCancelled 返回 true
+      // 断言：run reject 且 Error 为 AGENT_LOOP_CANCELLED，fake 不再被调用（引擎层中断）
+      const ctx = AbilityDelegatorRegistry.getAbilityDelegator().getAppContext().getApplicationContext();
+      let fakeCalls = 0;
+      const tc: ToolCall = { id: 'call_c', type: 'function', function: { name: 'read_web', arguments: '{"url":"http://127.0.0.1:1/x"}' } };
+      let threw = false;
+      let cancelErrMsg = '';
+      try {
+        await AgentLoop.run(new AppConfig(), ctx, [], '取消我', null,
+          (_e: LoopEvent) => {},
+          async (_messages: ChatMsg[], _tools: ToolDef[] | null): Promise<OpenAiMessage> => {
+            fakeCalls++;
+            const m: OpenAiMessage = { content: '', tool_calls: [tc] };
+            return m;
+          },
+          (): boolean => { return fakeCalls >= 1; });
+      } catch (e) {
+        threw = true;
+        cancelErrMsg = (e as Error).message;
+      }
+      expect(threw).assertTrue();
+      expect(cancelErrMsg === 'AGENT_LOOP_CANCELLED').assertTrue();
+      expect(fakeCalls === 1).assertTrue();
+    });
   });
 }
