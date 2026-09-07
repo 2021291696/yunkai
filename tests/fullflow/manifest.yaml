@@ -1,0 +1,70 @@
+# 云开（eli5-harmony）全流程测试清单
+# HarmonyOS NEXT / ArkUI；构建=hvigor CLI；部署=hdc；门2=AI 驱动（uitest+截图证据）
+target:
+  platform: cli            # HarmonyOS 生态：门1=cli（构建/单测/装机），门2=AI 驱动（同 desktop 通道）
+  app:
+    bundle: com.zhuolin.eli5harmony
+    entry: EntryAbility
+    device_emulator: "127.0.0.1:5555"
+    device_real: "2MH0224513029186"
+
+environment:
+  start: manual            # 模拟器 eli5_emulator 已在线（127.0.0.1:5555）
+  health:
+    - cli: hdc list targets   # 须含 127.0.0.1:5555
+
+# 真实凭据经环境变量引用（铁律 2）：LLM key 存于模拟器本地 Preferences，本清单不触凭据
+api_key_env: ELI5_ZHIPU_KEY   # 仅文档声明；门2 用设备端已存配置，不在清单中注入
+
+review: on                    # 门0 静态审查（logic-review 精神，全量 ets）
+
+paths:
+  - id: P1_gate1_build_unitest
+    desc: 门1——clean 构建 + 19 个单测 + 签名包装机
+    steps:
+      - cli: clean 全量 assembleHap（BUILD SUCCESSFUL）
+      - cli: ohosTest assembleHap
+      - cli: hdc install signed/unsigned 双包
+      - cli: aa test logicTest → Tests run: 19, Failure: 0
+
+  - id: P2_ui_ask_render
+    desc: 门2/AI——核心链：新对话→真连智谱→eli5 HTML 渲染（大字卡片+SVG）
+    ui:
+      - goto: 列表页
+      - click: ＋新对话
+      - fill+send: 任意中文概念题
+      - expect_visible: 大标题卡片（HTML 渲染非白屏）
+    evidence: [screenshot_before_send, screenshot_rendered]
+
+  - id: P3_ui_draft_probe
+    desc: 门2/AI——探针：新对话即退不留空记录
+    ui:
+      - goto: 列表页（记录基线数）
+      - click: ＋新对话 → 立即返回
+      - expect_visible: 列表条目数 = 基线数（无新增「新对话」）
+    evidence: [screenshot_list_after]
+
+  - id: P4_ui_followup_context
+    desc: 门2/AI——追问承接：第二轮回答体现第一轮语境
+    ui:
+      - 前置: P2 已完成一轮
+      - fill+send: 「那XX上呢」类追问
+      - expect_visible: 新一轮标题/内容承接首轮话题
+    evidence: [screenshot_followup]
+
+  - id: P5_ui_net_bing
+    desc: 门2/AI——联网轨：🌐开→时效题→必应外部搜索注入
+    ui:
+      - click: 🌐 开关
+      - fill+send: 时效性新闻题
+      - expect_visible: 讲解含新闻/来源要素（必应 hits 注入；模型可能概括不逐字）
+    evidence: [screenshot_net_answer]
+
+  - id: P6_probe_error_path
+    desc: 门2/AI——探针：错误 baseURL → 明确报错不崩溃
+    ui:
+      - 前置: 设置页改 URL 为无效域并保存
+      - fill+send: 任意问题
+      - expect_visible: 「出错了：LLM HTTP …」类 toast，应用不退出
+      - 恢复: 设置页改回正确 URL 并保存
+    evidence: [screenshot_error_toast]
