@@ -13,7 +13,6 @@
 import { common } from '@kit.AbilityKit';
 import { AppConfig, AgentSkill, ChatMsg, JsonSchema, ToolCall, ToolDef } from '../model/Types';
 import { LlmClient, OpenAiMessage } from './LlmClient';
-import { HtmlGuard } from './HtmlGuard';
 import { SkillRepo } from '../store/SkillRepo';
 import { AgentTool } from './tools/AgentTool';
 import { BuiltinTools } from './tools/BuiltinTools';
@@ -25,11 +24,12 @@ export class LoopEvent {
   detail: string = '';
 }
 
-// 循环结果：最终回答文本 + 实际步数 + 是否为 HTML 讲解页
+// 循环结果：最终回答文本 + 实际步数。
+// 输出形态（画布/气泡）不在引擎层判定：Chat 消费方用 HtmlGuard.sanitize+ReplyKind.detect
+// 做唯一口径判定（防散文夹 <html 子串被 sanitize 的 includes 语义误判），引擎只给纯文本。
 export class LoopResult {
   answer: string = '';
   steps: number = 0;
-  isHtml: boolean = false;
 }
 
 // 工具执行异常兜底的统一 JSON 形态（与 BuiltinTools 契约一致）
@@ -70,7 +70,9 @@ export class AgentLoop {
       toolDefs.push(def);
     }
 
-    const sysMsg: ChatMsg = { role: 'system', content: AGENT_SYSTEM + await AgentLoop.skillBlock(ctx, forcedSkill) };
+    // skillBlock 注入条件化：autoRoute=false 且无 @指定时不注入技能清单（仅 @名字 手动触发；
+    // forcedSkill 不受 autoRoute 影响——用户显式点名必须生效）
+    const sysMsg: ChatMsg = { role: 'system', content: AGENT_SYSTEM + await AgentLoop.skillBlock(ctx, cfg.autoRoute, forcedSkill) };
     const userMsg: ChatMsg = { role: 'user', content: question };
     const messages: ChatMsg[] = [sysMsg];
     for (const h of history) { messages.push(h); }
@@ -141,11 +143,18 @@ export class AgentLoop {
     }
   }
 
-  // system prompt 的技能摘要块：强制指定时只报该技能；否则列库内全部技能供模型决定是否 use_skill
-  private static async skillBlock(ctx: common.Context, forcedSkill: AgentSkill | null): Promise<string> {
+  // system prompt 的技能摘要块：
+  // - forcedSkill 非 null（@手动指定）：只报该技能，autoRoute 开关不影响；
+  // - autoRoute=false（用户关闭自动路由）：不注入技能清单，仅留一句守则提示；
+  // - 其余：列库内全部技能供模型决定是否 use_skill
+  private static async skillBlock(ctx: common.Context, autoRoute: boolean, forcedSkill: AgentSkill | null): Promise<string> {
     if (forcedSkill !== null) {
       return `\n\n[用户已指定技能] ${forcedSkill.name}：${forcedSkill.description}` +
         `\n需要时调用 use_skill 工具（name 填「${forcedSkill.name}」）获取完整说明书。`;
+    }
+    if (!autoRoute) {
+      return '\n\n（自动技能路由已关闭：仅当用户以「@技能名」显式指定技能时才可调用 use_skill，' +
+        '否则不要自行调用技能，直接凭自身知识回答。）';
     }
     const block0 = '\n\n[可用技能清单]';
     const skills: AgentSkill[] = await SkillRepo.list(ctx);
@@ -164,7 +173,6 @@ export class AgentLoop {
     const r = new LoopResult();
     r.answer = answer;
     r.steps = steps;
-    r.isHtml = HtmlGuard.sanitize(answer) !== null;
     return r;
   }
 

@@ -189,16 +189,15 @@ struct Chat {
         undefined, (): boolean => { return gen !== this.genId; });
       if (gen !== this.genId) { return; }
 
-      // 输出形态：isHtml → sanitize 后入库渲染画布卡（同时保证 reload 时 detect 判 html 成立）；
-      // 否则纯文本气泡
+      // 输出形态（全 app 唯一口径）：sanitize 通过且 sanitize 后内容仍以 <!DOCTYPE/<html 开头
+      // 才算画布——防散文夹 `<html` 子串被 sanitize 的 includes 语义误判成画布；
+      // 入库 content=safe，reload 时 ReplyKind.detect 与本次判定天然一致；否则纯文本气泡
       let content: string = r.answer;
       let kind: string = ReplyKind.TEXT;
-      if (r.isHtml) {
-        const safe: string | null = HtmlGuard.sanitize(content);
-        if (safe !== null) {
-          content = safe;
-          kind = ReplyKind.HTML;
-        }
+      const safe: string | null = HtmlGuard.sanitize(content);
+      if (safe !== null && ReplyKind.detect(safe) === ReplyKind.HTML) {
+        content = safe;
+        kind = ReplyKind.HTML;
       }
       // 净空语义：唯一落库点=真实回答成功之后（取消/抛错/写库失败都不留记录）；
       // 草稿会话此刻才 create，user 行先于 assistant 行写入

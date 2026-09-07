@@ -47,7 +47,9 @@ export class BuiltinTools {
   }
 
   // web_search：{query} → SearchClient.search（必应轨已带关键词提取）→ 前 5 条拼
-  // `[1] 标题\n摘要\n链接` 文本
+  // `[1] 标题\n摘要\n链接` 文本。
+  // 密钥前置引导：博查/Tavily 需 key，未配置时直接给可操作的引导文案，
+  // 不让裸 401 error 下传给模型（必应爬取免 key 不受影响）。
   private static buildWebSearch(cfg: AppConfig): AgentTool {
     const tool = new AgentTool();
     tool.name = 'web_search';
@@ -55,6 +57,9 @@ export class BuiltinTools {
     tool.parametersJson = '{"type":"object","properties":{"query":{"type":"string","description":"搜索关键词或自然语言问题"}},"required":["query"]}';
     tool.execute = async (argsJson: string): Promise<string> => {
       try {
+        if ((cfg.searchProvider === 'bocha' || cfg.searchProvider === 'tavily') && cfg.searchApiKey === '') {
+          return BuiltinTools.err('未配置搜索密钥，请在设置页填写搜索密钥；或将搜索源切换为必应(免key)后重试。');
+        }
         const query: string = BuiltinTools.requireField(JSON.parse(argsJson), 'query');
         if (query === '') {
           return BuiltinTools.err('web_search 缺少 query 参数');

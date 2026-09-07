@@ -3,7 +3,7 @@ import AbilityDelegatorRegistry from '@ohos.app.ability.abilityDelegatorRegistry
 import { HtmlGuard, ReplyKind } from '../../../main/ets/service/HtmlGuard';
 import { HtmlExtractor } from '../../../main/ets/service/HtmlExtractor';
 import { SearchRouter } from '../../../main/ets/service/SearchRouter';
-import { AppConfig, ChatMsg, ToolCall, ToolDef } from '../../../main/ets/model/Types';
+import { AppConfig, AgentSkill, ChatMsg, ToolCall, ToolDef } from '../../../main/ets/model/Types';
 import { LlmClient, OpenAiMessage } from '../../../main/ets/service/LlmClient';
 import { AgentLoop, LoopEvent } from '../../../main/ets/service/AgentLoop';
 import { SearchClient } from '../../../main/ets/service/SearchClient';
@@ -85,18 +85,27 @@ export default function logicTest() {
       const td: ToolDef[] = [{ type: 'function', function: { name: 'web_search', description: '搜索', parameters: { type: 'object', properties: {} } } }];
       const body = LlmClient.buildRequestBody('glm-4.7', msgs, td);
       expect(body.includes('"web_search"')).assertTrue();
-    });
-    it('request_body_builtin_web_search_tooldef', 0, () => {
-      const msgs: ChatMsg[] = [{ role: 'user', content: 'q' }];
-      const body = LlmClient.buildRequestBody('glm-4.7', msgs, LlmClient.BUILTIN_WEB_SEARCH);
-      expect(body.includes('"type":"web_search"')).assertTrue();
-      expect(body.includes('"enable":true')).assertTrue();
+      expect(body.includes('"type":"function"')).assertTrue();
     });
     it('extract_message_parses_tool_calls', 0, () => {
       const j = '{"choices":[{"message":{"role":"assistant","content":"","tool_calls":[{"id":"call_1","type":"function","function":{"name":"web_search","arguments":"{\\"query\\":\\"AI\\"}"}}]}}]}';
       const m = LlmClient.extractMessage(j);
       expect(m.tool_calls !== undefined && m.tool_calls!.length === 1).assertTrue();
       expect((m.tool_calls as ToolCall[])[0].function.name === 'web_search').assertTrue();
+    });
+    it('extract_message_null_content_normalized', 0, () => {
+      // tool_calls 轮普遍返回 content:null → 归一为 ''，tool_calls 原样保留
+      const j = '{"choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_1","type":"function","function":{"name":"web_search","arguments":"{}"}}]}}]}';
+      const m = LlmClient.extractMessage(j);
+      expect(m.content === '').assertTrue();
+      expect(m.tool_calls !== undefined && m.tool_calls!.length === 1).assertTrue();
+    });
+    it('extract_message_tool_calls_non_array_guarded', 0, () => {
+      // 畸形响应：tool_calls 非数组（字符串）→ 视为未携带，content 照常返回
+      const j = '{"choices":[{"message":{"role":"assistant","content":"纯文本","tool_calls":"oops"}}]}';
+      const m = LlmClient.extractMessage(j);
+      expect(m.content === '纯文本').assertTrue();
+      expect(m.tool_calls === undefined).assertTrue();
     });
     it('parse_bocha_hits', 0, () => {
       const j = '{"code":200,"data":{"webPages":{"value":[{"name":"安全电压","url":"https://a.b","summary":"36V以下"},{"name":"t2","url":"https://c.d","snippet":"snip"}]}}}';
@@ -205,6 +214,27 @@ export default function logicTest() {
       for (const t of tools) { if (t.name === 'read_web') { readWeb = t; } }
       const out = await readWeb!.execute('{"url":"http://127.0.0.1:1/x"}');
       expect(out.includes('"error"')).assertTrue();
+    });
+    it('web_search_guides_when_key_missing', 0, async () => {
+      // bocha/tavily 且 key 为空：返回引导性文案（含设置页/免key提示），不发裸 401 error
+      const ctx = AbilityDelegatorRegistry.getAbilityDelegator().getAppContext().getApplicationContext();
+      const cfg = new AppConfig();
+      cfg.searchProvider = 'bocha';
+      cfg.searchApiKey = '';
+      const tools = BuiltinTools.createAll(ctx, cfg, null);
+      let ws: AgentTool | null = null;
+      for (const t of tools) { if (t.name === 'web_search') { ws = t; } }
+      const out = await ws!.execute('{"query":"AI"}');
+      expect(out.includes('搜索密钥')).assertTrue();
+      expect(out.includes('必应')).assertTrue();
+      // bing 免 key 轨不受密钥引导影响（走真实网络仅断言非引导文案路径，0 hits 也只是普通文本）
+      const cfgBing = new AppConfig();
+      cfgBing.searchProvider = 'bing';
+      const toolsBing = BuiltinTools.createAll(ctx, cfgBing, null);
+      let wsBing: AgentTool | null = null;
+      for (const t of toolsBing) { if (t.name === 'web_search') { wsBing = t; } }
+      const outBing = await wsBing!.execute('{"query":"x"}');
+      expect(outBing.includes('未配置搜索密钥')).assertFalse();
     });
     it('loop_executes_tool_then_answers', 0, async () => {
       // fake：第1轮回 tool_calls(web_search)，第2轮回文本答案
@@ -322,6 +352,44 @@ export default function logicTest() {
       }
       expect(threw).assertTrue();
       expect(fakeCalls === 10).assertTrue();
+    });
+    it('loop_autoroute_off_skips_skill_listing', 0, async () => {
+      // autoRoute=false 且无 @指定：system prompt 不注入 [可用技能清单]，只留手动触发守则
+      const ctx = AbilityDelegatorRegistry.getAbilityDelegator().getAppContext().getApplicationContext();
+      const cfg = new AppConfig();
+      cfg.autoRoute = false;
+      let sysPrompt = '';
+      const r = await AgentLoop.run(cfg, ctx, [], '你好', null,
+        (_e: LoopEvent) => {},
+        async (messages: ChatMsg[], _tools: ToolDef[] | null): Promise<OpenAiMessage> => {
+          if (sysPrompt === '') { sysPrompt = messages[0].content; }
+          const m: OpenAiMessage = { content: '好的' };
+          return m;
+        });
+      expect(r.answer === '好的').assertTrue();
+      expect(sysPrompt.includes('[可用技能清单]')).assertFalse();
+      expect(sysPrompt.includes('@技能名')).assertTrue();
+    });
+    it('loop_forced_skill_survives_autoroute_off', 0, async () => {
+      // @手动指定不受 autoRoute=false 影响：技能块照常注入
+      const ctx = AbilityDelegatorRegistry.getAbilityDelegator().getAppContext().getApplicationContext();
+      const cfg = new AppConfig();
+      cfg.autoRoute = false;
+      const forced = new AgentSkill();
+      forced.name = 'eli5';
+      forced.description = '科普讲解';
+      forced.content = '说明书正文';
+      let sysPrompt = '';
+      const r = await AgentLoop.run(cfg, ctx, [], '讲黑洞', forced,
+        (_e: LoopEvent) => {},
+        async (messages: ChatMsg[], _tools: ToolDef[] | null): Promise<OpenAiMessage> => {
+          if (sysPrompt === '') { sysPrompt = messages[0].content; }
+          const m: OpenAiMessage = { content: '讲解' };
+          return m;
+        });
+      expect(r.answer === '讲解').assertTrue();
+      expect(sysPrompt.includes('[用户已指定技能]')).assertTrue();
+      expect(sysPrompt.includes('eli5')).assertTrue();
     });
   });
 }

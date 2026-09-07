@@ -16,8 +16,7 @@ export interface ToolCall {
   type: string; // 'function'
   function: FunctionCall;
 }
-// 工具定义（请求体 tools[] 元素）；web_search 字段兼容智谱内置联网工具（旧特性过渡）
-export interface WebSearchEnable { enable: boolean }
+// 工具定义（请求体 tools[] 元素）：OpenAI function calling 协议（type + function 描述）
 export interface JsonSchema {
   type: string;
   properties?: Record<string, object>;
@@ -31,7 +30,6 @@ export interface FunctionDef {
 export interface ToolDef {
   type: string;
   function?: FunctionDef;
-  web_search?: WebSearchEnable;
 }
 
 export interface SearchHit { title: string; url: string; snippet: string }
@@ -56,7 +54,9 @@ export class AppConfig {
   baseUrl: string = '';
   apiKey: string = '';
   model: string = '';
-  searchMode: string = 'auto';        // auto | builtin | external
+  autoRoute: boolean = true;          // 技能自动路由；false=仅 @名字 手动触发技能
+  searchMode: string = 'auto';        // 保留字段（auto|builtin|external）：agent 重构后 UI 三选已下线，
+                                      // 键不迁移不删除避免 schema 变动；不再被设置页读写
   searchProvider: string = 'bing';    // bing(免key爬取) | bocha | tavily
   searchApiKey: string = '';
 }

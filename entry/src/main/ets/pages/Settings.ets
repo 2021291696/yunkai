@@ -1,4 +1,5 @@
-// 设置页：OpenAI 兼容三项配置 + 获取模型列表 + 联网方式三档 + 独立搜索配置
+// 设置页：OpenAI 兼容三项配置 + 获取模型列表 + 技能自动路由开关 + 独立搜索配置
+// （联网方式三选已下线：agent 自主决定何时搜索，searchMode 字段保留不迁移）
 import { router, promptAction } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { AppConfig } from '../model/Types';
@@ -15,7 +16,7 @@ struct Settings {
   @State baseUrl: string = '';
   @State apiKey: string = '';
   @State model: string = '';
-  @State searchMode: string = 'auto';
+  @State autoRoute: boolean = true;
   @State searchProvider: string = 'bocha';
   @State searchApiKey: string = '';
   @State modelOptions: ModelSelectOption[] = [];
@@ -35,7 +36,7 @@ struct Settings {
     this.baseUrl = cfg.baseUrl;
     this.apiKey = cfg.apiKey;
     this.model = cfg.model;
-    this.searchMode = cfg.searchMode;
+    this.autoRoute = cfg.autoRoute;
     this.searchProvider = cfg.searchProvider;
     this.searchApiKey = cfg.searchApiKey;
   }
@@ -45,7 +46,7 @@ struct Settings {
     c.baseUrl = this.baseUrl.trim();
     c.apiKey = this.apiKey.trim();
     c.model = this.model.trim();
-    c.searchMode = this.searchMode;
+    c.autoRoute = this.autoRoute;
     c.searchProvider = this.searchProvider;
     c.searchApiKey = this.searchApiKey.trim();
     return c;
@@ -173,25 +174,9 @@ struct Settings {
         .shadow({ radius: 20, color: '#42342538', offsetY: 8 })
         .width('100%')
 
-        // ===== 联网方式卡片 =====
+        // ===== 联网搜索卡片（搜索源/密钥；联网方式三选已下线，agent 自主决定何时搜索） =====
         Column({ space: 12 }) {
           Text('联网搜索').fontSize(16).fontColor('#8A7350').width('100%')
-          Text('联网方式').fontSize(14).width('100%')
-          Row({ space: 18 }) {
-            Radio({ value: 'auto', group: 'searchMode' })
-              .checked(this.searchMode === 'auto')
-              .onChange((on: boolean) => { if (on) { this.searchMode = 'auto'; } })
-            Text('自动').fontSize(15)
-            Radio({ value: 'builtin', group: 'searchMode' })
-              .checked(this.searchMode === 'builtin')
-              .onChange((on: boolean) => { if (on) { this.searchMode = 'builtin'; } })
-            Text('仅内置').fontSize(15)
-            Radio({ value: 'external', group: 'searchMode' })
-              .checked(this.searchMode === 'external')
-              .onChange((on: boolean) => { if (on) { this.searchMode = 'external'; } })
-            Text('仅独立').fontSize(15)
-          }
-          .width('100%')
 
           Text('搜索源').fontSize(14).width('100%')
           Row({ space: 14 }) {
@@ -218,7 +203,30 @@ struct Settings {
             .borderRadius(12)
             .onChange((v: string) => { this.searchApiKey = v; })
 
-          Text('自动=智谱系模型用内置联网，其他模型走独立搜索（需密钥）')
+          Text('搜索源选博查/Tavily 时需填密钥；必应免密钥。是否搜索由 agent 在对话中自主决定')
+            .fontSize(12).fontColor('#A08C66').width('100%')
+        }
+        .alignItems(HorizontalAlign.Start)
+        .padding(16)
+        .borderRadius(18)
+        .backgroundColor('#FFFFFF66')
+        .backgroundBlurStyle(BlurStyle.Regular)
+        .border({ width: 1, color: '#FFFFFFB8' })
+        .shadow({ radius: 20, color: '#42342538', offsetY: 8 })
+        .width('100%')
+
+        // ===== 技能路由卡片：自动路由开关 =====
+        Column({ space: 10 }) {
+          Row({ space: 10 }) {
+            Text('技能自动路由').fontSize(15).fontColor('#3D3325').layoutWeight(1)
+            Toggle({ type: ToggleType.Switch, isOn: this.autoRoute })
+              .selectedColor('#E8930C')
+              .onChange((on: boolean) => { this.autoRoute = on; })
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+
+          Text('关=仅 @名字 手动触发技能')
             .fontSize(12).fontColor('#A08C66').width('100%')
         }
         .alignItems(HorizontalAlign.Start)

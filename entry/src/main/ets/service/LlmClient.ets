@@ -30,9 +30,6 @@ export class LlmClient {
   // 单次响应 token 上限：常量化显式下发，防端点默认值截断长讲解
   static readonly MAX_TOKENS: number = 16384;
 
-  // 智谱内置联网工具（旧特性：netOn + 内置模式时随请求携带）
-  static readonly BUILTIN_WEB_SEARCH: ToolDef[] = [{ type: 'web_search', web_search: { enable: true } }];
-
   constructor(cfg: AppConfig) {
     this.cfg = cfg;
   }
@@ -56,16 +53,24 @@ export class LlmClient {
     return JSON.stringify(body);
   }
 
-  // 解析完整 message（含 tool_calls / tool_call_id），供 agent 循环按调用分派
+  // 解析完整 message（含 tool_calls / tool_call_id），供 agent 循环按调用分派。
+  // 解析边界归一：
+  // - content:null → ''（tool_calls 轮普遍返回 content:null；null 扩散会打穿
+  //   messages 回传序列化 / HtmlGuard.sanitize 的 trim / messages 表 NOT NULL）；
+  // - tool_calls 做数组性守卫（非数组视为未携带），防畸形响应带病下行。
   static extractMessage(jsonStr: string): OpenAiMessage {
     const obj = JSON.parse(jsonStr) as OpenAiResp;
     if (obj.choices.length === 0) { throw new Error('LLM 响应无 choices'); }
-    return obj.choices[0].message;
-  }
-
-  // 旧名薄包装：只取纯文本 content，供现有调用点编译过渡（后续任务删除）
-  static extractContent(jsonStr: string): string {
-    return LlmClient.extractMessage(jsonStr).content;
+    const raw = obj.choices[0].message;
+    const msg: OpenAiMessage = { content: '' };
+    if (raw !== undefined && raw !== null && typeof raw.content === 'string') {
+      msg.content = raw.content;
+    }
+    const tcs = raw !== undefined && raw !== null ? raw.tool_calls : undefined;
+    if (tcs !== undefined && tcs !== null && Array.isArray(tcs)) {
+      msg.tool_calls = tcs;
+    }
+    return msg;
   }
 
   // 非流式对话：返回完整 message（含 tool_calls），tools 由调用方显式给（null 表示不带）
@@ -90,13 +95,6 @@ export class LlmClient {
     } finally {
       hr.destroy();
     }
-  }
-
-  // 旧名薄包装：只取纯文本 content，供现有调用点编译过渡（后续任务删除）
-  async chat(messages: ChatMsg[], webSearchTool: boolean): Promise<string> {
-    const tools: ToolDef[] | null = webSearchTool ? LlmClient.BUILTIN_WEB_SEARCH : null;
-    const msg = await this.chatMessage(messages, tools);
-    return msg.content;
   }
 
   // GET {base}/models → data[].id 数组
