@@ -106,6 +106,9 @@ export class AgentLoop {
       return AgentLoop.result(msg.content, step);
     }
     // 步数到顶：kind='limit' 后追加收束指令并做一次无 tools 收尾，强制模型直接作答
+    // 取消准绳：收尾也是一次网络调用——最后一步 execTool await 期间取消旗标命中时，
+    // 此处 checkCancel 先抛，保证取消后不再发起任何 LLM 请求（不烧 token）
+    checkCancel();
     onEvent(AgentLoop.ev('limit', '', ''));
     const finishMsg: ChatMsg = { role: 'user', content: '已达步数上限，请基于已有工具结果直接给出最终回答。' };
     messages.push(finishMsg);

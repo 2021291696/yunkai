@@ -315,5 +315,29 @@ export default function logicTest() {
       expect(cancelErrMsg === 'AGENT_LOOP_CANCELLED').assertTrue();
       expect(fakeCalls === 1).assertTrue();
     });
+    it('loop_cancel_during_last_exec_skips_wrapup_call', 0, async () => {
+      // execTool 期间取消（tool_done 计满 10 后旗标置真）→ limit 收尾 doChat 前的 checkCancel 命中，
+      // 断言 run reject 且 fake 只被调 10 次（收尾不发起新 LLM 调用）
+      const ctx = AbilityDelegatorRegistry.getAbilityDelegator().getAppContext().getApplicationContext();
+      let fakeCalls = 0;
+      let toolDoneCount = 0;
+      const tc: ToolCall = { id: 'call_w', type: 'function', function: { name: 'read_web', arguments: '{"url":"http://127.0.0.1:1/x"}' } };
+      let threw = false;
+      try {
+        await AgentLoop.run(new AppConfig(), ctx, [], '执行中取消', null,
+          (e: LoopEvent) => { if (e.kind === 'tool_done') { toolDoneCount++; } },
+          async (_messages: ChatMsg[], _tools: ToolDef[] | null): Promise<OpenAiMessage> => {
+            fakeCalls++;
+            const m: OpenAiMessage = { content: '', tool_calls: [tc] };
+            return m;
+          },
+          (): boolean => { return toolDoneCount >= 10; });
+      } catch (e) {
+        threw = true;
+        expect((e as Error).message === 'AGENT_LOOP_CANCELLED').assertTrue();
+      }
+      expect(threw).assertTrue();
+      expect(fakeCalls === 10).assertTrue();
+    });
   });
 }
