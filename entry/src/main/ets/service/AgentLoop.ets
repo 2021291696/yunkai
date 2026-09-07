@@ -136,9 +136,14 @@ export class AgentLoop {
   // 双模型分工的模型选择单点（纯函数）：本轮是否已由 use_skill 激活长文形态。
   // longFormActive=true 且 longModel 非空 → longModel；否则回退主模型 cfg.model
   // （longModel 空串=未配置，照旧主模型，绝不发出空 model 请求）。
+  // 端点兼容守卫：longModel 需与主模型同端点兼容；非智谱系端点不切换
+  // （默认值是智谱模型名，用户配 DeepSeek 等第三方端点时切 glm-4.7 会 404 整轮失败），
+  // 仅 baseUrl 含 'bigmodel'/'zhipu'（不区分大小写）才允许切 longModel。
   // static 公开供单测直测（纯函数无副作用，与 LlmClient.buildRequestBody 同例）。
   static pickModel(cfg: AppConfig, longFormActive: boolean): string {
-    if (longFormActive && cfg.longModel !== '') {
+    const base = cfg.baseUrl.toLowerCase();
+    const isZhipuEndpoint = base.includes('bigmodel') || base.includes('zhipu');
+    if (longFormActive && cfg.longModel !== '' && isZhipuEndpoint) {
       return cfg.longModel;
     }
     return cfg.model;

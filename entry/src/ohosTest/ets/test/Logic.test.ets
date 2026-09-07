@@ -369,7 +369,9 @@ export default function logicTest() {
     });
     it('pick_model_routes_longform_after_use_skill', 0, () => {
       // 双模型分工：默认主模型；use_skill 激活长文形态后切 longModel
+      // （端点守卫：智谱端点才切，baseUrl 需显式给智谱地址）
       const c = new AppConfig();
+      c.baseUrl = 'https://open.bigmodel.cn/api/paas/v4';
       c.model = 'glm-5.3-flash';
       c.longModel = 'glm-4.7';
       expect(AgentLoop.pickModel(c, false) === 'glm-5.3-flash').assertTrue();
@@ -382,6 +384,16 @@ export default function logicTest() {
       c.longModel = '';
       expect(AgentLoop.pickModel(c, true) === 'glm-5.3-flash').assertTrue();
       expect(AgentLoop.pickModel(c, false) === 'glm-5.3-flash').assertTrue();
+    });
+    it('pick_model_non_zhipu_endpoint_falls_back', 0, () => {
+      // 端点兼容守卫：非智谱系端点（如 DeepSeek）不切 longModel（默认值是智谱模型名，
+      // 切过去会 404 整轮失败）→ 即使长文激活也回退主模型
+      const c = new AppConfig();
+      c.baseUrl = 'https://api.deepseek.com/v1';
+      c.model = 'deepseek-chat';
+      c.longModel = 'glm-4.7';
+      expect(AgentLoop.pickModel(c, true) === 'deepseek-chat').assertTrue();
+      expect(AgentLoop.pickModel(c, false) === 'deepseek-chat').assertTrue();
     });
     it('loop_autoroute_off_skips_skill_listing', 0, async () => {
       // autoRoute=false 且无 @指定：system prompt 不注入 [可用技能清单]，只留手动触发守则
