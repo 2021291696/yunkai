@@ -2,7 +2,7 @@ import { describe, it, expect } from '@ohos/hypium';
 import { HtmlGuard } from '../../../main/ets/service/HtmlGuard';
 import { HtmlExtractor } from '../../../main/ets/service/HtmlExtractor';
 import { SearchRouter } from '../../../main/ets/service/SearchRouter';
-import { AppConfig, ChatMsg, SearchHit } from '../../../main/ets/model/Types';
+import { AppConfig, ChatMsg, SearchHit, ToolCall, ToolDef } from '../../../main/ets/model/Types';
 import { PromptBuilder, HistoryTurn } from '../../../main/ets/service/PromptBuilder';
 import { LlmClient } from '../../../main/ets/service/LlmClient';
 import { SearchClient } from '../../../main/ets/service/SearchClient';
@@ -78,16 +78,34 @@ export default function logicTest() {
     });
     it('request_body_plain', 0, () => {
       const msgs: ChatMsg[] = [{ role: 'system', content: 's' }, { role: 'user', content: 'q' }];
-      const body = LlmClient.buildRequestBody('glm-4.7', msgs, false);
+      const body = LlmClient.buildRequestBody('glm-4.7', msgs, null);
       expect(body.includes('"model":"glm-4.7"')).assertTrue();
       expect(body.includes('"stream":false')).assertTrue();
       expect(body.includes('web_search')).assertFalse();
     });
-    it('request_body_with_web_search_tool', 0, () => {
+    it('request_body_with_tools_and_max_tokens', 0, () => {
       const msgs: ChatMsg[] = [{ role: 'user', content: 'q' }];
-      const body = LlmClient.buildRequestBody('glm-4.7', msgs, true);
+      const body = LlmClient.buildRequestBody('glm-4.7', msgs, null);
+      expect(body.includes('"max_tokens":16384')).assertTrue();
+      expect(body.includes('"tools"')).assertFalse();
+    });
+    it('request_body_tool_defs', 0, () => {
+      const msgs: ChatMsg[] = [{ role: 'user', content: 'q' }];
+      const td: ToolDef[] = [{ type: 'function', function: { name: 'web_search', description: '搜索', parameters: { type: 'object', properties: {} } } }];
+      const body = LlmClient.buildRequestBody('glm-4.7', msgs, td);
+      expect(body.includes('"web_search"')).assertTrue();
+    });
+    it('request_body_builtin_web_search_tooldef', 0, () => {
+      const msgs: ChatMsg[] = [{ role: 'user', content: 'q' }];
+      const body = LlmClient.buildRequestBody('glm-4.7', msgs, LlmClient.BUILTIN_WEB_SEARCH);
       expect(body.includes('"type":"web_search"')).assertTrue();
       expect(body.includes('"enable":true')).assertTrue();
+    });
+    it('extract_message_parses_tool_calls', 0, () => {
+      const j = '{"choices":[{"message":{"role":"assistant","content":"","tool_calls":[{"id":"call_1","type":"function","function":{"name":"web_search","arguments":"{\\"query\\":\\"AI\\"}"}}]}}]}';
+      const m = LlmClient.extractMessage(j);
+      expect(m.tool_calls !== undefined && m.tool_calls!.length === 1).assertTrue();
+      expect((m.tool_calls as ToolCall[])[0].function.name === 'web_search').assertTrue();
     });
     it('parse_bocha_hits', 0, () => {
       const j = '{"code":200,"data":{"webPages":{"value":[{"name":"安全电压","url":"https://a.b","summary":"36V以下"},{"name":"t2","url":"https://c.d","snippet":"snip"}]}}}';

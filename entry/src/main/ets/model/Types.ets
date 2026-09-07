@@ -1,5 +1,39 @@
 // 数据类型与枚举：全 app 共用的最小类型集合
-export interface ChatMsg { role: string; content: string }
+export interface ChatMsg {
+  role: string;
+  content: string;
+  tool_calls?: ToolCall[];   // assistant 发起工具调用时携带
+  tool_call_id?: string;     // role=tool 回传结果时对应调用 id
+}
+
+// OpenAI 兼容 function calling 协议
+export interface FunctionCall {
+  name: string;
+  arguments: string; // JSON 字符串
+}
+export interface ToolCall {
+  id: string;
+  type: string; // 'function'
+  function: FunctionCall;
+}
+// 工具定义（请求体 tools[] 元素）；web_search 字段兼容智谱内置联网工具（旧特性过渡）
+export interface WebSearchEnable { enable: boolean }
+export interface JsonSchema {
+  type: string;
+  properties?: Record<string, object>;
+  required?: string[];
+}
+export interface FunctionDef {
+  name: string;
+  description: string;
+  parameters?: JsonSchema;
+}
+export interface ToolDef {
+  type: string;
+  function?: FunctionDef;
+  web_search?: WebSearchEnable;
+}
+
 export interface SearchHit { title: string; url: string; snippet: string }
 
 export class Conv {
