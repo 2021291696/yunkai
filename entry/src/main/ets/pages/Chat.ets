@@ -159,6 +159,9 @@ struct Chat {
         const sc = new SearchClient(cfg);
         const got: SearchHit[] = await sc.search(q);
         for (let i = 0; i < got.length; i++) { hits.push(got[i]); }
+        if (hits.length === 0) {
+          this.toast('没搜到结果，用模型已有知识回答');
+        }
       } else if (this.netOn && mode === NetMode.NONE) {
         this.toast('当前模型端点不支持内置联网，且未配置独立搜索 key');
       }

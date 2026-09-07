@@ -1,5 +1,6 @@
 // 搜索客户端：博查/Tavily/必应爬取 三 provider，snippet 超 200 字截断
 import { http } from '@kit.NetworkKit';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import { AppConfig, SearchHit } from '../model/Types';
 
 interface BochaPage { name: string; url: string; summary?: string; snippet?: string }
@@ -135,7 +136,12 @@ export class SearchClient {
       if (resp.responseCode < 200 || resp.responseCode >= 300) {
         throw new Error(`搜索 HTTP ${resp.responseCode}: ${String(resp.result).substring(0, 300)}`);
       }
-      return SearchClient.parseBing(String(resp.result));
+      const hits: SearchHit[] = SearchClient.parseBing(String(resp.result));
+      if (hits.length === 0) {
+        // HTTP 200 但解析 0 条：风控验证页/页面结构变化/移动网络出口差异都会走到这，留证据别静默
+        hilog.warn(0x0000, 'eli5', 'bing 0 hits, body head: %{public}s', String(resp.result).replace(/\s+/g, ' ').substring(0, 300));
+      }
+      return hits;
     } finally {
       hr.destroy();
     }
