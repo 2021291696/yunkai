@@ -1,9 +1,7 @@
 // 对话页（打开即对话的家）：消息流 List（用户气泡/回答气泡/画布卡）+ AgentLoop 发送管线
 // + 内联过程时间线卡 + 侧抽屉（会话列表 + 历史轮次双段）+ @提及解析
 import { router, promptAction } from '@kit.ArkUI';
-import { webview } from '@kit.ArkWeb';
 import { common } from '@kit.AbilityKit';
-import { buffer } from '@kit.ArkTS';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { AppConfig, AgentSkill, ChatMsg, Conv, Msg } from '../model/Types';
 import { ConfigStore } from '../store/ConfigStore';
@@ -15,6 +13,9 @@ import { HtmlGuard, ReplyKind } from '../service/HtmlGuard';
 import { CanvasCard } from './CanvasCard';
 import { HistoryDrawer } from './HistoryDrawer';
 import { GuidePage } from './GuidePage';
+
+// 画布 HTML 的 AppStorage 暂存 key（Chat → Canvas 页传参用，避开 router params 大字符串）
+const CANVAS_HTML_KEY: string = 'canvasHtml';
 
 // 消息流渲染单元：role='user'|'assistant'；kind='html'|'text'（画布卡/文本气泡）
 class RenderMsg {
@@ -141,11 +142,6 @@ struct Chat {
     this.msgs.push(um);
     this.scrollToBottom();
 
-    // 净空语义：草稿会话 convId<=0 时先不落库，首个 loop 事件到来再 create+写 user 行；
-    // 无任何事件前取消 → 不留任何记录。persistPromise 保证 user 行先于 assistant 行入库。
-    let persisted: boolean = false;
-    let persistPromise: Promise<void> = Promise.resolve();
-
     try {
       const cfg: AppConfig = await ConfigStore.load(this.ctx());
       if (cfg.baseUrl === '' || cfg.apiKey === '' || cfg.model === '') {
@@ -187,20 +183,10 @@ struct Chat {
         if (gen !== this.genId) { return; }
         this.timeline.push(e);
         this.scrollToBottom();
-        if (!persisted) {
-          persisted = true;
-          persistPromise = (async (): Promise<void> => {
-            if (this.convId <= 0) {
-              this.convId = await ConversationRepo.create(this.ctx(), '新对话');
-            }
-            await MessageRepo.add(this.ctx(), this.convId, 'user', q0, ReplyKind.TEXT);
-          })();
-        }
       };
 
       const r: LoopResult = await AgentLoop.run(cfg, this.ctx(), history, q, forcedSkill, onEvent,
         undefined, (): boolean => { return gen !== this.genId; });
-      await persistPromise;
       if (gen !== this.genId) { return; }
 
       // 输出形态：isHtml → sanitize 后入库渲染画布卡（同时保证 reload 时 detect 判 html 成立）；
@@ -214,6 +200,12 @@ struct Chat {
           kind = ReplyKind.HTML;
         }
       }
+      // 净空语义：唯一落库点=真实回答成功之后（取消/抛错/写库失败都不留记录）；
+      // 草稿会话此刻才 create，user 行先于 assistant 行写入
+      if (this.convId <= 0) {
+        this.convId = await ConversationRepo.create(this.ctx(), '新对话');
+      }
+      await MessageRepo.add(this.ctx(), this.convId, 'user', q0, ReplyKind.TEXT);
       await MessageRepo.add(this.ctx(), this.convId, 'assistant', content, kind);
       await ConversationRepo.setTitleIfPlaceholder(this.ctx(), this.convId, q0);
       await ConversationRepo.touch(this.ctx(), this.convId);
@@ -232,9 +224,6 @@ struct Chat {
       await this.refreshConvs();
     } catch (e) {
       const em: string = (e as Error).message;
-      try { await persistPromise; } catch (pe) {
-        hilog.error(0x0000, 'eli5', 'persist failed: %{public}s', (pe as Error).message);
-      }
       if (em !== 'AGENT_LOOP_CANCELLED') {
         hilog.error(0x0000, 'eli5', 'send failed: %{public}s', em);
         this.toast('出错了：' + em);
@@ -244,10 +233,19 @@ struct Chat {
     }
   }
 
+  // 点画布卡 → 全屏画布页；html 可能 15-60KB，经 AppStorage 暂存（router params 走
+  // JSON 序列化对大字符串不可靠），Canvas 页 aboutToAppear 取走
+  private openCanvas(html: string): void {
+    AppStorage.setOrCreate<string>(CANVAS_HTML_KEY, html);
+    router.pushUrl({ url: 'pages/Canvas' });
+  }
+
   // ===== 抽屉动作 =====
 
-  private openHistory(): void {
-    this.refreshConvs();
+  // 先等会话列表刷新完成再开抽屉：HistoryDrawer 为条件渲染的普通 prop 组件，
+  // 创建即定型，await 保证点开瞬间拿到的就是最新会话列表
+  private async openHistory(): Promise<void> {
+    await this.refreshConvs();
     this.showHistory = true;
   }
 
@@ -360,7 +358,10 @@ struct Chat {
                       .constraintSize({ maxWidth: '78%' })
                   } else if (m.kind === ReplyKind.HTML) {
                     Column() {
-                      CanvasCard({ html: m.content })
+                      CanvasCard({
+                        html: m.content,
+                        onOpen: (): void => { this.openCanvas(m.content); }
+                      })
                     }
                     .width('100%')
                   } else {
