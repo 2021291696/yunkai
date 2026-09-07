@@ -1,5 +1,7 @@
 import { describe, it, expect } from '@ohos/hypium';
 import AbilityDelegatorRegistry from '@ohos.app.ability.abilityDelegatorRegistry';
+import { preferences } from '@kit.ArkData';
+import { common } from '@kit.AbilityKit';
 import { HtmlGuard, ReplyKind } from '../../../main/ets/service/HtmlGuard';
 import { HtmlExtractor } from '../../../main/ets/service/HtmlExtractor';
 import { SearchRouter } from '../../../main/ets/service/SearchRouter';
@@ -8,6 +10,7 @@ import { LlmClient, OpenAiMessage } from '../../../main/ets/service/LlmClient';
 import { AgentLoop, LoopEvent } from '../../../main/ets/service/AgentLoop';
 import { SearchClient } from '../../../main/ets/service/SearchClient';
 import { Db } from '../../../main/ets/store/Db';
+import { ConfigStore } from '../../../main/ets/store/ConfigStore';
 import { SkillRepo } from '../../../main/ets/store/SkillRepo';
 import { SkillImporter } from '../../../main/ets/service/SkillImporter';
 import { AgentTool } from '../../../main/ets/service/tools/AgentTool';
@@ -352,6 +355,17 @@ export default function logicTest() {
       }
       expect(threw).assertTrue();
       expect(fakeCalls === 10).assertTrue();
+    });
+    it('config_store_provider_fallback_is_bing_when_unset', 0, async () => {
+      // 门2 bug 复现：searchProvider 键缺失时 load fallback 必须对齐 AppConfig 默认 'bing'
+      // （开箱免 key 可搜）；曾落 'bocha' 会让 web_search 无 key 直接返回引导 error，开箱不可搜。
+      // 只删该键不清整个 preferences：走精确 fallback 路径，不动其他已存配置。
+      const ctx = AbilityDelegatorRegistry.getAbilityDelegator().getAppContext().getApplicationContext();
+      const prefs = await preferences.getPreferences(ctx, 'appConfig');
+      await prefs.delete('searchProvider');
+      // ConfigStore 签名收 UIAbilityContext（preferences 层实际只吃 Context），测试侧显式收窄
+      const c = await ConfigStore.load(ctx as object as common.UIAbilityContext);
+      expect(c.searchProvider === 'bing').assertTrue();
     });
     it('loop_autoroute_off_skips_skill_listing', 0, async () => {
       // autoRoute=false 且无 @指定：system prompt 不注入 [可用技能清单]，只留手动触发守则

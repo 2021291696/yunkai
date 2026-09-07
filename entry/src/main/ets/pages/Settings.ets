@@ -17,7 +17,7 @@ struct Settings {
   @State apiKey: string = '';
   @State model: string = '';
   @State autoRoute: boolean = true;
-  @State searchProvider: string = 'bocha';
+  @State searchProvider: string = 'bing';
   @State searchApiKey: string = '';
   @State modelOptions: ModelSelectOption[] = [];
   @State modelSelected: string = '';

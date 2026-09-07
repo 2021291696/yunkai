@@ -12,7 +12,7 @@ export class ConfigStore {
     c.model = (await p.get('model', '')) as string;
     c.autoRoute = (await p.get('autoRoute', true)) as boolean;
     c.searchMode = (await p.get('searchMode', 'auto')) as string;
-    c.searchProvider = (await p.get('searchProvider', 'bocha')) as string;
+    c.searchProvider = (await p.get('searchProvider', 'bing')) as string;
     c.searchApiKey = (await p.get('searchApiKey', '')) as string;
     return c;
   }
