@@ -4,7 +4,7 @@
 // 引导页快捷问题
 class Chip {
   static readonly QUESTIONS: string[] =
-    ['为什么天空是蓝色的？', '黑洞里面是什么？', '@eli5 讲讲黑洞是怎么形成的'];
+    ['为什么天空是蓝色的？', '怎么写一封请假邮件？', '@eli5 讲讲黑洞是怎么形成的'];
 }
 
 @Component
