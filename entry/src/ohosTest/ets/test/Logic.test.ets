@@ -10,6 +10,8 @@ import { SearchClient } from '../../../main/ets/service/SearchClient';
 import { Db } from '../../../main/ets/store/Db';
 import { SkillRepo } from '../../../main/ets/store/SkillRepo';
 import { SkillImporter } from '../../../main/ets/service/SkillImporter';
+import { AgentTool } from '../../../main/ets/service/tools/AgentTool';
+import { BuiltinTools } from '../../../main/ets/service/tools/BuiltinTools';
 
 export default function logicTest() {
   describe('logicTest', () => {
@@ -199,6 +201,25 @@ export default function logicTest() {
     });
     it('importer_rejects_empty', 0, () => {
       expect(SkillImporter.parse('   ') === null).assertTrue();
+    });
+    it('use_skill_tool_returns_content', 0, async () => {
+      // 注：getAppContext() 返回的模块级 Context 会被 getRdbStore 原生校验拒绝(401)，
+      // 必须升到 ApplicationContext 才能建库。
+      const ctx = AbilityDelegatorRegistry.getAbilityDelegator().getAppContext().getApplicationContext();
+      await Db.get(ctx); await SkillRepo.seedIfEmpty(ctx);
+      const tools = BuiltinTools.createAll(ctx, new AppConfig(), null);
+      let eli5Tool: AgentTool | null = null;
+      for (const t of tools) { if (t.name === 'use_skill') { eli5Tool = t; } }
+      const out = await eli5Tool!.execute('{"name":"eli5"}');
+      expect(out.includes('章节')).assertTrue();
+    });
+    it('tool_error_becomes_error_json', 0, async () => {
+      const ctx = AbilityDelegatorRegistry.getAbilityDelegator().getAppContext().getApplicationContext();
+      const tools = BuiltinTools.createAll(ctx, new AppConfig(), null);
+      let readWeb: AgentTool | null = null;
+      for (const t of tools) { if (t.name === 'read_web') { readWeb = t; } }
+      const out = await readWeb!.execute('{"url":"http://127.0.0.1:1/x"}');
+      expect(out.includes('"error"')).assertTrue();
     });
   });
 }
