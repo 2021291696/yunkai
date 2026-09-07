@@ -10,3 +10,6 @@
 /.clang-tidy
 **/.test
 /.appanalyzer.mimosa/
+
+# Mimosa hook 会话状态（本机运行态，不入库）
+/.mimosa/
