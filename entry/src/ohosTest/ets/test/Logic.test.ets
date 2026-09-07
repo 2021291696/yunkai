@@ -115,5 +115,24 @@ export default function logicTest() {
       c.searchProvider = 'bing';
       expect(SearchRouter.resolve(c) === 1).assertTrue();
     });
+    it('extract_keywords_strips_question_words', 0, () => {
+      const k = SearchClient.extractKeywords('这周国际上有什么科技大事');
+      expect(k.includes('科技')).assertTrue();
+      expect(k.includes('什么')).assertFalse();
+      expect(k.includes('这周')).assertFalse();
+    });
+    it('extract_keywords_fallback_when_all_stopwords', 0, () => {
+      const k = SearchClient.extractKeywords('为什么呀');
+      expect(k === '为什么呀').assertTrue();
+    });
+    it('guard_strips_script_tags', 0, () => {
+      const doc = '<!DOCTYPE html><html><head><title>t</title></head><body><script>alert(1)<\/script><p>正文</p></body></html>';
+      const out = HtmlGuard.sanitize(doc);
+      expect(out !== null).assertTrue();
+      if (out !== null) {
+        expect(out.includes('<script')).assertFalse();
+        expect(out.includes('正文')).assertTrue();
+      }
+    });
   });
 }

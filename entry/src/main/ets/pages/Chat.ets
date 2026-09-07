@@ -15,6 +15,11 @@ import { HtmlGuard } from '../service/HtmlGuard';
 import { HtmlExtractor } from '../service/HtmlExtractor';
 import { PromptBuilder, HistoryTurn } from '../service/PromptBuilder';
 
+// 引导页快捷问题（点击直接开讲）
+class Chip {
+  static readonly QUESTIONS: string[] = ['为什么天空是蓝色的？', '黑洞里面是什么？', '这周有什么科技大事？'];
+}
+
 @Entry
 @Component
 struct Chat {
@@ -29,9 +34,7 @@ struct Chat {
   @State showHistory: boolean = false;
   @State genId: number = 0;
 
-  private webCtrl: webview.WebviewController = new webview.WebviewController();
-
-  private ctx(): common.UIAbilityContext {
+  private webCtrl: webview.WebviewController = new webview.WebviewController();  private ctx(): common.UIAbilityContext {
     return getContext(this) as common.UIAbilityContext;
   }
 
@@ -240,7 +243,9 @@ struct Chat {
           Button('历史')
             .fontSize(14)
             .height(34)
-            .backgroundColor('#2C2C2E')
+            .fontColor('#B25E00')
+            .backgroundColor('#FFFFFFA6')
+            .border({ width: 1, color: '#FFFFFFCC' })
             .onClick(() => {
               this.showHistory = true;
             })
@@ -263,20 +268,59 @@ struct Chat {
             })
             .width('100%')
           if (this.html === '') {
-            Column({ space: 12 }) {
-              Text('🌤️').fontSize(60)
-              Text('问我任何问题')
-                .fontSize(20)
-                .fontWeight(FontWeight.Medium)
-                .fontColor('#FFFFFF')
-              Text('我会用大白话和图讲给你听')
-                .fontSize(14)
-                .fontColor('#8A8A8A')
+            Stack() {
+              // 引导态光斑：与列表/设置页同族的柔光玻璃底
+              Column()
+                .width(340)
+                .height(340)
+                .position({ x: -90, y: 180 })
+                .borderRadius(240)
+                .backgroundColor('#4DFFD75E')
+                .blur(90)
+              Column()
+                .width(360)
+                .height(360)
+                .position({ x: 220, y: 620 })
+                .borderRadius(260)
+                .backgroundColor('#407CC4FF')
+                .blur(95)
+
+              Column({ space: 12 }) {
+                Text('🌤️').fontSize(60)
+                Text('问我任何问题')
+                  .fontSize(20)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor('#3D3325')
+                Text('我会用大白话和图讲给你听')
+                  .fontSize(14)
+                  .fontColor('#8A7A5A')
+                // 快捷问题：点击直接开讲，降低冷启动门槛
+                Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.Center }) {
+                  ForEach(Chip.QUESTIONS, (q: string) => {
+                    Text(q)
+                      .fontSize(14)
+                      .fontColor('#7A5B1E')
+                      .backgroundColor('#FFFFFFA6')
+                      .border({ width: 1, color: '#FFFFFFCC' })
+                      .borderRadius(18)
+                      .padding({ left: 14, right: 14, top: 8, bottom: 8 })
+                      .margin(6)
+                      .onClick(() => {
+                        this.input = q;
+                        this.send();
+                      })
+                  }, (q: string) => q)
+                }
+                .width('86%')
+                .margin({ top: 10 })
+              }
+              .width('100%')
+              .height('100%')
+              .justifyContent(FlexAlign.Center)
+              .backgroundColor('#FAF6EF')
             }
             .width('100%')
             .height('100%')
-            .justifyContent(FlexAlign.Center)
-            .backgroundColor('#FAF6EF')
           }
         }
         .layoutWeight(1)
@@ -284,21 +328,32 @@ struct Chat {
 
         // ===== 底部输入区 =====
         Row({ space: 10 }) {
-          Toggle({ type: ToggleType.Checkbox, isOn: this.netOn })
-            .onChange((on: boolean) => { this.netOn = on; })
-          Text('🌐')
-            .fontSize(18)
-            .onClick(() => { this.netOn = !this.netOn; })
+          // 联网开关胶囊：开=暖橙底白字，关=白玻璃暖灰字
+          Row({ space: 5 }) {
+            Text('🌐').fontSize(14)
+            Text('联网').fontSize(14)
+          }
+          .padding({ left: 12, right: 12, top: 9, bottom: 9 })
+          .borderRadius(20)
+          .backgroundColor(this.netOn ? '#E8930C' : '#FFFFFFA6')
+          .border({ width: 1, color: '#FFFFFFCC' })
+          .onClick(() => { this.netOn = !this.netOn; })
+
           TextInput({ text: this.input, placeholder: '想弄懂什么？' })
             .type(InputType.Normal)
             .layoutWeight(1)
+            .height(42)
+            .backgroundColor('#FFFFFFA6')
+            .borderRadius(21)
+            .border({ width: 1, color: '#FFFFFFCC' })
             .enabled(!this.loading)
             .onChange((v: string) => { this.input = v; })
             .onSubmit(() => { this.send(); })
           Button(this.loading ? '…' : '发送')
             .fontSize(15)
             .height(40)
-            .backgroundColor(this.loading ? '#3A3A3C' : '#0A84FF')
+            .fontColor('#FFFFFF')
+            .backgroundColor(this.loading ? '#E8DCC4' : '#E8930C')
             .enabled(!this.loading)
             .onClick(() => { this.send(); })
         }
@@ -311,24 +366,27 @@ struct Chat {
       }
       .width('100%')
       .height('100%')
-      .backgroundColor('#000000')
+      .backgroundColor('#FAF6EF')
 
-      // ===== 加载遮罩 =====
+      // ===== 加载遮罩（白玻璃磨砂，与全局玻璃风一致） =====
       if (this.loading) {
         Column({ space: 14 }) {
-          LoadingProgress().width(56).height(56).color('#0A84FF')
-          Text(this.loadingText).fontSize(16)
+          LoadingProgress().width(56).height(56).color('#E8930C')
+          Text(this.loadingText).fontSize(16).fontColor('#3D3325')
           Text('讲解需要一点时间，通常 30-90 秒')
-            .fontSize(12).fontColor('#8A8A8A')
+            .fontSize(12).fontColor('#8A7A5A')
           Button('取消')
             .fontSize(14)
-            .backgroundColor('#3A3A3C')
+            .fontColor('#B25E00')
+            .backgroundColor('#FFFFFFCC')
+            .border({ width: 1, color: '#FFFFFF' })
             .onClick(() => { this.cancelLoading(); })
         }
         .width('100%')
         .height('100%')
         .justifyContent(FlexAlign.Center)
-        .backgroundColor('#CC000000')
+        .backgroundColor('#BFFAF6EF')
+        .backgroundBlurStyle(BlurStyle.Regular)
       }
 
       // ===== 历史抽屉 =====
@@ -336,7 +394,7 @@ struct Chat {
         Column() {
           Row() {
             Text('历史讲解').fontSize(18).fontWeight(FontWeight.Bold).fontColor('#3D3325').layoutWeight(1)
-            Text('收起 ✕').fontSize(15).fontColor('#0A84FF')
+            Text('收起 ✕').fontSize(15).fontColor('#B25E00')
               .onClick(() => { this.showHistory = false; })
           }
           .width('100%')

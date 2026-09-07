@@ -19,14 +19,45 @@ export class SearchClient {
   }
 
   // 按 cfg.searchProvider 分派（bing 爬取无需 key）
+  // 必应对整句自然语言查询易被疑问词带偏（实测「这周国际上有什么科技大事」搜出单字释义），
+  // 只对 bing 做关键词提取；博查/Tavily 本身支持自然语言查询保留原句
   async search(query: string): Promise<SearchHit[]> {
     if (this.cfg.searchProvider === 'tavily') {
       return SearchClient.searchTavily(this.cfg.searchApiKey, query);
     }
     if (this.cfg.searchProvider === 'bing') {
-      return SearchClient.searchBing(query);
+      return SearchClient.searchBing(SearchClient.extractKeywords(query));
     }
     return SearchClient.searchBocha(this.cfg.searchApiKey, query);
+  }
+
+  // 疑问词/时间词/口语句式停用词：整句提问剥掉后剩核心名词，搜索引擎召回质量更高
+  private static readonly STOPWORDS: string[] = [
+    '为什么', '怎么回事', '怎么样', '怎样', '怎么办', '如何', '是什么', '什么是',
+    '有什么', '有哪些', '有没有', '是不是', '哪一个', '哪些', '哪个', '哪里', '哪儿',
+    '这周', '本周', '上周', '最近', '日前', '请问', '告诉我', '解释一下',
+    '介绍一下', '想知道', '想弄懂', '想了解', '讲讲', '说说', '到底', '究竟', '一下',
+    '我', '你', '他', '她', '它', '我们', '你们', '吗', '呢', '吧', '啊', '呀',
+    '的', '了', '是', '有', '和', '与', '或', '都', '也', '很', '被', '把', '让', '对', '关于'
+  ];
+
+  // 纯函数：自然语言问题 → 空格分隔的关键词串；全被停用词吃掉则回退原句
+  static extractKeywords(q: string): string {
+    let t = q.trim();
+    for (let i = 0; i < SearchClient.STOPWORDS.length; i++) {
+      t = t.split(SearchClient.STOPWORDS[i]).join(' ');
+    }
+    // 剥中英文标点，避免「？」等混进搜索词
+    t = t.replace(/[，。？！、：；""''（）《》【】,?!:;'"()[\]{}]/g, ' ');
+    const parts: string[] = [];
+    const raw = t.split(/\s+/);
+    for (let i = 0; i < raw.length; i++) {
+      if (raw[i] !== '' && parts.indexOf(raw[i]) < 0) {
+        parts.push(raw[i]);
+      }
+    }
+    if (parts.length === 0) { return q.trim(); }
+    return parts.slice(0, 6).join(' ');
   }
 
   // 截断 helper：snippet 超 200 字截断
