@@ -3,8 +3,7 @@ import AbilityDelegatorRegistry from '@ohos.app.ability.abilityDelegatorRegistry
 import { HtmlGuard, ReplyKind } from '../../../main/ets/service/HtmlGuard';
 import { HtmlExtractor } from '../../../main/ets/service/HtmlExtractor';
 import { SearchRouter } from '../../../main/ets/service/SearchRouter';
-import { AppConfig, ChatMsg, SearchHit, ToolCall, ToolDef } from '../../../main/ets/model/Types';
-import { PromptBuilder, HistoryTurn } from '../../../main/ets/service/PromptBuilder';
+import { AppConfig, ChatMsg, ToolCall, ToolDef } from '../../../main/ets/model/Types';
 import { LlmClient, OpenAiMessage } from '../../../main/ets/service/LlmClient';
 import { AgentLoop, LoopEvent } from '../../../main/ets/service/AgentLoop';
 import { SearchClient } from '../../../main/ets/service/SearchClient';
@@ -32,10 +31,6 @@ export default function logicTest() {
       const plain = HtmlExtractor.stripTags('<style>.a{}</style><h1>电 &amp; 磁</h1><p>讲解</p>');
       expect(plain.includes('电 & 磁')).assertTrue();
       expect(plain.includes('<h1>')).assertFalse();
-    });
-    it('marker_detection', 0, () => {
-      expect(HtmlGuard.detectReadMarker('[[READ_HTML:2]]') === 2).assertTrue();
-      expect(HtmlGuard.detectReadMarker('<html>[[READ_HTML:2]]</html>') === null).assertTrue();
     });
     it('reply_kind_detects_html', 0, () => {
       expect(ReplyKind.detect('<!DOCTYPE html><html></html>') === 'html').assertTrue();
@@ -71,28 +66,6 @@ export default function logicTest() {
       c.baseUrl = 'https://api.deepseek.com/v1';
       c.searchProvider = 'bocha';
       expect(SearchRouter.resolve(c) === 2).assertTrue();
-    });
-    it('prompt_contains_history_and_turn_no', 0, () => {
-      const h = new HistoryTurn(); h.turnNo = 1; h.question = '什么是电'; h.plain = '电子流动';
-      const p = PromptBuilder.buildUserPrompt([h], '为什么会触电', []);
-      expect(p.includes('[第1轮]')).assertTrue();
-      expect(p.includes('电子流动')).assertTrue();
-      expect(p.includes('为什么会触电')).assertTrue();
-    });
-    it('prompt_contains_search_hits', 0, () => {
-      const s: SearchHit = { title: '安全用电', url: 'https://a.b', snippet: '36V以下是安全电压' };
-      const p = PromptBuilder.buildUserPrompt([], '安全电压是多少', [s]);
-      expect(p.includes('36V以下是安全电压')).assertTrue();
-      expect(p.includes('https://a.b')).assertTrue();
-    });
-    it('prompt_empty_history_no_block', 0, () => {
-      const p = PromptBuilder.buildUserPrompt([], '什么是光', []);
-      expect(p.includes('历史对话')).assertFalse();
-    });
-    it('read_retry_prompt_wraps_html', 0, () => {
-      const p = PromptBuilder.buildReadRetryPrompt(2, '<html>x</html>', '再讲细点');
-      expect(p.includes('第2轮完整HTML原文')).assertTrue();
-      expect(p.includes('<html>x</html>')).assertTrue();
     });
     it('request_body_plain', 0, () => {
       const msgs: ChatMsg[] = [{ role: 'system', content: 's' }, { role: 'user', content: 'q' }];

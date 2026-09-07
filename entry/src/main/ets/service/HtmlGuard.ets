@@ -12,7 +12,7 @@ export class ReplyKind {
   }
 }
 
-// HTML 兜底：剥 markdown 围栏、校验、补 viewport、长度限制、READ_HTML 标记识别
+// HTML 兜底：剥 markdown 围栏、校验、补 viewport、长度限制
 export class HtmlGuard {
   // 剥```围栏→校验<!DOCTYPE html或<html(不区分大小写)→剥<script>块→缺viewport则注入→超300000字返回null→非法返回null
   // script 剥离是安全硬化：eli5 页面无需 JS，模型幻觉/被注入内容夹带的脚本不得在 WebView 执行
@@ -33,12 +33,5 @@ export class HtmlGuard {
     }
     if (t.length > 300000) { return null; }
     return t;
-  }
-
-  // 整行匹配 ^\s*\[\[READ_HTML:(\d+)\]\]\s*$ 返回轮次号，否则 null
-  static detectReadMarker(text: string): number | null {
-    const m = text.trim().match(/^\[\[READ_HTML:(\d+)\]\]$/);
-    if (m === null || m.length < 2) { return null; }
-    return parseInt(m[1], 10);
   }
 }
