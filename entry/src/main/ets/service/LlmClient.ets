@@ -3,7 +3,8 @@
 import { http } from '@kit.NetworkKit';
 import { AppConfig, ChatMsg, ToolCall, ToolDef } from '../model/Types';
 
-interface OpenAiMessage {
+// 完整 message（含 tool_calls / tool_call_id），供 agent 循环按调用分派；导出供测试 fake 构造脚本
+export interface OpenAiMessage {
   content: string;
   tool_calls?: ToolCall[];
   tool_call_id?: string;
@@ -67,12 +68,12 @@ export class LlmClient {
     return LlmClient.extractMessage(jsonStr).content;
   }
 
-  // 非流式对话；readTimeout 180s（整页 HTML 生成慢）
-  // messages 元素可带 tool_calls/tool_call_id（ChatMsg 可选字段，JSON.stringify 天然序列化）
-  async chat(messages: ChatMsg[], webSearchTool: boolean): Promise<string> {
+  // 非流式对话：返回完整 message（含 tool_calls），tools 由调用方显式给（null 表示不带）
+  // readTimeout 180s（整页 HTML 生成慢）；messages 元素可带 tool_calls/tool_call_id
+  // （ChatMsg 可选字段，JSON.stringify 天然序列化）。agent 循环走本方法。
+  async chatMessage(messages: ChatMsg[], tools: ToolDef[] | null): Promise<OpenAiMessage> {
     const hr = http.createHttp();
     try {
-      const tools: ToolDef[] | null = webSearchTool ? LlmClient.BUILTIN_WEB_SEARCH : null;
       const opt: http.HttpRequestOptions = {
         method: http.RequestMethod.POST,
         header: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.cfg.apiKey}` },
@@ -85,10 +86,17 @@ export class LlmClient {
       if (resp.responseCode < 200 || resp.responseCode >= 300) {
         throw new Error(`LLM HTTP ${resp.responseCode}: ${String(resp.result).substring(0, 300)}`);
       }
-      return LlmClient.extractMessage(String(resp.result)).content;
+      return LlmClient.extractMessage(String(resp.result));
     } finally {
       hr.destroy();
     }
+  }
+
+  // 旧名薄包装：只取纯文本 content，供现有调用点编译过渡（后续任务删除）
+  async chat(messages: ChatMsg[], webSearchTool: boolean): Promise<string> {
+    const tools: ToolDef[] | null = webSearchTool ? LlmClient.BUILTIN_WEB_SEARCH : null;
+    const msg = await this.chatMessage(messages, tools);
+    return msg.content;
   }
 
   // GET {base}/models → data[].id 数组

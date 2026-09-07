@@ -5,7 +5,8 @@ import { HtmlExtractor } from '../../../main/ets/service/HtmlExtractor';
 import { SearchRouter } from '../../../main/ets/service/SearchRouter';
 import { AppConfig, ChatMsg, SearchHit, ToolCall, ToolDef } from '../../../main/ets/model/Types';
 import { PromptBuilder, HistoryTurn } from '../../../main/ets/service/PromptBuilder';
-import { LlmClient } from '../../../main/ets/service/LlmClient';
+import { LlmClient, OpenAiMessage } from '../../../main/ets/service/LlmClient';
+import { AgentLoop, LoopEvent } from '../../../main/ets/service/AgentLoop';
 import { SearchClient } from '../../../main/ets/service/SearchClient';
 import { Db } from '../../../main/ets/store/Db';
 import { SkillRepo } from '../../../main/ets/store/SkillRepo';
@@ -220,6 +221,74 @@ export default function logicTest() {
       for (const t of tools) { if (t.name === 'read_web') { readWeb = t; } }
       const out = await readWeb!.execute('{"url":"http://127.0.0.1:1/x"}');
       expect(out.includes('"error"')).assertTrue();
+    });
+    it('loop_executes_tool_then_answers', 0, async () => {
+      // fake：第1轮回 tool_calls(web_search)，第2轮回文本答案
+      const ctx = AbilityDelegatorRegistry.getAbilityDelegator().getAppContext().getApplicationContext();
+      const tc: ToolCall = { id: 'call_1', type: 'function', function: { name: 'web_search', arguments: '{"query":"AI"}' } };
+      const m1: OpenAiMessage = { content: '', tool_calls: [tc] };
+      const m2: OpenAiMessage = { content: '好的' };
+      const script: OpenAiMessage[] = [m1, m2];
+      let idx = 0;
+      const events: string[] = [];
+      const r = await AgentLoop.run(new AppConfig(), ctx, [], '今天AI新闻', null,
+        (e: LoopEvent) => { events.push(e.kind + ':' + e.toolName); },
+        async (_messages: ChatMsg[], _tools: ToolDef[] | null): Promise<OpenAiMessage> => {
+          const m = script[idx];
+          idx++;
+          return m;
+        });
+      expect(r.answer === '好的').assertTrue();
+      expect(events[0] === 'tool_start:web_search').assertTrue();
+      expect(events.indexOf('tool_done:web_search') >= 0).assertTrue();
+      expect(r.steps === 2).assertTrue();
+    });
+    it('loop_tool_error_feeds_back_not_crash', 0, async () => {
+      // fake：第1轮 tool_calls(read_web 指向必失败 URL)，fake 第2轮校验 messages 里有 {"error"}
+      // 断言：不抛异常，最终 answer 正常
+      const ctx = AbilityDelegatorRegistry.getAbilityDelegator().getAppContext().getApplicationContext();
+      const tc: ToolCall = { id: 'call_err', type: 'function', function: { name: 'read_web', arguments: '{"url":"http://127.0.0.1:1/x"}' } };
+      const m1: OpenAiMessage = { content: '', tool_calls: [tc] };
+      const m2: OpenAiMessage = { content: '该网页暂时无法访问' };
+      const script: OpenAiMessage[] = [m1, m2];
+      let idx = 0;
+      let sawErrorToolMsg = false;
+      const r = await AgentLoop.run(new AppConfig(), ctx, [], '读这个网页', null,
+        (_e: LoopEvent) => {},
+        async (messages: ChatMsg[], _tools: ToolDef[] | null): Promise<OpenAiMessage> => {
+          if (idx === 1) {
+            for (const m of messages) {
+              if (m.role === 'tool' && m.content.includes('{"error"')) { sawErrorToolMsg = true; }
+            }
+          }
+          const m = script[idx];
+          idx++;
+          return m;
+        });
+      expect(sawErrorToolMsg).assertTrue();
+      expect(r.answer === '该网页暂时无法访问').assertTrue();
+      expect(r.steps === 2).assertTrue();
+    });
+    it('loop_step_limit_truncates', 0, async () => {
+      // fake：永远回 tool_calls → 断言 steps 到上限后 kind='limit' 事件出现且 answer 非空（收尾调用无 tools）
+      const ctx = AbilityDelegatorRegistry.getAbilityDelegator().getAppContext().getApplicationContext();
+      let calls = 0;
+      const kinds: string[] = [];
+      const r = await AgentLoop.run(new AppConfig(), ctx, [], '继续搜', null,
+        (e: LoopEvent) => { kinds.push(e.kind); },
+        async (_messages: ChatMsg[], tools: ToolDef[] | null): Promise<OpenAiMessage> => {
+          calls++;
+          if (tools === null) {
+            const fin: OpenAiMessage = { content: '步数上限收尾回答' };
+            return fin;
+          }
+          const tc: ToolCall = { id: 'call_x' + calls, type: 'function', function: { name: 'read_web', arguments: '{"url":"http://127.0.0.1:1/x"}' } };
+          const m: OpenAiMessage = { content: '', tool_calls: [tc] };
+          return m;
+        });
+      expect(r.answer === '步数上限收尾回答').assertTrue();
+      expect(kinds.indexOf('limit') >= 0).assertTrue();
+      expect(r.steps === 11).assertTrue();
     });
   });
 }
