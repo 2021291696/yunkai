@@ -3,6 +3,7 @@ import { router, promptAction } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
 import { common } from '@kit.AbilityKit';
 import { buffer } from '@kit.ArkTS';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import { AppConfig, ChatMsg, Conv, Msg, NetMode, SearchHit } from '../model/Types';
 import { ConfigStore } from '../store/ConfigStore';
 import { ConversationRepo } from '../store/ConversationRepo';
@@ -207,6 +208,7 @@ struct Chat {
       this.setHtml(html);
       await this.refreshTurns();
     } catch (e) {
+      hilog.error(0x0000, 'eli5', 'send failed: %{public}s', (e as Error).message);
       this.toast('出错了：' + (e as Error).message);
     } finally {
       if (gen === this.genId) { this.loading = false; }
