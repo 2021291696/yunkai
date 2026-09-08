@@ -15,7 +15,7 @@
 ## 构建
 
 ```bash
-# 需 ANDROID_HOME 与 JAVA_HOME（JBR 21）
+# 需 ANDROID_HOME 与完整 JDK 21（JBR 不带 jlink 不能用，见 AGENTS.md）
 ./gradlew assembleDebug        # 产物 app/build/outputs/apk/debug/app-debug.apk
 ./gradlew testDebugUnitTest    # JVM 单测（43 用例语义移植，无需模拟器）
 ```
