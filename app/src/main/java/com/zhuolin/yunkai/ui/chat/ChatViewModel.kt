@@ -200,20 +200,16 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
         showHistory.value = true
     }
 
-    fun startNewConversation(reload: () -> Unit) {
+    fun startNewConversation() {
         showHistory.value = false
         if (convId <= 0) return
-        convId = -1L
-        reload()
-        initIfNeed(-1L)
+        load(-1L)
     }
 
-    fun openConversation(id: Long, reload: () -> Unit) {
+    fun openConversation(id: Long) {
         showHistory.value = false
         if (id == convId) return
-        convId = id
-        reload()
-        initIfNeed(id)
+        load(id)
     }
 
     suspend fun doDelete(id: Long, context: Context) {
@@ -221,8 +217,7 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
         toast(context, "已删除")
         refreshConvs()
         if (id == convId) {
-            convId = -1L
-            initIfNeed(-1L)
+            load(-1L)
         }
     }
 }

@@ -30,7 +30,10 @@ Kotlin 2.0.21 + AGP 8.9.1（compileSdk 36 / minSdk 30 / targetSdk 36）+ Compose
 - 鸿蒙源码（移植语义唯一依据）：`../yunkai-harmony/entry/src/main/ets/`；**eli5 配方与 yunkai-harmony 的 `entry/src/main/resources/rawfile/skill_eli5.md` 保持逐字节一致（md5 对拍），改动须双端同步**
 - 每个 Task 结束即 commit（commit message 不带任何 AI 署名）
 
-## 当前状态（2026-09-09）
-- A0→A4 全量移植完成：43 用例语义全部落 JVM 单测（鸿蒙 RDB/Preferences 实机依赖用例按计划豁免，见 tests/fullflow/reports 验收报告）；Gradle 构建与单测全绿
+## 当前状态（2026-09-09 · run-all 三门全绿）
+- A0→A4 全量移植完成并过 run-all 三门：门0 logic-review --full 清零（421d7bc）/ 门1 CLI 72 单测+真 LLM 直连（DEEPSEEK_API_KEY，DeepSeekChainTest 无 key 自动 skip）/ 门2 AI 驱动模拟器九步骤全 PASS（证据 tests/fullflow/reports/2026-09-09_022136_run/）
 - M1 功能清单逐项平移：裸对话/AgentLoop 三工具/时间线+取消/双模型分工/@强制/autoRoute/技能管理/eli5 画布/引导页/历史抽屉
-- M2 试验田顺序（v1 完成后逐项展开独立计划）：B1 SSE 流式 → B2 气泡 markdown → B3 文件读写 → B4 记忆库；每项 Android 验证稳定后语义回灌鸿蒙
+- 现场修复两枚（均复验）：技能页返回死键（NavRoot 未传 onBack）；会话切换回归（initialized 守卫拦截 openConversation → 直调 load）
+- 已知使用提示：eli5 画布依赖模型产出纯 HTML——deepseek-chat 有前言习惯会按唯一口径降级文本气泡（与鸿蒙一致），glm-4.7/智谱端点下画布稳定
+- 真机 K40 七路径手验待用户执行（模拟器无智谱 key，glm 双模型分工真链路未在设备端覆盖）
+- M2 试验田顺序：B1 SSE 流式 → B2 气泡 markdown → B3 文件读写 → B4 记忆库；每项 Android 验证稳定后语义回灌鸿蒙

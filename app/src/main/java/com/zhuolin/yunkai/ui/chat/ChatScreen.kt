@@ -180,13 +180,13 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
         turns = vm.turns.toList(),
         onClose = { vm.showHistory.value = false },
         onNewConversation = {
-            vm.startNewConversation(reload = { vm.initIfNeed(-1L) })
+            vm.startNewConversation()
         },
         onOpenSettings = {
             vm.showHistory.value = false
             onOpenSettings()
         },
-        onOpenConversation = { id -> vm.openConversation(id, reload = { vm.initIfNeed(id) }) },
+        onOpenConversation = { id -> vm.openConversation(id) },
         onDeleteConversation = { c -> deleteTarget = c },
         onOpenTurn = { turnNo ->
             vm.showHistory.value = false

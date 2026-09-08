@@ -27,6 +27,11 @@ android {
     testOptions { unitTests.isReturnDefaultValues = true }
 }
 
+// run-all 门1 断言需要读到测试 stdout（LLM_CHAIN_OK）
+tasks.withType<Test>().configureEach {
+    testLogging { showStandardStreams = true }
+}
+
 dependencies {
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
