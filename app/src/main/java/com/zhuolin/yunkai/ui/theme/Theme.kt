@@ -1,6 +1,5 @@
 package com.zhuolin.yunkai.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
@@ -62,7 +61,6 @@ private val AppTypography = Typography(
 
 @Composable
 fun YunkaiTheme(content: @Composable () -> Unit) {
-    // 鸿蒙版固定浅色暖纸底，深色模式不做换肤（isSystemInDarkTheme 仅保留判断位）
-    isSystemInDarkTheme()
+    // 鸿蒙版固定浅色暖纸底，深色模式不做换肤
     MaterialTheme(colorScheme = LightColors, typography = AppTypography, content = content)
 }

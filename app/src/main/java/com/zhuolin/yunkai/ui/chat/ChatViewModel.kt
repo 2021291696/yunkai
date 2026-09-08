@@ -33,9 +33,17 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
     var convId: Long = -1L
     private var nextId: Long = 1L
     private var genId: Long = 0L
+    private var initialized = false
 
+    // 首次组合才加载：从设置页/画布页返回时 NavHost 会重组 chat，
+    // 重复 init 会把进行中的会话重置成草稿（鸿蒙版 router.back 不重初始化，语义对齐）
     fun initIfNeed(id: Long) {
-        if (convId == id && msgs.isNotEmpty()) return
+        if (initialized) return
+        load(id)
+    }
+
+    private fun load(id: Long) {
+        initialized = true
         convId = id
         msgs.clear()
         turns.clear()
@@ -117,7 +125,8 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
                     val skill = app.skillRepo.getByName(m.groupValues[1])
                     if (skill != null) {
                         forcedSkill = skill
-                        q = q0.replace(m.value, "").trim()
+                        // 鸿蒙 JS String.replace(string, string) 只替换首个出现；Kotlin replace 是全量替换
+                        q = q0.replaceFirst(m.value, "").trim()
                         if (q.isEmpty()) q = q0
                     }
                 }
