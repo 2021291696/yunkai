@@ -1,4 +1,4 @@
-// 数据库单例：eli5.db 三张表（会话/消息/技能）
+// 数据库单例：yunkai.db 三张表（会话/消息/技能）
 import { relationalStore } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
 import { ReplyKind } from '../service/HtmlGuard';
@@ -9,7 +9,7 @@ export class Db {
   static async get(ctx: common.Context): Promise<relationalStore.RdbStore> {
     if (Db.store !== null) { return Db.store; }
     const cfg: relationalStore.StoreConfig = {
-      name: 'eli5.db',
+      name: 'yunkai.db',
       securityLevel: relationalStore.SecurityLevel.S1
     };
     const s = await relationalStore.getRdbStore(ctx, cfg);

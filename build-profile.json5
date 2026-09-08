@@ -1,9 +1,12 @@
 {
   "app": {
-    "    "products": [
+    // 签名配置待重新生成：bundleName 已改为 com.zhuolin.yunkai，
+    // 旧 Profile（default_eli5_harmony_*）绑定旧包名已删除；
+    // 在 DevEco「Project Structure > Signing Configs」重新勾选自动签名后会自动写回此段
+    "signingConfigs": [],
+    "products": [
       {
         "name": "default",
-        "signingConfig": "default",
         "targetSdkVersion": "26.0.0",
         "compatibleSdkVersion": "6.1.1(24)",
         "runtimeOS": "HarmonyOS",

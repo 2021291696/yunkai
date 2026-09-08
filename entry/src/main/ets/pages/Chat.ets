@@ -224,7 +224,7 @@ struct Chat {
     } catch (e) {
       const em: string = (e as Error).message;
       if (em !== 'AGENT_LOOP_CANCELLED') {
-        hilog.error(0x0000, 'eli5', 'send failed: %{public}s', em);
+        hilog.error(0x0000, 'yunkai', 'send failed: %{public}s', em);
         this.toast('出错了：' + em);
       }
     } finally {
