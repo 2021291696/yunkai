@@ -1,7 +1,7 @@
 # yunkai（云开）— Agent 规则
 
 ## 定位
-自用鸿蒙 HarmonyOS NEXT **桌面 agent**（手机版 zcode）：打开即对话，agent loop 多步工具调用；@技能名 强制技能 / 自动路由可关；回答=聊天气泡或整页 HTML 画布（eli5 为内置 skill）。独立 git 仓库，纯本地（无 remote）。目录 projects/yunkai（09-08 由 eli5_harmony 改名，包名同步 com.zhuolin.yunkai）。
+自用鸿蒙 HarmonyOS NEXT **桌面 agent**（手机版 zcode）：打开即对话，agent loop 多步工具调用；@技能名 强制技能 / 自动路由可关；回答=聊天气泡或整页 HTML 画布（eli5 为内置 skill）。独立 git 仓库，纯本地（无 remote）。目录 project/yunkai（09-08 由 projects/eli5_harmony 迁入改名，包名同步 com.zhuolin.yunkai）。
 
 ## 构建与测试
 - CLI 构建：`DEVECO_SDK_HOME='D:\Huawei\DevEcoStudio\sdk' node "D:/Huawei/DevEcoStudio/tools/hvigor/bin/hvigorw.js" --mode module -p product=default assembleHap`
