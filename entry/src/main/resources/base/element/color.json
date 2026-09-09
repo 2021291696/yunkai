@@ -3,6 +3,66 @@
     {
       "name": "start_window_background",
       "value": "#FFFFFF"
+    },
+    {
+      "name": "glass_bg",
+      "value": "#8CFFFFFF"
+    },
+    {
+      "name": "glass_bg_strong",
+      "value": "#ADFFFFFF"
+    },
+    {
+      "name": "glass_border",
+      "value": "#E6FFFFFF"
+    },
+    {
+      "name": "text_hi",
+      "value": "#16181D"
+    },
+    {
+      "name": "text_mid",
+      "value": "#9E16181D"
+    },
+    {
+      "name": "text_low",
+      "value": "#5C16181D"
+    },
+    {
+      "name": "accent",
+      "value": "#0071E3"
+    },
+    {
+      "name": "accent_soft",
+      "value": "#1F0071E3"
+    },
+    {
+      "name": "bubble_user",
+      "value": "#290071E3"
+    },
+    {
+      "name": "mask_v_top",
+      "value": "#8CF9F8F5"
+    },
+    {
+      "name": "mask_v_35",
+      "value": "#1FF9F8F5"
+    },
+    {
+      "name": "mask_v_50",
+      "value": "#0FF9F8F5"
+    },
+    {
+      "name": "mask_v_70",
+      "value": "#33F9F8F5"
+    },
+    {
+      "name": "mask_v_bot",
+      "value": "#99F9F8F5"
+    },
+    {
+      "name": "mask_h_edge",
+      "value": "#4DF9F8F5"
     }
   ]
 }

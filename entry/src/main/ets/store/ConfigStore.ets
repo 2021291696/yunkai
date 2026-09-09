@@ -30,4 +30,16 @@ export class ConfigStore {
     await p.put('searchApiKey', cfg.searchApiKey);
     await p.flush();
   }
+
+  static async getWallpaper(ctx: common.UIAbilityContext): Promise<string> {
+    const p = await preferences.getPreferences(ctx, 'appConfig');
+    return (await p.get('wallpaper', '')) as string;
+  }
+
+  static async setWallpaper(ctx: common.UIAbilityContext, path: string): Promise<void> {
+    const p = await preferences.getPreferences(ctx, 'appConfig');
+    await p.put('wallpaper', path);
+    await p.flush();
+  }
 }
+
