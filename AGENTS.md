@@ -10,6 +10,12 @@
 - 单测（JVM，不用模拟器）：`./gradlew testDebugUnitTest`，全量 `./gradlew test`
 - 模拟器：`MSYS_NO_PATHCONV=1 /d/Android/Sdk/emulator/emulator.exe -avd quizlens_test &`；`adb install -r <apk>`；`adb shell am start -n com.zhuolin.yunkai/.MainActivity`
 
+## 模拟器 UI 自动化坑（趟平，勿重踩）
+- **AVD quizlens_test 每次冷启动丢 userdata**（装的应用/配置全没）——重启电脑或模拟器后必须重装 app + ADBKeyboard + 重填智谱配置。验证配置真保存看 `adb shell "run-as com.zhuolin.yunkai ls files/datastore/"` 有 `yunkai_cfg.preferences_pb` 才算数（设置页里显示的 baseUrl 是 placeholder 不是已填值）
+- **切 IME 只有 `adb shell ime set com.android.adbkeyboard/.AdbIME` 生效**；`settings put secure default_input_method` 不生效。中文输入：`am broadcast -a ADB_INPUT_TEXT --es msg '中文'`；**`ADB_CLEAR_TEXT` 经常不生效**，清空用 `input keycombination 113 29`（Ctrl+A）+ `input keyevent 67`（Del）
+- **"ADB Keyboard {ON}" 底栏常驻会挡住屏幕底部按钮**（保存键被挡过一次导致保存没生效）——点击前把目标滚到 y<550 区域
+- 坐标随时漂移：每次操作前 `uiautomator dump` 取 bounds 算中心点再 tap，tap 后验证 focused 落在目标节点；BACK 偶尔需按两次，按多了会退出到别的 app，用 `am start -n com.zhuolin.yunkai/.MainActivity` 拉回
+
 ## 技术栈与目录
 Kotlin 2.0.21 + AGP 8.9.1（compileSdk 36 / minSdk 30 / targetSdk 36）+ Compose BOM 2024.12.01 + Room 2.6.1(KSP) + DataStore 1.1.1 + OkHttp 4.12.0 + kotlinx-serialization 1.7.3。入口 `app/src/main/java/com/zhuolin/yunkai/`：
 - `model/Types.kt`（全量类型，@SerialName 蛇形映射）/ `service/`（AgentLoop 引擎 + LlmClient + SearchClient + HtmlGuard/HtmlExtractor + SkillImporter + SearchRouter + tools/）/ `store/`（Room 三表 + 三 Repo + ConfigStore）/ `ui/`（NavRoot + chat/settings/skills/canvas/guide/theme）
@@ -36,6 +42,9 @@ Kotlin 2.0.21 + AGP 8.9.1（compileSdk 36 / minSdk 30 / targetSdk 36）+ Compose
 - M1 功能清单逐项平移：裸对话/AgentLoop 三工具/时间线+取消/双模型分工/@强制/autoRoute/技能管理/eli5 画布/引导页/历史抽屉
 - 现场修复三枚（均复验）：技能页返回死键（NavRoot 未传 onBack）；会话切换回归（initialized 守卫拦截 openConversation → 直调 load）；LlmClient readTimeout 180s→600s（非流式 glm-4.7 长文必超 180s）
 - **模拟器配真智谱 key 成品验收全过**（2026-09-09，AVD quizlens_test）：裸对话 ✅ / 联网搜索（必应免key，返回 1 天前新鲜结果）✅ / @eli5 画布全链路（use_skill → 切 glm-4.7 → ~140s 生成 → 列表卡片 → 整页 Canvas 中文无乱码可滚动 → 返回）✅ / 历史抽屉+长按删除+已删除 toast ✅ / 新对话不留空记录 ✅ / 技能库 eli5 内置徽标 ✅
+- **重启后成品演示重跑全过**（2026-09-09 二轮，AgentLoop 带逐步日志版）：裸对话 glm-5.3-flash 8.7s ✅ / 联网搜索 3 轮 LLM（9.4s/14.6s/31.7s）+ web_search×2 + read_web×2 共 ~67s ✅ / @eli5 画布：step2 日志直证 use_skill 后切 glm-4.7，225s 生成 19170 字符 HTML，整页 Canvas 渲染/中文/滚动正常 ✅
 - 已知使用提示：eli5 画布依赖模型产出纯 HTML——deepseek-chat 有前言习惯会按唯一口径降级文本气泡（与鸿蒙一致），glm-4.7/智谱端点下画布稳定
-- 真机 K40 验收待用户执行（模拟器成品已就绪，步骤：插线开 USB 调试 → adb devices → install -r → 设置页填同套智谱配置 → 过七路径）
+- **智谱端波动（服务端现象非 bug）**：glm-4.7 非流式长文生成耗时 140s~600s+ 波动大，曾实测一次智谱 500 和一次恰好 600s 超时，重试即成功——600s readTimeout 也可能偶尔不够；联网搜索早前两次 600s 超时同为智谱端瞬时故障
+- 已知 UX 待办（M2 已排期）：超时/500 失败只弹 toast 无气泡，用户可能错过；搜索回答的 markdown（##/**）以纯文本显示（B2）
+- 真机 K40 验收待用户执行（用户明确"先不做真机，模拟机成熟后再迁移"；MIUI 拦 USB 安装需开"USB 安装"选项，步骤：插线开 USB 调试 → adb devices → install -r → 设置页填同套智谱配置 → 过七路径）
 - M2 试验田顺序：B1 SSE 流式 → B2 气泡 markdown → B3 文件读写 → B4 记忆库；每项 Android 验证稳定后语义回灌鸿蒙（readTimeout 600s 已确认需回灌鸿蒙 LlmClient.ets）

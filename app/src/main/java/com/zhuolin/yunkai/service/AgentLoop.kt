@@ -10,6 +10,7 @@ import com.zhuolin.yunkai.service.tools.AgentTool
 import com.zhuolin.yunkai.service.tools.BuiltinTools
 import com.zhuolin.yunkai.store.SkillSource
 import kotlinx.serialization.json.Json
+import android.util.Log
 
 // AgentLoop 引擎：LLM function-calling 主循环。
 // 职责：组装 system prompt（桌面 agent 人格 + 技能摘要块）与工具表，
@@ -106,13 +107,18 @@ object AgentLoop {
 
         for (step in 1..MAX_STEPS) {
             checkCancel(isCancelled)
+            val t0 = System.currentTimeMillis()
+            Log.i("yunkai", "llm call step=$step model=${pickModel(cfg, longFormActive)} msgs=${messages.size}")
             val msg = doChat(messages, if (toolDefs.isNotEmpty()) toolDefs else null)
+            Log.i("yunkai", "llm resp step=$step ${System.currentTimeMillis() - t0}ms toolCalls=${msg.toolCalls?.size ?: 0} contentLen=${msg.content.length}")
             if (!msg.toolCalls.isNullOrEmpty()) {
                 messages.add(ChatMsg(role = "assistant", content = msg.content, toolCalls = msg.toolCalls))
                 for (tc in msg.toolCalls!!) {
                     checkCancel(isCancelled)
                     onEvent(LoopEvent("tool_start", tc.function.name, tc.function.arguments))
+                    val ts = System.currentTimeMillis()
                     val out = execTool(tools, tc)
+                    Log.i("yunkai", "tool ${tc.function.name} ${System.currentTimeMillis() - ts}ms outLen=${out.length}")
                     // use_skill 成功返回说明书（非 '{"error"' 开头）→ 本轮余下调用切长文模型；
                     // 失败/error 回传不切换，模型仍用主模型自行调整策略
                     if (tc.function.name == "use_skill" && !out.startsWith("{\"error\"")) {
