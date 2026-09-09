@@ -20,11 +20,13 @@ ArkTS（API 26）+ ArkWeb + RDB。入口 `entry/src/main/ets/`：
 - WebView 加载 HTML 一律 data:base64 URL 作 src（明文 loadData/data URI 会截断）；List 内嵌卡禁用 controller.loadData（实测白屏）
 - **双模型分工**：主模型 cfg.model（glm-5.3-flash 对话/调度），use_skill 成功后本轮回调切 AppConfig.longModel（glm-4.7 长文）；glm-5.3-flash 始终深度思考不可关，长页正文会 0 字节
 - max_tokens 必须显式 16384（端点默认值会截断长讲解）
+- **LlmClient readTimeout 必须 ≥600s**：glm-4.7 非流式长文实测 140s~600s+ 波动（Android 端 180s 两次复现超时后回灌；600s 偶尔也不够，智谱端 500/超时重试即可）
 - API key 只存设备本地 Preferences，永不进仓库/报告/记忆
 - AgentLoop 工具失败一律 `{"error":...}` 回传模型，绝不抛出中断循环
 - 必应轨搜索词必须走 `SearchClient.extractKeywords`；改图标须 bm uninstall 刷缓存；9568332=卸载重装、9568423=重勾自动签名
 
-## 当前状态（2026-09-08）
+## 当前状态（2026-09-09）
 - M1 桌面 agent 已交付：run-all 三门 PASS（全量审查 1 Important 修 fb3c9dc / logicTest 43/43 / 门2 七路径+双模型回归），报告在 tests/fullflow/reports/
+- 09-09 Android 端语义回灌：LlmClient readTimeout 180s→600s + AgentLoop 逐步 hilog（step/模型/耗时/工具输出长度，对标 Android 版 Log.i 'yunkai'），hvigor clean assembleHap 编译通过
 - 模拟器跑的是最新版（glm-5.3-flash 主模型）；真机已装旧版待升级重配
-- 待办：真机升级；M2=文件读写+记忆库+SSE 流式+气泡 markdown 渲染+iframe 剥离+List 画布卡重建卡顿
+- 待办：真机升级（装上含 600s+日志的新版）；M2=文件读写+记忆库+SSE 流式+气泡 markdown 渲染+iframe 剥离+List 画布卡重建卡顿

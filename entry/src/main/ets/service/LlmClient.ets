@@ -74,7 +74,7 @@ export class LlmClient {
   }
 
   // 非流式对话：返回完整 message（含 tool_calls），tools 由调用方显式给（null 表示不带）
-  // readTimeout 180s（整页 HTML 生成慢）；messages 元素可带 tool_calls/tool_call_id
+  // readTimeout 600s（glm-4.7 非流式长文实测 140s~600s+ 波动）；messages 元素可带 tool_calls/tool_call_id
   // （ChatMsg 可选字段，JSON.stringify 天然序列化）。agent 循环走本方法。
   // model 可选覆盖：双模型分工——agent 循环 use_skill 后传 longModel 生成长文；
   // 不传或空串回退 cfg.model（其他调用方零改动）。
@@ -86,7 +86,7 @@ export class LlmClient {
         method: http.RequestMethod.POST,
         header: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.cfg.apiKey}` },
         extraData: LlmClient.buildRequestBody(useModel, messages, tools),
-        readTimeout: 180000,
+        readTimeout: 600000,
         connectTimeout: 15000,
         expectDataType: http.HttpDataType.STRING
       };

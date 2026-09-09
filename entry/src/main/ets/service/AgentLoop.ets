@@ -13,6 +13,7 @@
 // 【M2 待办】多工具并发与 tool 结果预算截断：同一轮 tool_calls 目前串行执行；且 tool 结果全文回填
 //   可能撑爆上下文，需按预算截断/摘要（单条上限 + 本轮总预算）。
 import { common } from '@kit.AbilityKit';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import { AppConfig, AgentSkill, ChatMsg, JsonSchema, ToolCall, ToolDef } from '../model/Types';
 import { LlmClient, OpenAiMessage } from './LlmClient';
 import { SkillRepo } from '../store/SkillRepo';
@@ -95,7 +96,10 @@ export class AgentLoop {
 
     for (let step = 1; step <= MAX_STEPS; step++) {
       checkCancel();
+      const t0 = Date.now();
+      hilog.info(0x0000, 'yunkai', 'llm call step=%{public}d model=%{public}s msgs=%{public}d', step, AgentLoop.pickModel(cfg, longFormActive), messages.length);
       const msg = await doChat(messages, toolDefs.length > 0 ? toolDefs : null);
+      hilog.info(0x0000, 'yunkai', 'llm resp step=%{public}d %{public}dms toolCalls=%{public}d contentLen=%{public}d', step, Date.now() - t0, msg.tool_calls !== undefined ? msg.tool_calls.length : 0, msg.content.length);
       if (msg.tool_calls !== undefined && msg.tool_calls.length > 0) {
         const asst: ChatMsg = { role: 'assistant', content: msg.content, tool_calls: msg.tool_calls };
         messages.push(asst);
@@ -103,7 +107,9 @@ export class AgentLoop {
         for (const tc of calls) {
           checkCancel();
           onEvent(AgentLoop.ev('tool_start', tc.function.name, tc.function.arguments));
+          const ts = Date.now();
           const out = await AgentLoop.execTool(tools, tc);
+          hilog.info(0x0000, 'yunkai', 'tool %{public}s %{public}dms outLen=%{public}d', tc.function.name, Date.now() - ts, out.length);
           // use_skill 成功返回说明书（非 '{"error"' 开头）→ 本轮余下调用切长文模型；
           // 失败/error 回传不切换，模型仍用主模型自行调整策略
           if (tc.function.name === 'use_skill' && !out.startsWith('{"error"')) {
