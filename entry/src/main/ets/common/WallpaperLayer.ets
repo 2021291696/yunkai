@@ -5,7 +5,7 @@ import { ConfigStore } from '../store/ConfigStore';
 
 @Component
 export struct WallpaperLayer {
-  @StorageProp('colorMode') colorMode: number = ColorMode.Light;
+  @StorageProp('colorMode') colorMode: number = ColorMode.LIGHT;
   @State customUri: string = '';
 
   aboutToAppear(): void {
@@ -19,14 +19,14 @@ export struct WallpaperLayer {
         Image(this.customUri)
           .width('100%').height('100%')
           .objectFit(ImageFit.Cover)
-          .brightness(this.colorMode === ColorMode.Dark ? 0.45 : 1.06)
-          .saturation(0.85)
+          .brightness(this.colorMode === ColorMode.DARK ? 0.45 : 1.06)
+          .saturate(0.85)
       } else {
         Image($r('app.media.wallpaper_default'))
           .width('100%').height('100%')
           .objectFit(ImageFit.Cover)
-          .brightness(this.colorMode === ColorMode.Dark ? 0.45 : 1.06)
-          .saturation(0.85)
+          .brightness(this.colorMode === ColorMode.DARK ? 0.45 : 1.06)
+          .saturate(0.85)
       }
       // 纵向暗角
       Column()

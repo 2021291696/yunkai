@@ -13,6 +13,8 @@ import { HtmlGuard, ReplyKind } from '../service/HtmlGuard';
 import { CanvasCard } from './CanvasCard';
 import { HistoryDrawer } from './HistoryDrawer';
 import { GuidePage } from './GuidePage';
+import { ThemeTokens } from '../theme/ThemeTokens';
+import { WallpaperLayer } from '../common/WallpaperLayer';
 
 // 画布 HTML 的 AppStorage 暂存 key（Chat → Canvas 页传参用，避开 router params 大字符串）
 const CANVAS_HTML_KEY: string = 'canvasHtml';
@@ -40,6 +42,8 @@ function timelineLabel(e: LoopEvent): string {
 @Entry
 @Component
 struct Chat {
+  @StorageProp('statusBarH') statusBarH: number = 0;
+  @StorageProp('navBarH') navBarH: number = 0;
   @State convId: number = 0;
   @State title: string = '';
   @State msgs: RenderMsg[] = [];
@@ -308,74 +312,112 @@ struct Chat {
 
   build() {
     Stack() {
+      // 全局壁纸层垫底
+      WallpaperLayer()
+
       Column() {
         // ===== 顶栏 =====
         Row({ space: 10 }) {
-          Text('‹ 返回')
-            .fontSize(16)
-            .fontColor('#B25E00')
+          Button('‹')
+            .width(34)
+            .height(34)
+            .fontSize(18)
+            .fontColor($r('app.color.text_hi'))
+            .backgroundColor($r('app.color.glass_bg'))
+            .backdropBlur(20)
+            .borderRadius(17)
+            .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+            .padding(0)
             .onClick(() => {
               router.back();
             })
           Text(this.title)
-            .fontSize(19)
+            .fontSize(15)
             .fontWeight(FontWeight.Medium)
-            .fontColor('#3D3325')
+            .fontColor($r('app.color.text_hi'))
+            .textAlign(TextAlign.Center)
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
             .layoutWeight(1)
-          Button('历史')
-            .fontSize(14)
+          Button('⋯')
+            .width(34)
             .height(34)
-            .fontColor('#B25E00')
-            .backgroundColor('#FFFFFFA6')
-            .border({ width: 1, color: '#FFFFFFCC' })
+            .fontSize(14)
+            .fontColor($r('app.color.text_hi'))
+            .backgroundColor($r('app.color.glass_bg'))
+            .backdropBlur(20)
+            .borderRadius(17)
+            .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+            .padding(0)
             .onClick(() => {
               this.openHistory();
             })
         }
         .width('100%')
-        .padding({ left: 14, right: 14, top: 12, bottom: 10 })
-        .backgroundColor('#F2EADCB0')
-        .backgroundBlurStyle(BlurStyle.Thin)
-        .border({ width: { bottom: 1 }, color: '#FFFFFFCC' })
+        .padding({ left: 14, right: 14, top: this.statusBarH + 12, bottom: 10 })
+        .alignItems(VerticalAlign.Center)
 
         // ===== 消息流 =====
         Stack() {
           List({ space: 12, scroller: this.listScroller }) {
             ForEach(this.msgs, (m: RenderMsg) => {
               ListItem() {
-                Row() {
-                  if (m.role === 'user') {
-                    Blank()
-                    Text(m.content)
-                      .fontSize(15)
-                      .fontColor('#FFFFFF')
-                      .backgroundColor('#E8930C')
-                      .borderRadius(16)
-                      .padding({ left: 14, right: 14, top: 10, bottom: 10 })
-                      .constraintSize({ maxWidth: '78%' })
-                  } else if (m.kind === ReplyKind.HTML) {
-                    Column() {
-                      CanvasCard({
-                        html: m.content,
-                        onOpen: (): void => { this.openCanvas(m.content); }
-                      })
+                Column() {
+                  Row() {
+                    if (m.role === 'user') {
+                      Blank()
+                      Text(m.content)
+                        .fontSize(14)
+                        .lineHeight(23)
+                        .fontColor($r('app.color.text_hi'))
+                        .fontFamily('Sora, HarmonyOS Sans')
+                        .backgroundColor($r('app.color.bubble_user'))
+                        .backdropBlur(ThemeTokens.BLUR_CARD)
+                        .borderRadius({
+                          topLeft: ThemeTokens.R_BUBBLE,
+                          topRight: ThemeTokens.R_BUBBLE,
+                          bottomRight: ThemeTokens.R_TIGHT,
+                          bottomLeft: ThemeTokens.R_BUBBLE
+                        })
+                        .padding({ left: 17, right: 17, top: 13, bottom: 13 })
+                        .constraintSize({ maxWidth: '82%' })
+                        .shadow({ radius: 28, color: '#66000000', offsetY: 8 })
+                    } else if (m.kind === ReplyKind.HTML) {
+                      Column() {
+                        CanvasCard({
+                          html: m.content,
+                          onOpen: (): void => { this.openCanvas(m.content); }
+                        })
+                      }
+                      .width('100%')
+                    } else {
+                      Text(m.content)
+                        .fontSize(14)
+                        .lineHeight(23)
+                        .fontColor($r('app.color.text_hi'))
+                        .fontFamily('Sora, HarmonyOS Sans')
+                        .backgroundColor($r('app.color.glass_bg'))
+                        .backdropBlur(ThemeTokens.BLUR_CARD)
+                        .borderRadius({
+                          topLeft: ThemeTokens.R_BUBBLE,
+                          topRight: ThemeTokens.R_BUBBLE,
+                          bottomRight: ThemeTokens.R_BUBBLE,
+                          bottomLeft: ThemeTokens.R_TIGHT
+                        })
+                        .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+                        .padding({ left: 17, right: 17, top: 13, bottom: 13 })
+                        .constraintSize({ maxWidth: '82%' })
+                        .shadow({ radius: 28, color: '#66000000', offsetY: 8 })
+                      Blank()
                     }
-                    .width('100%')
-                  } else {
-                    Text(m.content)
-                      .fontSize(15)
-                      .fontColor('#3D3325')
-                      .backgroundColor('#FFFFFFA6')
-                      .borderRadius(16)
-                      .padding({ left: 14, right: 14, top: 10, bottom: 10 })
-                      .constraintSize({ maxWidth: '86%' })
-                    Blank()
                   }
+                  .width('100%')
+                  .alignItems(VerticalAlign.Top)
                 }
                 .width('100%')
-                .alignItems(VerticalAlign.Top)
+                .transition(TransitionEffect.OPACITY
+                  .combine(TransitionEffect.translate({ y: 16 }))
+                  .animation({ curve: ThemeTokens.EASE, duration: ThemeTokens.RISE_MS }))
               }
             }, (m: RenderMsg) => `msg_${m.id}`)
 
@@ -384,17 +426,18 @@ struct Chat {
               ListItem() {
                 Column({ space: 8 }) {
                   Row({ space: 8 }) {
-                    LoadingProgress().width(18).height(18).color('#E8930C')
-                    Text('正在处理…')
+                    LoadingProgress().width(18).height(18).color($r('app.color.accent'))
+                    Text('思考中…')
                       .fontSize(13)
-                      .fontColor('#8A7A5A')
+                      .fontColor($r('app.color.text_mid'))
                       .layoutWeight(1)
                     Button('取消')
                       .fontSize(13)
                       .height(30)
-                      .fontColor('#B25E00')
-                      .backgroundColor('#FFFFFFCC')
-                      .border({ width: 1, color: '#FFFFFF' })
+                      .fontColor($r('app.color.text_hi'))
+                      .backgroundColor($r('app.color.glass_bg'))
+                      .borderRadius(15)
+                      .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
                       .onClick(() => { this.cancelLoading(); })
                   }
                   .width('100%')
@@ -403,17 +446,19 @@ struct Chat {
                   ForEach(this.timeline, (e: LoopEvent, idx: number) => {
                     Text(timelineLabel(e))
                       .fontSize(13)
-                      .fontColor(e.kind === 'tool_done' ? '#4C7A28' : '#6B5B3E')
+                      .fontColor(e.kind === 'tool_done' ? '#4C7A28' : $r('app.color.text_mid'))
                       .maxLines(1)
                       .textOverflow({ overflow: TextOverflow.Ellipsis })
                       .width('100%')
                   }, (e: LoopEvent, idx: number) => `tl_${idx}`)
                 }
                 .alignItems(HorizontalAlign.Start)
-                .padding(12)
-                .borderRadius(14)
-                .backgroundColor('#FFFFFFA6')
-                .border({ width: 1, color: '#FFFFFFCC' })
+                .padding(14)
+                .borderRadius(ThemeTokens.R_CARD)
+                .backgroundColor($r('app.color.glass_bg'))
+                .backdropBlur(ThemeTokens.BLUR_CARD)
+                .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+                .shadow({ radius: 28, color: '#66000000', offsetY: 8 })
                 .width('100%')
               }
             }
@@ -437,36 +482,54 @@ struct Chat {
         .width('100%')
 
         // ===== 底部输入区 =====
-        Row({ space: 10 }) {
-          TextInput({ text: this.input, placeholder: '想弄懂什么？' })
-            .type(InputType.Normal)
-            .layoutWeight(1)
-            .height(42)
-            .backgroundColor('#FFFFFFA6')
-            .borderRadius(21)
-            .border({ width: 1, color: '#FFFFFFCC' })
-            .enabled(!this.loading)
-            .onChange((v: string) => { this.input = v; })
-            .onSubmit(() => { this.send(); })
-          Button(this.loading ? '停止' : '发送')
-            .fontSize(15)
-            .height(40)
-            .fontColor(this.loading ? '#B25E00' : '#FFFFFF')
-            .backgroundColor(this.loading ? '#FFFFFFCC' : '#E8930C')
-            .onClick(() => {
-              if (this.loading) { this.cancelLoading(); } else { this.send(); }
-            })
+        Column() {
+          Row({ space: 10 }) {
+            TextInput({ text: this.input, placeholder: '想弄懂什么？' })
+              .type(InputType.Normal)
+              .layoutWeight(1)
+              .height(40)
+              .backgroundColor(Color.Transparent)
+              .fontColor($r('app.color.text_hi'))
+              .placeholderColor($r('app.color.text_low'))
+              .fontSize(14)
+              .padding({ left: 16, right: 8 })
+              .enabled(!this.loading)
+              .onChange((v: string) => { this.input = v; })
+              .onSubmit(() => { this.send(); })
+
+            Button(this.loading ? '■' : '↑')
+              .width(40)
+              .height(40)
+              .fontSize(18)
+              .fontWeight(FontWeight.Bold)
+              .fontColor('#FFFFFF')
+              .backgroundColor($r('app.color.accent'))
+              .borderRadius(20)
+              .padding(0)
+              .onClick(() => {
+                if (this.loading) { this.cancelLoading(); } else { this.send(); }
+              })
+          }
+          .width('100%')
+          .padding({ left: 6, right: 6, top: 6, bottom: 6 })
+          .backgroundColor($r('app.color.glass_bg_strong'))
+          .backdropBlur(ThemeTokens.BLUR_DOCK)
+          .borderRadius(999)
+          .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+          .shadow({ radius: 30, color: '#44000000', offsetY: 10 })
+          .alignItems(VerticalAlign.Center)
+
+          Text('内容由 AI 生成，请甄别')
+            .fontSize(10)
+            .fontColor($r('app.color.text_low'))
+            .textAlign(TextAlign.Center)
+            .width('100%')
+            .margin({ top: 8 })
         }
-        .width('100%')
-        .padding({ left: 14, right: 14, top: 8, bottom: 14 })
-        .alignItems(VerticalAlign.Center)
-        .backgroundColor('#F2EADCB0')
-        .backgroundBlurStyle(BlurStyle.Thin)
-        .border({ width: { top: 1 }, color: '#FFFFFFCC' })
+        .margin({ left: 14, right: 14, bottom: this.navBarH + 22 })
       }
       .width('100%')
       .height('100%')
-      .backgroundColor('#FAF6EF')
 
       // ===== 侧抽屉：上半会话列表 + 下半历史轮次 =====
       if (this.showHistory) {
@@ -487,6 +550,7 @@ struct Chat {
     }
     .width('100%')
     .height('100%')
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
 }
