@@ -1,18 +1,39 @@
-// 设置页：OpenAI 兼容三项配置 + 获取模型列表 + 技能自动路由开关 + 独立搜索配置
+// 设置页：外观（壁纸自定义）+ OpenAI 兼容三项配置 + 获取模型列表 + 技能自动路由开关 + 独立搜索配置 + 关于
 // （联网方式三选已下线：agent 自主决定何时搜索，searchMode 字段保留不迁移）
 import { router, promptAction } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
+import { photoAccessHelper } from '@kit.MediaLibraryKit';
+import { fileIo as fs } from '@kit.CoreFileKit';
 import { AppConfig } from '../model/Types';
 import { ConfigStore } from '../store/ConfigStore';
 import { LlmClient } from '../service/LlmClient';
+import { ThemeTokens } from '../theme/ThemeTokens';
+import { WallpaperLayer } from '../common/WallpaperLayer';
+
+// TODO(task7): 新名字确定后全局替换
+const APP_NAME: string = '云开';
 
 interface ModelSelectOption {
   value: string;
 }
 
+// 玻璃卡片统一外壳
+@Extend(Column)
+function glassCard() {
+  .alignItems(HorizontalAlign.Start)
+  .padding(16)
+  .borderRadius(ThemeTokens.R_CARD)
+  .backgroundColor($r('app.color.glass_bg'))
+  .backdropBlur(ThemeTokens.BLUR_CARD)
+  .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+  .shadow({ radius: 28, color: '#40000000', offsetY: 8 })
+  .width('100%')
+}
+
 @Entry
 @Component
 struct Settings {
+  @StorageProp('statusBarH') statusBarH: number = 0;
   @State baseUrl: string = '';
   @State apiKey: string = '';
   @State model: string = '';
@@ -22,6 +43,7 @@ struct Settings {
   @State modelOptions: ModelSelectOption[] = [];
   @State modelSelected: string = '';
   @State fetchingModels: boolean = false;
+  @State wallpaperLabel: string = '默认';
 
   private ctx(): common.UIAbilityContext {
     return getContext(this) as common.UIAbilityContext;
@@ -29,6 +51,8 @@ struct Settings {
 
   aboutToAppear(): void {
     this.loadConfig();
+    ConfigStore.getWallpaper(this.ctx())
+      .then((p: string) => { this.wallpaperLabel = p === '' ? '默认' : '自定义'; });
   }
 
   private async loadConfig(): Promise<void> {
@@ -94,58 +118,132 @@ struct Settings {
     router.back();
   }
 
+  // 选图 → 复制进沙箱 → 写入 ConfigStore（返回对话页生效）
+  private async pickWallpaper(): Promise<void> {
+    try {
+      const picker = new photoAccessHelper.PhotoViewPicker();
+      const res: photoAccessHelper.PhotoSelectResult = await picker.select({
+        MIMEType: photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE,
+        maxSelectNumber: 1
+      });
+      if (res.photoUris.length === 0) { return; }
+      const ctx = this.ctx();
+      const dstPath: string = ctx.filesDir + '/wallpaper_custom.jpg';
+      const srcFile: fs.File = fs.openSync(res.photoUris[0], fs.OpenMode.READ_ONLY);
+      const dstFile: fs.File = fs.openSync(dstPath, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
+      fs.copyFileSync(srcFile.fd, dstFile.fd);
+      fs.closeSync(srcFile);
+      fs.closeSync(dstFile);
+      await ConfigStore.setWallpaper(ctx, 'file://' + dstPath);
+      this.wallpaperLabel = '自定义';
+      this.toast('已更换，返回对话页生效');
+    } catch (e) {
+      this.toast('更换失败：' + (e as Error).message);
+    }
+  }
+
+  private async resetWallpaper(): Promise<void> {
+    await ConfigStore.setWallpaper(this.ctx(), '');
+    this.wallpaperLabel = '默认';
+    this.toast('已恢复默认壁纸');
+  }
+
   build() {
     Stack() {
-      // 光斑：左上黄圆 + 右下珊瑚圆（blur 成柔光，给玻璃卡提供可虚化内容）
-      Column()
-        .width(360)
-        .height(360)
-        .position({ x: -80, y: 300 })
-        .borderRadius(260)
-        .backgroundColor('#4DFFD75E')
-        .blur(90)
-      Column()
-        .width(520)
-        .height(520)
-        .position({ x: 300, y: 1450 })
-        .borderRadius(320)
-        .backgroundColor('#47FF9D8A')
-        .blur(110)
+      WallpaperLayer()
 
       Scroll() {
       Column({ space: 18 }) {
-        Text('设置')
-          .fontSize(26)
-          .fontWeight(FontWeight.Bold)
-          .fontColor('#3D3325')
+        // ===== 顶栏：返回玻璃圆钮 + 标题 =====
+        Row({ space: 12 }) {
+          Button('‹')
+            .width(34)
+            .height(34)
+            .fontSize(18)
+            .fontColor($r('app.color.text_hi'))
+            .backgroundColor($r('app.color.glass_bg'))
+            .backdropBlur(20)
+            .borderRadius(17)
+            .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+            .padding(0)
+            .onClick(() => {
+              router.back();
+            })
+          Text('设置')
+            .fontSize(26)
+            .fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.text_hi'))
+            .fontFamily('Sora, HarmonyOS Sans')
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Center)
+        .margin({ top: this.statusBarH + 12 })
+
+        // ===== 外观卡片：壁纸自定义（点更换 / 长按恢复默认） =====
+        Column({ space: 10 }) {
+          Text('外观').fontSize(16).fontColor($r('app.color.text_mid')).width('100%')
+          Row() {
+            Text('壁纸').fontSize(15).fontColor($r('app.color.text_hi'))
+            Blank()
+            Text(this.wallpaperLabel).fontSize(13).fontColor($r('app.color.text_low'))
+            Button('更换')
+              .fontSize(13)
+              .height(30)
+              .fontColor($r('app.color.text_hi'))
+              .backgroundColor($r('app.color.glass_bg_strong'))
+              .borderRadius(15)
+              .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+              .margin({ left: 10 })
+              .onClick(() => {
+                this.pickWallpaper();
+              })
+          }
           .width('100%')
+          .alignItems(VerticalAlign.Center)
+          .gesture(
+            LongPressGesture()
+              .onAction(() => { this.resetWallpaper(); })
+          )
+          Text('长按此行恢复默认壁纸')
+            .fontSize(11).fontColor($r('app.color.text_low')).width('100%')
+        }
+        .glassCard()
 
         // ===== API 配置卡片 =====
         Column({ space: 12 }) {
-          Text('API 配置').fontSize(16).fontColor('#8A7350').width('100%')
-          Text('API 地址').fontSize(14).width('100%')
+          Text('API 配置').fontSize(16).fontColor($r('app.color.text_mid')).width('100%')
+          Text('API 地址').fontSize(14).fontColor($r('app.color.text_hi')).width('100%')
           TextInput({ text: this.baseUrl, placeholder: 'https://open.bigmodel.cn/api/paas/v4' })
             .type(InputType.Normal)
             .width('100%')
-            .backgroundColor('#FFFFFFF2')
+            .backgroundColor($r('app.color.glass_bg_strong'))
+            .fontColor($r('app.color.text_hi'))
+            .placeholderColor($r('app.color.text_low'))
             .borderRadius(12)
             .onChange((v: string) => { this.baseUrl = v; })
-          Text('API 密钥').fontSize(14).width('100%')
+          Text('API 密钥').fontSize(14).fontColor($r('app.color.text_hi')).width('100%')
           TextInput({ text: this.apiKey, placeholder: 'sk-...' })
             .type(InputType.Password)
             .width('100%')
-            .backgroundColor('#FFFFFFF2')
+            .backgroundColor($r('app.color.glass_bg_strong'))
+            .fontColor($r('app.color.text_hi'))
+            .placeholderColor($r('app.color.text_low'))
             .borderRadius(12)
             .onChange((v: string) => { this.apiKey = v; })
-          Text('模型名').fontSize(14).width('100%')
+          Text('模型名').fontSize(14).fontColor($r('app.color.text_hi')).width('100%')
           Row({ space: 10 }) {
             TextInput({ text: this.model, placeholder: '如 glm-4.7 / deepseek-chat' })
               .type(InputType.Normal)
               .layoutWeight(1)
-              .backgroundColor('#FFFFFFF2')
+              .backgroundColor($r('app.color.glass_bg_strong'))
+              .fontColor($r('app.color.text_hi'))
+              .placeholderColor($r('app.color.text_low'))
               .borderRadius(12)
               .onChange((v: string) => { this.model = v; })
             Button(this.fetchingModels ? '获取中…' : '获取模型列表')
+              .fontColor($r('app.color.text_hi'))
+              .backgroundColor($r('app.color.glass_bg_strong'))
+              .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
               .enabled(!this.fetchingModels)
               .onClick(() => {
                 this.fetchModels();
@@ -165,92 +263,71 @@ struct Settings {
               })
           }
         }
-        .alignItems(HorizontalAlign.Start)
-        .padding(16)
-        .borderRadius(18)
-        .backgroundColor('#FFFFFF66')
-        .backgroundBlurStyle(BlurStyle.Regular)
-        .border({ width: 1, color: '#FFFFFFB8' })
-        .shadow({ radius: 20, color: '#42342538', offsetY: 8 })
-        .width('100%')
+        .glassCard()
 
         // ===== 联网搜索卡片（搜索源/密钥；联网方式三选已下线，agent 自主决定何时搜索） =====
         Column({ space: 12 }) {
-          Text('联网搜索').fontSize(16).fontColor('#8A7350').width('100%')
+          Text('联网搜索').fontSize(16).fontColor($r('app.color.text_mid')).width('100%')
 
-          Text('搜索源').fontSize(14).width('100%')
+          Text('搜索源').fontSize(14).fontColor($r('app.color.text_hi')).width('100%')
           Row({ space: 14 }) {
             Radio({ value: 'bing', group: 'searchProvider' })
               .checked(this.searchProvider === 'bing')
+              .radioStyle({ checkedBackgroundColor: $r('app.color.accent') })
               .onChange((on: boolean) => { if (on) { this.searchProvider = 'bing'; } })
-            Text('必应(免key)').fontSize(15)
+            Text('必应(免key)').fontSize(15).fontColor($r('app.color.text_hi'))
             Radio({ value: 'bocha', group: 'searchProvider' })
               .checked(this.searchProvider === 'bocha')
+              .radioStyle({ checkedBackgroundColor: $r('app.color.accent') })
               .onChange((on: boolean) => { if (on) { this.searchProvider = 'bocha'; } })
-            Text('博查').fontSize(15)
+            Text('博查').fontSize(15).fontColor($r('app.color.text_hi'))
             Radio({ value: 'tavily', group: 'searchProvider' })
               .checked(this.searchProvider === 'tavily')
+              .radioStyle({ checkedBackgroundColor: $r('app.color.accent') })
               .onChange((on: boolean) => { if (on) { this.searchProvider = 'tavily'; } })
-            Text('Tavily').fontSize(15)
+            Text('Tavily').fontSize(15).fontColor($r('app.color.text_hi'))
           }
           .width('100%')
 
-          Text('搜索密钥').fontSize(14).width('100%')
+          Text('搜索密钥').fontSize(14).fontColor($r('app.color.text_hi')).width('100%')
           TextInput({ text: this.searchApiKey, placeholder: '博查或 Tavily 的 key' })
             .type(InputType.Password)
             .width('100%')
-            .backgroundColor('#FFFFFFF2')
+            .backgroundColor($r('app.color.glass_bg_strong'))
+            .fontColor($r('app.color.text_hi'))
+            .placeholderColor($r('app.color.text_low'))
             .borderRadius(12)
             .onChange((v: string) => { this.searchApiKey = v; })
 
           Text('搜索源选博查/Tavily 时需填密钥；必应免密钥。是否搜索由 agent 在对话中自主决定')
-            .fontSize(12).fontColor('#A08C66').width('100%')
+            .fontSize(12).fontColor($r('app.color.text_low')).width('100%')
         }
-        .alignItems(HorizontalAlign.Start)
-        .padding(16)
-        .borderRadius(18)
-        .backgroundColor('#FFFFFF66')
-        .backgroundBlurStyle(BlurStyle.Regular)
-        .border({ width: 1, color: '#FFFFFFB8' })
-        .shadow({ radius: 20, color: '#42342538', offsetY: 8 })
-        .width('100%')
+        .glassCard()
 
         // ===== 技能路由卡片：自动路由开关 =====
         Column({ space: 10 }) {
           Row({ space: 10 }) {
-            Text('技能自动路由').fontSize(15).fontColor('#3D3325').layoutWeight(1)
+            Text('技能自动路由').fontSize(15).fontColor($r('app.color.text_hi')).layoutWeight(1)
             Toggle({ type: ToggleType.Switch, isOn: this.autoRoute })
-              .selectedColor('#E8930C')
+              .selectedColor($r('app.color.accent'))
               .onChange((on: boolean) => { this.autoRoute = on; })
           }
           .width('100%')
           .alignItems(VerticalAlign.Center)
 
           Text('关=仅 @名字 手动触发技能')
-            .fontSize(12).fontColor('#A08C66').width('100%')
+            .fontSize(12).fontColor($r('app.color.text_low')).width('100%')
         }
-        .alignItems(HorizontalAlign.Start)
-        .padding(16)
-        .borderRadius(18)
-        .backgroundColor('#FFFFFF66')
-        .backgroundBlurStyle(BlurStyle.Regular)
-        .border({ width: 1, color: '#FFFFFFB8' })
-        .shadow({ radius: 20, color: '#42342538', offsetY: 8 })
-        .width('100%')
+        .glassCard()
 
         // ===== 技能库入口 =====
         Row() {
-          Text('技能库').fontSize(15).fontColor('#3D3325')
+          Text('技能库').fontSize(15).fontColor($r('app.color.text_hi'))
           Blank()
-          Text('›').fontSize(20).fontColor('#B25E00')
+          Text('›').fontSize(20).fontColor($r('app.color.accent'))
         }
         .padding({ left: 16, right: 16, top: 14, bottom: 14 })
-        .borderRadius(18)
-        .backgroundColor('#FFFFFF66')
-        .backgroundBlurStyle(BlurStyle.Regular)
-        .border({ width: 1, color: '#FFFFFFB8' })
-        .shadow({ radius: 20, color: '#42342538', offsetY: 8 })
-        .width('100%')
+        .glassCard()
         .onClick(() => {
           router.pushUrl({ url: 'pages/SkillManage' });
         })
@@ -259,11 +336,31 @@ struct Settings {
           .width('100%')
           .height(46)
           .fontSize(17)
+          .fontColor('#FFFFFF')
+          .backgroundColor($r('app.color.accent'))
           .onClick(() => {
             this.save();
           })
+
+        // ===== 关于卡片 =====
+        Column({ space: 6 }) {
+          Text(APP_NAME)
+            .fontSize(18)
+            .fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.text_hi'))
+            .fontFamily('Sora, HarmonyOS Sans')
+          Text('一个安静的 AI 对话空间')
+            .fontSize(12)
+            .fontColor($r('app.color.text_mid'))
+          Text('版本 0.2.0')
+            .fontSize(10.5)
+            .fontColor($r('app.color.text_low'))
+        }
+        .alignItems(HorizontalAlign.Center)
+        .padding(16)
+        .width('100%')
       }
-      .padding({ left: 18, right: 18, top: 20, bottom: 40 })
+      .padding({ left: 18, right: 18, bottom: 40 })
       .width('100%')
     }
     .scrollable(ScrollDirection.Vertical)
@@ -272,6 +369,6 @@ struct Settings {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor('#FAF6EF')
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 }
