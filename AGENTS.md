@@ -4,7 +4,7 @@
 自用鸿蒙 HarmonyOS NEXT **桌面 agent**（手机版 zcode）：打开即对话，agent loop 多步工具调用；@技能名 强制技能 / 自动路由可关；回答=聊天气泡或整页 HTML 画布（eli5 为内置 skill）。独立 git 仓库，纯本地（无 remote）。目录 project/yunkai/yunkai-harmony（09-08 迁入双子结构，兄弟仓 yunkai-android）。eli5 配方与 yunkai-android/app/src/main/res/raw/skill_eli5.md 保持一致，改动须双端同步。
 
 ## 构建与测试
-- CLI 构建：`DEVECO_SDK_HOME='D:\Huawei\DevEcoStudio\sdk' node "D:/Huawei/DevEcoStudio/tools/hvigor/bin/hvigorw.js" --mode module -p product=default assembleHap`
+- CLI 构建：`DEVECO_SDK_HOME='D:\Huawei\DevEcoStudio\sdk' node "D:/Huawei/DevEcoStudio/tools/hvigor/bin/hvigorw.js" --mode module -p product=default assembleHap`；**签名构建另需 `PATH` 前缀 DevEco 的 JBR（`/d/Huawei/DevEcoStudio/jbr/bin`，hap-sign-tool 是 jar，缺 java 报 spawn java ENOENT）且加 `--no-daemon`**（daemon 缓存旧 PATH 与旧 signingConfigs）
 - 测试包：同命令加 `-p module=entry@ohosTest`；产物在 `entry/build/default/outputs/{default,ohosTest}/`
 - 单测（模拟器实跑）：`hdc shell aa test -b com.zhuolin.yunkai -m entry_test -s unittest OpenHarmonyTestRunner -s class logicTest`（当前 43/43）
 - hdc 一律 Windows 反斜杠路径 + `MSYS_NO_PATHCONV=1`；模拟器 127.0.0.1:5555，真机序列号见记忆；Mimosa 拦构建命令时 Write 写 .sh 到 %TEMP% 再 bash
@@ -28,5 +28,6 @@ ArkTS（API 26）+ ArkWeb + RDB。入口 `entry/src/main/ets/`：
 ## 当前状态（2026-09-09）
 - M1 桌面 agent 已交付：run-all 三门 PASS（全量审查 1 Important 修 fb3c9dc / logicTest 43/43 / 门2 七路径+双模型回归），报告在 tests/fullflow/reports/
 - 09-09 Android 端语义回灌：LlmClient readTimeout 180s→600s + AgentLoop 逐步 hilog（step/模型/耗时/工具输出长度，对标 Android 版 Log.i 'yunkai'），hvigor clean assembleHap 编译通过
-- 模拟器跑的是最新版（glm-5.3-flash 主模型）；真机已装旧版待升级重配
-- 待办：真机升级（装上含 600s+日志的新版）；M2=文件读写+记忆库+SSE 流式+气泡 markdown 渲染+iframe 剥离+List 画布卡重建卡顿
+- **09-09 真机（Pura 70, 2MH0224513029186）已装签名新版**：新包名 Profile 经 DevEco 自动签名重新签发（签名材料 `~/.ohos/config/default_yunkai-harmony_*`），启动冒烟通过。坑两枚：① products 必须显式 `"signingConfig": "default"` 否则 hvigor 报 No signingConfig found；② 自动签名走 AGC 必须**国内直连**——iKuuuVPN TUN fake-ip 全局拦路时 AGC 403「添加设备失败」，断 VPN 后重试即过
+- 模拟器跑的是最新版（glm-5.3-flash 主模型）
+- 待办：M2=文件读写+记忆库+SSE 流式+气泡 markdown 渲染+iframe 剥离+List 画布卡重建卡顿
