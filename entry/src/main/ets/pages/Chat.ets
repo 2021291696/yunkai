@@ -471,6 +471,7 @@ struct Chat {
           // ===== 引导态：无任何消息时 =====
           if (this.msgs.length === 0) {
             GuidePage({
+              convCount: this.convs.length,
               onAsk: (q: string): void => {
                 this.input = q;
                 this.send();

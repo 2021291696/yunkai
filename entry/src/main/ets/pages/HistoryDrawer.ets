@@ -1,6 +1,7 @@
 // 会话与历史侧抽屉：上半会话列表（点击进入/长按删除）+ 下半当前会话历史轮次（点击滚动定位）。
 // 纯展示组件：数据由 Chat 传入，动作经回调上抛（含 onClose），自身不持有路由/DB 逻辑
 import { Conv, Msg } from '../model/Types';
+import { ThemeTokens } from '../theme/ThemeTokens';
 
 @Component
 export struct HistoryDrawer {
@@ -37,11 +38,26 @@ export struct HistoryDrawer {
   build() {
     Column() {
       Row() {
-        Text('会话与历史').fontSize(18).fontWeight(FontWeight.Bold).fontColor('#3D3325').layoutWeight(1)
-        Text('收起 ✕').fontSize(15).fontColor('#B25E00')
+        Text('对话')
+          .fontSize(18)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.text_hi'))
+          .fontFamily('Sora, HarmonyOS Sans')
+          .layoutWeight(1)
+        Button('✕')
+          .width(34)
+          .height(34)
+          .fontSize(14)
+          .fontColor($r('app.color.text_hi'))
+          .backgroundColor($r('app.color.glass_bg'))
+          .backdropBlur(20)
+          .borderRadius(17)
+          .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+          .padding(0)
           .onClick(() => { this.onClose(); })
       }
       .width('100%')
+      .alignItems(VerticalAlign.Center)
       .padding(16)
 
       Row({ space: 10 }) {
@@ -49,14 +65,18 @@ export struct HistoryDrawer {
           .fontSize(14)
           .height(34)
           .fontColor('#FFFFFF')
-          .backgroundColor('#E8930C')
+          .backgroundColor($r('app.color.accent'))
+          .borderRadius(999)
           .layoutWeight(1)
           .onClick(() => { this.onNewConversation(); })
         Button('设置')
           .fontSize(14)
           .height(34)
-          .fontColor('#7A5B1E')
-          .backgroundColor('#FFE9C7')
+          .fontColor($r('app.color.text_hi'))
+          .backgroundColor($r('app.color.glass_bg'))
+          .backdropBlur(20)
+          .borderRadius(999)
+          .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
           .layoutWeight(1)
           .onClick(() => { this.onOpenSettings(); })
       }
@@ -64,13 +84,14 @@ export struct HistoryDrawer {
       .padding({ left: 16, right: 16, bottom: 10 })
 
       Text('会话')
-        .fontSize(13)
-        .fontColor('#A08C66')
+        .fontSize(11)
+        .fontColor($r('app.color.text_low'))
+        .letterSpacing(1.2)
         .width('100%')
         .padding({ left: 16, bottom: 6 })
 
       if (this.convs.length === 0) {
-        Text('暂无会话').fontSize(14).fontColor('#A08C66').padding(16)
+        Text('暂无会话').fontSize(14).fontColor($r('app.color.text_low')).padding(16)
       } else {
         List({ space: 8 }) {
           ForEach(this.convs, (c: Conv) => {
@@ -78,19 +99,21 @@ export struct HistoryDrawer {
               Column({ space: 4 }) {
                 Text(c.title)
                   .fontSize(15)
-                  .fontColor('#3D3325')
+                  .fontColor($r('app.color.text_hi'))
                   .maxLines(1)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
                   .width('100%')
                 Text(this.timeLabel(c.updatedAt))
                   .fontSize(12)
-                  .fontColor('#A08C66')
+                  .fontColor($r('app.color.text_low'))
                   .width('100%')
               }
               .alignItems(HorizontalAlign.Start)
               .padding(12)
-              .borderRadius(12)
-              .backgroundColor('#FFFFFF8C')
+              .borderRadius(16)
+              .backgroundColor($r('app.color.glass_bg'))
+              .backdropBlur(ThemeTokens.BLUR_CARD)
+              .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
               .width('100%')
               .onClick(() => { this.onOpenConversation(c.id); })
               .gesture(
@@ -105,16 +128,17 @@ export struct HistoryDrawer {
         .padding({ left: 12, right: 12 })
       }
 
-      Divider().color('#E8DCC4').margin({ left: 16, right: 16, top: 8, bottom: 8 })
+      Divider().color($r('app.color.glass_border')).margin({ left: 16, right: 16, top: 8, bottom: 8 })
 
       Text('历史轮次')
-        .fontSize(13)
-        .fontColor('#A08C66')
+        .fontSize(11)
+        .fontColor($r('app.color.text_low'))
+        .letterSpacing(1.2)
         .width('100%')
         .padding({ left: 16, bottom: 6 })
 
       if (this.turns.length === 0) {
-        Text('还没有讲解记录').fontSize(14).fontColor('#A08C66').padding(16)
+        Text('还没有讲解记录').fontSize(14).fontColor($r('app.color.text_low')).padding(16)
       } else {
         List({ space: 8 }) {
           ForEach(this.turns, (m: Msg) => {
@@ -122,17 +146,20 @@ export struct HistoryDrawer {
               ListItem() {
                 Column({ space: 4 }) {
                   Text(`第${m.turnNo}轮`)
-                    .fontSize(12).fontColor('#B25E00')
+                    .fontSize(12).fontColor($r('app.color.accent'))
                   Text(this.questionOf(m.turnNo))
                     .fontSize(15)
+                    .fontColor($r('app.color.text_hi'))
                     .maxLines(2)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
                     .width('100%')
                 }
                 .alignItems(HorizontalAlign.Start)
                 .padding(12)
-                .borderRadius(12)
-                .backgroundColor('#FFFFFF8C')
+                .borderRadius(16)
+                .backgroundColor($r('app.color.glass_bg'))
+                .backdropBlur(ThemeTokens.BLUR_CARD)
+                .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
                 .width('100%')
                 .onClick(() => { this.onOpenTurn(m.turnNo); })
               }
@@ -146,8 +173,9 @@ export struct HistoryDrawer {
     }
     .width('86%')
     .height('100%')
-    .backgroundColor('#F7F1E6F5')
-    .backgroundBlurStyle(BlurStyle.Regular)
+    .backgroundColor($r('app.color.glass_bg_strong'))
+    .backdropBlur(ThemeTokens.BLUR_DOCK)
+    .border({ width: { left: ThemeTokens.BORDER_W }, color: $r('app.color.glass_border') })
     .alignItems(HorizontalAlign.Start)
   }
 }
