@@ -27,13 +27,15 @@ Kotlin 2.0.21 + AGP 8.9.1（compileSdk 36 / minSdk 30 / targetSdk 36）+ Compose
 - HTML 解析用正则直译鸿蒙版语义（parseBing/stripTags/decodeEntities），**不引入 jsoup**——保持两端行为逐字节一致
 - `SearchClient.STOPWORDS` 与鸿蒙版逐字一致，一个词不许改
 - 单文件不超过 500 行；单测全在 `app/src/test/`（JVM），不进 `androidTest/`
+- **LlmClient readTimeout 必须 ≥600s**：非流式 glm-4.7 长文生成实测 140s+，180s 必超时（模拟器真 key 两次复现 `send failed: timeout`）
 - 鸿蒙源码（移植语义唯一依据）：`../yunkai-harmony/entry/src/main/ets/`；**eli5 配方与 yunkai-harmony 的 `entry/src/main/resources/rawfile/skill_eli5.md` 保持逐字节一致（md5 对拍），改动须双端同步**
 - 每个 Task 结束即 commit（commit message 不带任何 AI 署名）
 
-## 当前状态（2026-09-09 · run-all 三门全绿）
+## 当前状态（2026-09-09 · 模拟器成品验收通过）
 - A0→A4 全量移植完成并过 run-all 三门：门0 logic-review --full 清零（421d7bc）/ 门1 CLI 72 单测+真 LLM 直连（DEEPSEEK_API_KEY，DeepSeekChainTest 无 key 自动 skip）/ 门2 AI 驱动模拟器九步骤全 PASS（证据 tests/fullflow/reports/2026-09-09_022136_run/）
 - M1 功能清单逐项平移：裸对话/AgentLoop 三工具/时间线+取消/双模型分工/@强制/autoRoute/技能管理/eli5 画布/引导页/历史抽屉
-- 现场修复两枚（均复验）：技能页返回死键（NavRoot 未传 onBack）；会话切换回归（initialized 守卫拦截 openConversation → 直调 load）
+- 现场修复三枚（均复验）：技能页返回死键（NavRoot 未传 onBack）；会话切换回归（initialized 守卫拦截 openConversation → 直调 load）；LlmClient readTimeout 180s→600s（非流式 glm-4.7 长文必超 180s）
+- **模拟器配真智谱 key 成品验收全过**（2026-09-09，AVD quizlens_test）：裸对话 ✅ / 联网搜索（必应免key，返回 1 天前新鲜结果）✅ / @eli5 画布全链路（use_skill → 切 glm-4.7 → ~140s 生成 → 列表卡片 → 整页 Canvas 中文无乱码可滚动 → 返回）✅ / 历史抽屉+长按删除+已删除 toast ✅ / 新对话不留空记录 ✅ / 技能库 eli5 内置徽标 ✅
 - 已知使用提示：eli5 画布依赖模型产出纯 HTML——deepseek-chat 有前言习惯会按唯一口径降级文本气泡（与鸿蒙一致），glm-4.7/智谱端点下画布稳定
-- 真机 K40 七路径手验待用户执行（模拟器无智谱 key，glm 双模型分工真链路未在设备端覆盖）
-- M2 试验田顺序：B1 SSE 流式 → B2 气泡 markdown → B3 文件读写 → B4 记忆库；每项 Android 验证稳定后语义回灌鸿蒙
+- 真机 K40 验收待用户执行（模拟器成品已就绪，步骤：插线开 USB 调试 → adb devices → install -r → 设置页填同套智谱配置 → 过七路径）
+- M2 试验田顺序：B1 SSE 流式 → B2 气泡 markdown → B3 文件读写 → B4 记忆库；每项 Android 验证稳定后语义回灌鸿蒙（readTimeout 600s 已确认需回灌鸿蒙 LlmClient.ets）

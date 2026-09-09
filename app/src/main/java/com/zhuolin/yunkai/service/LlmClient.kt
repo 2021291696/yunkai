@@ -43,7 +43,9 @@ private data class ChatRequestBody(
 class LlmClient(private val cfg: AppConfig) {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true; explicitNulls = false }
     private val client = OkHttpClient.Builder()
-        .readTimeout(180, TimeUnit.SECONDS) // 整页 HTML 生成慢
+        // 非流式下 glm-4.7 长文（1 万+ token）实测 180s 无字节必超时（模拟器 eli5 两次复现），
+        // 放宽到 600s；OkHttp readTimeout 是读间隔超时而非总时长，长连接保活不受影响
+        .readTimeout(600, TimeUnit.SECONDS)
         .connectTimeout(15, TimeUnit.SECONDS)
         .build()
 
