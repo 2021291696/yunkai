@@ -70,7 +70,7 @@ export class AgentLoop {
     for (const t of M2Tools.createAll(ctx)) {
       tools.push(t);
     }
-    const toolDefs: ToolDef[] = [];
+    let toolDefs: ToolDef[] = [];
     for (const t of tools) {
       const def: ToolDef = {
         type: 'function',
@@ -125,6 +125,10 @@ export class AgentLoop {
           // 失败/error 回传不切换，模型仍用主模型自行调整策略
           if (tc.function.name === 'use_skill' && !out.startsWith('{"error"')) {
             longFormActive = true;
+            // M2 文件/记忆工具在长文形态下移出工具表：eli5 的产出契约是「整页 HTML 直接写在
+            // 回答正文」，write_file 会把页面吸进沙箱文件让画布判定失效（门2 实测回归）
+            const m2Names: string[] = ['read_file', 'write_file', 'memory_save', 'memory_search'];
+            toolDefs = toolDefs.filter(d => d.function !== undefined && !m2Names.includes(d.function.name));
           }
           onEvent(AgentLoop.ev('tool_done', tc.function.name, out.substring(0, 80)));
           const tm: ChatMsg = { role: 'tool', tool_call_id: tc.id, content: out };
