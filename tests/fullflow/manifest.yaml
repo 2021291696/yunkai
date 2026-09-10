@@ -147,14 +147,14 @@ flow:
       ui:
         - { action: click, target: "text=‹ 返回" }
         - { action: click, target: "左上角侧边栏按钮 ☰" }
-        - { action: expect_visible, target: "text=会话与历史" }
+        - { action: expect_visible, target: "text=会话" }
         - { action: click, target: "text=＋ 新对话" }
         - { action: expect_visible, target: "text=新对话" }
 
     - id: drawer_dismiss          # ⑩ 抽屉收起：✕ 符号钮 / 点面板外区域
       ui:
         - { action: click, target: "左上角侧边栏按钮 ☰" }
-        - { action: expect_visible, target: "text=会话与历史" }
+        - { action: expect_visible, target: "text=会话" }
         - { action: click, target: "抽屉头部右侧 ✕ 钮（无「收起」二字）" }
         - { action: click, target: "左上角侧边栏按钮 ☰" }
         - { action: click, target: "屏幕右侧非抽屉区域（面板外空白）" }

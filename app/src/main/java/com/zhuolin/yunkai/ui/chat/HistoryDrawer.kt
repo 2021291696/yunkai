@@ -86,7 +86,9 @@ fun HistoryDrawer(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("会话与历史", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextDark, modifier = Modifier.weight(1f))
+                Text("会话", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextDark, modifier = Modifier.weight(1f))
+                // 长按删除是本列表唯一的隐藏操作，提示挂在标题行（下方不再单起一行分区标题）
+                Text("长按可删除", fontSize = 11.sp, color = TextFaint, modifier = Modifier.padding(end = 10.dp))
                 // 收起钮只留符号（无「收起」二字），圆玻璃钮对齐全 app 圆钮惯例
                 Box(
                     modifier = Modifier
@@ -118,14 +120,6 @@ fun HistoryDrawer(
                         .clickable(onClick = onOpenSettings),
                     contentAlignment = Alignment.Center,
                 ) { Text("⚙", fontSize = 16.sp, color = glass.accent) }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("会话", fontSize = 13.sp, color = TextFaint, modifier = Modifier.weight(1f))
-                Text("长按可删除", fontSize = 11.sp, color = TextFaint)
             }
 
             if (convs.isEmpty()) {
