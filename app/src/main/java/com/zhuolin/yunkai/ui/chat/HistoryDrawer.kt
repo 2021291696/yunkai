@@ -2,6 +2,7 @@ package com.zhuolin.yunkai.ui.chat
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -11,7 +12,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,6 +31,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zhuolin.yunkai.model.Conv
 import com.zhuolin.yunkai.model.Msg
+import com.zhuolin.yunkai.ui.theme.GlassTokens
+import com.zhuolin.yunkai.ui.theme.LocalGlassScheme
 import com.zhuolin.yunkai.ui.theme.TextDark
 import com.zhuolin.yunkai.ui.theme.TextFaint
 import com.zhuolin.yunkai.ui.theme.WarmOrange
@@ -52,6 +57,7 @@ fun HistoryDrawer(
     onOpenTurn: (Int) -> Unit,
 ) {
     if (!visible) return
+    val glass = LocalGlassScheme.current
 
     // 从 turns 里找该轮对应的问题（轮次列表展示用）
     fun questionOf(turnNo: Int): String {
@@ -67,7 +73,9 @@ fun HistoryDrawer(
         modifier = Modifier
             .fillMaxHeight()
             .fillMaxWidth(0.86f)
-            .background(androidx.compose.material3.MaterialTheme.colorScheme.surface)
+            .background(glass.glassBgStrong) // 玻璃面板，透出壁纸
+            .statusBarsPadding() // 抽屉头部避让状态栏
+            .navigationBarsPadding()
             .padding(top = 16.dp),
     ) {
         Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
@@ -88,7 +96,7 @@ fun HistoryDrawer(
             Button(
                 onClick = onOpenSettings,
                 modifier = Modifier.weight(1f).height(34.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color(0xFFFFE9C7), contentColor = WarmOrangeDeep),
+                colors = ButtonDefaults.buttonColors(containerColor = glass.glassBg, contentColor = glass.accent),
             ) { Text("设置", fontSize = 14.sp) }
         }
 
@@ -105,7 +113,8 @@ fun HistoryDrawer(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(androidx.compose.ui.graphics.Color(0x8CFFFFFF), RoundedCornerShape(12.dp))
+                            .background(glass.glassBg, RoundedCornerShape(12.dp))
+                            .border(GlassTokens.BORDER_W.dp, glass.glassBorder, RoundedCornerShape(12.dp))
                             .combinedClickable(
                                 onClick = { onOpenConversation(c.id) },
                                 onLongClick = { onDeleteConversation(c) },
@@ -119,7 +128,7 @@ fun HistoryDrawer(
             }
         }
 
-        HorizontalDivider(color = androidx.compose.ui.graphics.Color(0xFFE8DCC4), modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+        HorizontalDivider(color = glass.glassBorder, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
 
         Text("历史轮次", fontSize = 13.sp, color = TextFaint, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
 
@@ -135,7 +144,8 @@ fun HistoryDrawer(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(androidx.compose.ui.graphics.Color(0x8CFFFFFF), RoundedCornerShape(12.dp))
+                                .background(glass.glassBg, RoundedCornerShape(12.dp))
+                                .border(GlassTokens.BORDER_W.dp, glass.glassBorder, RoundedCornerShape(12.dp))
                                 .clickable { onOpenTurn(m.turnNo) }
                                 .padding(12.dp),
                         ) {
