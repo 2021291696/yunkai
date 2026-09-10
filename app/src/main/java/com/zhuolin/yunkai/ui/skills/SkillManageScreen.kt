@@ -7,6 +7,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,9 +15,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -34,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -50,6 +55,8 @@ import com.zhuolin.yunkai.service.SkillImporter
 import com.zhuolin.yunkai.ui.settings.GlassCard
 import com.zhuolin.yunkai.ui.theme.CardBorder
 import com.zhuolin.yunkai.ui.theme.CardGlass
+import com.zhuolin.yunkai.ui.theme.GlassTokens
+import com.zhuolin.yunkai.ui.theme.LocalGlassScheme
 import com.zhuolin.yunkai.ui.theme.TextDark
 import com.zhuolin.yunkai.ui.theme.TextMuted
 import com.zhuolin.yunkai.ui.theme.WarmOrange
@@ -155,6 +162,7 @@ fun SkillManageScreen(onBack: () -> Unit = {}) {
     val app = LocalContext.current.applicationContext as YunkaiApp
     val vm: SkillManageViewModel = viewModel(factory = viewModelFactory { initializer { SkillManageViewModel(app) } })
     val context = LocalContext.current
+    val glass = LocalGlassScheme.current
     var deleteTarget by remember { mutableStateOf<AgentSkill?>(null) }
 
     LaunchedEffect(Unit) { vm.refresh() }
@@ -180,15 +188,22 @@ fun SkillManageScreen(onBack: () -> Unit = {}) {
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .statusBarsPadding() // 边缘到边缘后避让状态栏
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 18.dp, vertical = 8.dp),
     ) {
-        // ===== 顶部：返回 + 标题 =====
+        // ===== 顶部：玻璃圆返回钮 + 标题（对齐鸿蒙技能库页）=====
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 6.dp)) {
-            Text("‹", fontSize = 28.sp, color = TextDark, modifier = Modifier
-                .clickable(onClick = onBack)
-                .padding(horizontal = 12.dp, vertical = 2.dp))
-            Text("技能库", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = TextDark)
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(CircleShape)
+                    .background(glass.glassBg)
+                    .border(GlassTokens.BORDER_W.dp, glass.glassBorder, CircleShape)
+                    .clickable(onClick = onBack),
+                contentAlignment = Alignment.Center,
+            ) { Text("‹", fontSize = 18.sp, color = glass.textHi) }
+            Text("技能库", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = TextDark, modifier = Modifier.padding(start = 12.dp))
         }
 
         // ===== 列表区 =====
@@ -204,8 +219,8 @@ fun SkillManageScreen(onBack: () -> Unit = {}) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(CardGlass, RoundedCornerShape(16.dp))
-                            .border(1.dp, CardBorder, RoundedCornerShape(16.dp))
+                            .background(CardGlass, RoundedCornerShape(GlassTokens.R_CARD.dp))
+                            .border(GlassTokens.BORDER_W.dp, CardBorder, RoundedCornerShape(GlassTokens.R_CARD.dp))
                             .combinedClickable(
                                 onClick = {},
                                 onLongClick = { if (!skill.builtin) deleteTarget = skill },
@@ -216,9 +231,9 @@ fun SkillManageScreen(onBack: () -> Unit = {}) {
                             Text(skill.name, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextDark, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                             if (skill.builtin) {
                                 Text(
-                                    "内置", fontSize = 11.sp, color = WarmOrangeDeep,
+                                    "内置", fontSize = 11.sp, color = glass.accent,
                                     modifier = Modifier
-                                        .background(androidx.compose.ui.graphics.Color(0xFFFFE3B3), RoundedCornerShape(9.dp))
+                                        .background(glass.accentSoft, RoundedCornerShape(9.dp))
                                         .padding(horizontal = 8.dp, vertical = 3.dp),
                                 )
                             }

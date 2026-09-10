@@ -2,28 +2,32 @@ package com.zhuolin.yunkai.ui.canvas
 
 import android.util.Base64
 import android.webkit.WebView
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.background
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.zhuolin.yunkai.service.HtmlGuard
+import com.zhuolin.yunkai.ui.theme.LocalGlassScheme
 import com.zhuolin.yunkai.ui.theme.TextDark
 import com.zhuolin.yunkai.ui.theme.TextMuted
-import com.zhuolin.yunkai.ui.theme.TopBarGlass
-import com.zhuolin.yunkai.ui.theme.WarmOrangeDeep
 
 // 全屏画布页：整屏 WebView 展示消息流画布卡对应的 HTML。
 // html 经 CanvasHolder 暂存传入；sanitize + data:base64 URL 方案（明文 loadData 有中文/#/% 截断坑，禁用）
@@ -32,17 +36,25 @@ fun CanvasScreen(onBack: () -> Unit) {
     val raw = CanvasHolder.html
     val safe = remember(raw) { HtmlGuard.sanitize(raw) }
 
-    Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        // ===== 顶栏 =====
+    Column(modifier = Modifier.fillMaxSize()) { // 透明底，透出壁纸层
+        val glass = LocalGlassScheme.current
+        // ===== 顶栏：玻璃圆返回钮 + 标题（对齐鸿蒙）=====
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(TopBarGlass)
+                .statusBarsPadding()
                 .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("‹ 返回", fontSize = 16.sp, color = WarmOrangeDeep, modifier = Modifier
-                .clickable(onClick = onBack))
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(CircleShape)
+                    .background(glass.glassBg)
+                    .border(0.5.dp, glass.glassBorder, CircleShape)
+                    .clickable(onClick = onBack),
+                contentAlignment = Alignment.Center,
+            ) { Text("‹", fontSize = 18.sp, color = glass.textHi) }
             Text("画布", fontSize = 19.sp, color = TextDark, modifier = Modifier.padding(start = 12.dp))
         }
 

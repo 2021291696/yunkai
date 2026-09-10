@@ -34,8 +34,8 @@ fun CanvasCard(html: String, onOpen: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(16.dp))
-            .border(1.dp, CardBorder, RoundedCornerShape(16.dp)),
+            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(20.dp))
+            .border(0.5.dp, CardBorder, RoundedCornerShape(20.dp)),
     ) {
         // 卡头：全屏入口条（Web 区域手势被 WebView 吃掉，入口做在卡头条上）
         Row(
