@@ -6,7 +6,9 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.zhuolin.yunkai.model.AppConfig
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 
 // 配置存取：DataStore preferences 'yunkai_cfg'，键与 AppConfig 字段同名。
 // searchMode 是鸿蒙版保留字段（UI 三选已下线），Android 全新安装无存量 schema 负担，
@@ -39,6 +41,17 @@ class ConfigStore(private val ctx: Context) {
         }
     }
 
+    // 自定义壁纸（file 绝对路径），空串 = 默认壁纸。独立于 AppConfig，与鸿蒙版 ConfigStore.getWallpaper 同语义。
+    val wallpaperFlow: Flow<String> = ctx.dataStore.data.map { it[K_WALLPAPER] ?: "" }
+
+    suspend fun getWallpaper(): String = ctx.dataStore.data.first()[K_WALLPAPER] ?: ""
+
+    suspend fun setWallpaper(path: String) {
+        ctx.dataStore.edit { p ->
+            if (path.isEmpty()) p.remove(K_WALLPAPER) else p[K_WALLPAPER] = path
+        }
+    }
+
     companion object {
         private val K_BASE_URL = stringPreferencesKey("baseUrl")
         private val K_API_KEY = stringPreferencesKey("apiKey")
@@ -47,5 +60,6 @@ class ConfigStore(private val ctx: Context) {
         private val K_AUTO_ROUTE = booleanPreferencesKey("autoRoute")
         private val K_SEARCH_PROVIDER = stringPreferencesKey("searchProvider")
         private val K_SEARCH_KEY = stringPreferencesKey("searchApiKey")
+        private val K_WALLPAPER = stringPreferencesKey("wallpaper")
     }
 }
