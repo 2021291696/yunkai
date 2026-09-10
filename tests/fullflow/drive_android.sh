@@ -9,6 +9,7 @@
 #   —— 换了 AVD 分辨率要先改这两个固定坐标（其余坐标全部由 dump 动态解析）
 #
 # 平台坑（本轮实测，改动本脚本前先读）：
+#  0) ADBKeyboard.apk 随仓在 tests/fullflow/tools/（`adb install -r` + `ime set com.android.adbkeyboard/.AdbIME`），不用重新下载
 #  1) AVD 无中文 IME：`input text` 与 MCP android_ui_type_text 对非 ASCII 都报 `Attempt to get length of null array`
 #     → 装 ADBKeyboard（`adb install -r ADBKeyboard.apk` + `ime set com.android.adbkeyboard/.AdbIME`）+ broadcast 注入
 #  2) `adb shell` 会把参数里的空格当分隔符**再切一次词**（设备侧 shell 二次解析）→ 含空格的文本必须给设备侧加引号

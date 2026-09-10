@@ -22,7 +22,7 @@
 ## 全流程测试（run-all）
 清单 `tests/fullflow/manifest.yaml`（单路径 base：3 条 cli + 12 条 ui）；门2 驱动原语见 `tests/fullflow/drive_android.sh`（坐标全部由 dump 动态解析，平台坑写在文件头）。
 - 门1：`export JAVA_HOME="C:\Program Files\Eclipse Adoptium\jdk-21.0.10.7-hotspot" ANDROID_HOME=D:\Android\Sdk` 之后 `uv run --with pyyaml python <skill>/executor/run.py --manifest tests/fullflow/manifest.yaml --gate api`——**run.py 与 MCP 都不设环境变量**，必须在父 shell export，否则子进程继承到 IntelliJ 的 JBR（缺 jlink）直接 RED
-- 门2：AI 驱动模拟器；`android-emulator` 的 `android_build_and_run` 不设 JAVA_HOME（同样撞 JBR）→ **用 Temurin 预构建 APK，只用 MCP 起模拟器/装/启**
+- 门2：AI 驱动模拟器（中文输入需先 `adb install -r tests/fullflow/tools/ADBKeyboard.apk` 并切 IME，包随仓提供）；`android-emulator` 的 `android_build_and_run` 不设 JAVA_HOME（同样撞 JBR）→ **用 Temurin 预构建 APK，只用 MCP 起模拟器/装/启**
 - 报告落 `tests/fullflow/reports/<时间戳>_run/`（门1）与 `<时间戳>_ui/`（门2，含 `agent_results.json` + `artifacts/agent-ui/<runID>/` 截图）
 
 ## 技术栈与目录
