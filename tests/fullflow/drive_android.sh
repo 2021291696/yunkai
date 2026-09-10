@@ -92,7 +92,7 @@ send_chat() { hide_ime; tap 280 537; }
 to_settings() { tap_text '☰'; sleep 1; tap_text '⚙'; sleep 2; }
 
 s1_launch_guide() { wake; launch; dump; echo "① 引导页："; texts; shot 01_launch_guide.png; expect '问我任何问题'; }
-s2_guard() { wake; launch; type_cn '你好'; send_chat; sleep 1; $ADB shell screencap -p /sdcard/s.png >/dev/null 2>&1; $ADB pull /sdcard/s.png "$EV\\02_guard_toast.png" >/dev/null 2>&1; shot 02b_after.png; }
+s2_guard() { wake; launch; type_chat '你好'; send_chat; sleep 2; $ADB shell screencap -p /sdcard/s.png >/dev/null 2>&1; $ADB pull /sdcard/s.png "$EV\\02_guard_toast.png" >/dev/null 2>&1; sleep 1; $ADB shell screencap -p /sdcard/s.png >/dev/null 2>&1; $ADB pull /sdcard/s.png "$EV\\02c_after.png" >/dev/null 2>&1; shot 02b_after.png; }
 s3_config() { wake; launch; to_settings; field 1; type_cn 'https://api.deepseek.com/v1'; field 2; type_cn "$DEEPSEEK_API_KEY"; field 3; type_cn 'deepseek-chat'
   hide_ime; tap_text_scroll '保存'; sleep 2; launch; to_settings; dump; expect 'api.deepseek.com'; shot 03_restored.png; }
 s4_skill_create() { wake; launch; to_settings; tap_text_scroll '技能库'; sleep 2; tap_text '＋ 新建'; sleep 2; field 1; type_cn '测试技能-ab12'
@@ -103,20 +103,15 @@ s4b_skill_import() { wake; launch; to_settings; tap_text_scroll '技能库'; sle
 s5_bare_llm() { wake; launch; type_chat '用一句话回答：1+1等于几？'; send_chat; sleep 30; dump; echo "⑤ 回答："; texts; shot 05_bare_llm.png; }
 s6_search() { wake; launch; type_chat '今天有什么科技新闻？'; send_chat; sleep 12; dump; echo "⑥ 加载中："; texts
   sleep 40; dump; echo "⑥ 回答："; texts; shot 06_answer.png; $ADB logcat -d -s yunkai 2>/dev/null | tail -8; }
-s7_cancel() { wake; launch; type_chat '详细介绍一下人工智能的历史'; send_chat; sleep 6; dump; echo "⑦ 加载中（应见 取消）："; texts
-  tap_text '取消'; sleep 3; dump; echo "⑦ 取消后："; texts; shot 07_cancelled.png; }
+s7_cancel() { wake; launch; type_chat '详细介绍一下人工智能的历史，写长一点'; send_chat; sleep 2; dump; echo "⑦ 加载中（应见 取消）："; texts; shot 07a_loading.png
+  tap_text '取消' || tap 280 537; sleep 3; dump; echo "⑦ 取消后："; texts; shot 07_cancelled.png; }
 s8_eli5() { wake; launch; tap_text '@eli5 讲讲黑洞是怎么形成的'; sleep 150; dump; expect '画布'; tap_text '画布 · 点此全屏查看'; sleep 4; dump; echo "⑧ 全屏画布："; texts; shot 08_canvas.png; }
 s9_history() { wake; launch; tap_text '☰'; sleep 1; dump; echo "⑨ 抽屉："; texts; tap_text '＋ 新对话'; sleep 2; dump; expect '问我任何问题'; shot 09_new_conv.png; }
 s10_dismiss() { wake; launch; tap_text '☰'; sleep 1; tap_text '✕'; sleep 1; tap_text '☰'; sleep 1; tap 290 300; sleep 2
   type_chat '抽屉已收起'; dump; expect '抽屉已收起'; shot 10_dismiss.png; }
-s15_switch_loading() { wake; launch; type_chat '今天有什么科技新闻？'; send_chat; sleep 4; tap_text '☰'; sleep 1
-  tap_text '详细介绍一下人工智能的历史'; sleep 5; dump; echo "⑮ 切换后："; texts
-  $ADB shell dumpsys activity activities 2>/dev/null | python -c "
-import sys
-for l in sys.stdin:
-    if 'topResumedActivity' in l: print(' 前台:', l.strip()[:110]); break
-"
-  sleep 40; dump; echo "⑮ 等 40s（旧轮跑完）后："; texts; shot 15_stale_check.png; absent '科技新闻'; }
+s15_switch_loading() { wake; launch; type_chat '用一句话回答：1+1等于几？'; send_chat; sleep 4; tap_text '☰'; sleep 1
+  tap_text '＋ 新对话'; sleep 2; dump; echo "⑮ 新会话："; texts; expect '问我任何问题'; shot 15a_new_conv.png
+  sleep 25; dump; echo "⑮ 等 25s（废轮后台跑完）后："; texts; expect '问我任何问题'; shot 15b_stale_check.png; }
 
 usage() { echo "可用步骤：1 2 3 4 4b 5 6 7 8 9 10 15（对应 manifest 的 ui 步骤）"; }
 [ $# -eq 0 ] && { usage; exit 0; }
