@@ -7,3 +7,4 @@ local.properties
 .cxx/
 .mimosa/
 .v2c/
+_dump.json
