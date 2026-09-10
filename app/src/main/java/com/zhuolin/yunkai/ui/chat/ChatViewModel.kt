@@ -164,6 +164,7 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
                             streamText.value = partial
                         }
                     },
+                    extraTools = com.zhuolin.yunkai.service.tools.createM2Tools(app),
                 )
                 if (gen != genId) return@launch
 

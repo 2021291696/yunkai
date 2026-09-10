@@ -8,6 +8,7 @@ import com.zhuolin.yunkai.model.ToolCall
 import com.zhuolin.yunkai.model.ToolDef
 import com.zhuolin.yunkai.service.tools.AgentTool
 import com.zhuolin.yunkai.service.tools.BuiltinTools
+import com.zhuolin.yunkai.service.tools.createM2Tools
 import com.zhuolin.yunkai.store.SkillSource
 import kotlinx.serialization.json.Json
 import android.util.Log
@@ -73,8 +74,9 @@ object AgentLoop {
         fakeChat: (suspend (List<ChatMsg>, List<ToolDef>?, model: String) -> OpenAiMessage)? = null,
         isCancelled: (() -> Boolean)? = null,
         onDelta: ((String) -> Unit)? = null,
+        extraTools: List<AgentTool> = emptyList(),
     ): LoopResult {
-        val tools: List<AgentTool> = BuiltinTools.createAll(cfg, forcedSkill, skillRepo)
+        val tools: List<AgentTool> = BuiltinTools.createAll(cfg, forcedSkill, skillRepo) + extraTools
         val toolDefs: MutableList<ToolDef> = mutableListOf()
         for (t in tools) {
             toolDefs.add(ToolDef(
