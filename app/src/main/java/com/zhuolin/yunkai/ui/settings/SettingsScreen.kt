@@ -258,6 +258,27 @@ fun SettingsScreen(onOpenSkills: () -> Unit = {}, onBack: () -> Unit = {}) {
             modifier = Modifier.fillMaxWidth().height(46.dp),
         ) { Text("保存", fontSize = 17.sp) }
 
+        // ===== 关于区（对齐鸿蒙：纯文字居中块，不加玻璃卡）=====
+        val versionName = remember {
+            runCatching {
+                context.packageManager.getPackageInfo(context.packageName, 0).versionName
+            }.getOrNull() ?: "0.1.0"
+        }
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                androidx.compose.ui.res.stringResource(com.zhuolin.yunkai.R.string.app_name),
+                fontSize = 18.sp,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
+                color = glass.textHi,
+            )
+            Text("一个安静的 AI 对话空间", fontSize = 12.sp, color = glass.textMid)
+            Text("版本 $versionName", fontSize = 10.5.sp, color = glass.textLow)
+        }
+
         Spacer(Modifier.height(24.dp))
     }
 }
