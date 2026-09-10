@@ -245,6 +245,15 @@ struct Chat {
 
   // ===== 抽屉动作 =====
 
+  // 抽屉打开时，系统返回手势/按键优先收起抽屉（而不是退出页面）
+  onBackPress(): boolean {
+    if (this.showHistory) {
+      this.showHistory = false;
+      return true;
+    }
+    return false;
+  }
+
   // 先等会话列表刷新完成再开抽屉：HistoryDrawer 为条件渲染的普通 prop 组件，
   // 创建即定型，await 保证点开瞬间拿到的就是最新会话列表
   private async openHistory(): Promise<void> {
@@ -316,33 +325,12 @@ struct Chat {
       WallpaperLayer()
 
       Column() {
-        // ===== 顶栏 =====
+        // ===== 顶栏：左上角侧边栏钮 + 居中标题（对齐 Android 版）=====
         Row({ space: 10 }) {
-          Button('‹')
+          Button('☰')
             .width(34)
             .height(34)
-            .fontSize(18)
-            .fontColor($r('app.color.text_hi'))
-            .backgroundColor($r('app.color.glass_bg'))
-            .backdropBlur(20)
-            .borderRadius(17)
-            .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
-            .padding(0)
-            .onClick(() => {
-              router.back();
-            })
-          Text(this.title)
             .fontSize(15)
-            .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.text_hi'))
-            .textAlign(TextAlign.Center)
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-            .layoutWeight(1)
-          Button('⋯')
-            .width(34)
-            .height(34)
-            .fontSize(14)
             .fontColor($r('app.color.text_hi'))
             .backgroundColor($r('app.color.glass_bg'))
             .backdropBlur(20)
@@ -352,6 +340,18 @@ struct Chat {
             .onClick(() => {
               this.openHistory();
             })
+          Text(this.title)
+            .fontSize(15)
+            .fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.text_hi'))
+            .textAlign(TextAlign.Center)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .layoutWeight(1)
+          // 右侧等宽占位：标题保持视觉居中
+          Row()
+            .width(34)
+            .height(34)
         }
         .width('100%')
         .padding({ left: 14, right: 14, top: this.statusBarH + 12, bottom: 10 })
@@ -534,6 +534,13 @@ struct Chat {
 
       // ===== 侧抽屉：上半会话列表 + 下半历史轮次 =====
       if (this.showHistory) {
+        // 遮罩：点抽屉面板外任意位置即收起（#01 近全透明底色保证可命中触摸）
+        Column()
+          .width('100%')
+          .height('100%')
+          .backgroundColor('#01000000')
+          .onClick(() => { this.showHistory = false; })
+
         HistoryDrawer({
           convs: this.convs,
           turns: this.turns,

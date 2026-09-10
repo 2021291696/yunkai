@@ -32,7 +32,6 @@ export struct CanvasCard {
     Column() {
       // 卡头：全屏入口条
       Row({ space: 6 }) {
-        Text('📘').fontSize(13)
         Text('画布 · 点此全屏查看')
           .fontSize(12)
           .fontColor('#8A7A5A')
@@ -46,7 +45,7 @@ export struct CanvasCard {
       if (this.invalid) {
         // sanitize 失败兜底：显示占位而非空白卡
         Column() {
-          Text('⚠️ 内容无法渲染')
+          Text('内容无法渲染')
             .fontSize(14)
             .fontColor('#A08C66')
         }

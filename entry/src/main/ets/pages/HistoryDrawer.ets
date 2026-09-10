@@ -39,7 +39,7 @@ export struct HistoryDrawer {
   build() {
     Column() {
       Row() {
-        Text('对话')
+        Text('会话与历史')
           .fontSize(18)
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.text_hi'))
@@ -70,26 +70,34 @@ export struct HistoryDrawer {
           .borderRadius(999)
           .layoutWeight(1)
           .onClick(() => { this.onNewConversation(); })
-        Button('设置')
-          .fontSize(14)
+        // 设置入口：只留齿轮符号（无「设置」二字），留在抽屉内
+        Button('⚙')
+          .width(34)
           .height(34)
-          .fontColor($r('app.color.text_hi'))
+          .fontSize(16)
+          .fontColor($r('app.color.accent'))
           .backgroundColor($r('app.color.glass_bg'))
           .backdropBlur(20)
-          .borderRadius(999)
+          .borderRadius(17)
           .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
-          .layoutWeight(1)
+          .padding(0)
           .onClick(() => { this.onOpenSettings(); })
       }
       .width('100%')
       .padding({ left: 16, right: 16, bottom: 10 })
 
-      Text('会话')
-        .fontSize(11)
-        .fontColor($r('app.color.text_low'))
-        .letterSpacing(1.2)
-        .width('100%')
-        .padding({ left: 16, bottom: 6 })
+      Row() {
+        Text('会话')
+          .fontSize(11)
+          .fontColor($r('app.color.text_low'))
+          .letterSpacing(1.2)
+          .layoutWeight(1)
+        Text('长按可删除')
+          .fontSize(10)
+          .fontColor($r('app.color.text_low'))
+      }
+      .width('100%')
+      .padding({ left: 16, right: 16, bottom: 6 })
 
       if (this.convs.length === 0) {
         Text('暂无会话').fontSize(14).fontColor($r('app.color.text_low')).padding(16)

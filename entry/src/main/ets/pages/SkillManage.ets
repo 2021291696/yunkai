@@ -323,7 +323,7 @@ struct SkillManage {
             .onClick(() => {
               if (this.mode === 'create') { this.closeForms(); } else { this.openCreate(); }
             })
-          Button('📋 粘贴导入', { type: ButtonType.Capsule })
+          Button('粘贴导入', { type: ButtonType.Capsule })
             .layoutWeight(1)
             .height(46)
             .fontSize(16)

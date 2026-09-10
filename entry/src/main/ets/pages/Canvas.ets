@@ -52,7 +52,6 @@ struct CanvasPage {
         // ===== 画布主体 =====
         if (this.invalid) {
           Column({ space: 10 }) {
-            Text('⚠️').fontSize(44)
             Text('内容无法渲染')
               .fontSize(16)
               .fontColor('#A08C66')
