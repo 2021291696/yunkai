@@ -10,14 +10,15 @@
 - **双模型分工**：主模型对话与调度；`use_skill` 成功后本轮回调切长文模型（仅智谱系端点生效）。
 - **技能体系**：内置 eli5 科普讲解配方（首启播种，与鸿蒙版逐字节一致）+ 自建技能 + SKILL.md 粘贴导入；`@技能名` 强制指定，自动路由可关。
 - **HTML 画布**：讲解回答渲染成整页 HTML 画布（sanitize 剥 script + WebView data:base64 加载，JS 禁用）。
-- **会话管理**：Room 三表持久化，历史抽屉（会话列表长按删除 + 历史轮次定位），杀进程重进恢复。
+- **会话管理**：Room 三表持久化，侧抽屉会话列表（点击切换 / 长按删除），杀进程重进恢复。
+- **外观**：通透系玻璃主题 + 壁纸自定义（相册选图）+ 主题三档（跟随系统 / 浅色 / 深色，手动档即时生效并持久化）。
 
 ## 构建
 
 ```bash
 # 需 ANDROID_HOME 与完整 JDK 21（JBR 不带 jlink 不能用，见 AGENTS.md）
 ./gradlew assembleDebug        # 产物 app/build/outputs/apk/debug/app-debug.apk
-./gradlew testDebugUnitTest    # JVM 单测（43 用例语义移植，无需模拟器）
+./gradlew testDebugUnitTest    # JVM 单测（73 用例，无需模拟器）
 ```
 
 minSdk 30（Android 11+），targetSdk/compileSdk 36。首启在设置页填 OpenAI 兼容 API 地址/密钥/模型即可用；搜索默认必应免 key。
