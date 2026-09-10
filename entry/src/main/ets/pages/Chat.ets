@@ -485,7 +485,7 @@ struct Chat {
         // ===== 底部输入区 =====
         Column() {
           Row({ space: 10 }) {
-            TextInput({ text: this.input, placeholder: '想弄懂什么？' })
+            TextInput({ text: this.input, placeholder: '问我任何问题…' })
               .type(InputType.Normal)
               .layoutWeight(1)
               .height(40)

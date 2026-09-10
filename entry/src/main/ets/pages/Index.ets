@@ -5,16 +5,18 @@ import { router } from '@kit.ArkUI';
 @Entry
 @Component
 struct Index {
+  @StorageProp('colorMode') colorMode: number = ColorMode.LIGHT;
+
   aboutToAppear(): void {
     const p: Record<string, number> = { 'convId': -1 };
     router.replaceUrl({ url: 'pages/Chat', params: p });
   }
 
   build() {
-    // 跳板底色与全局暖纸一致，replaceUrl 瞬时完成，避免闪白
+    // 跳板底色跟随系统明暗，replaceUrl 瞬时完成，避免闪白/闪黑
     Column()
       .width('100%')
       .height('100%')
-      .backgroundColor('#FAF6EF')
+      .backgroundColor(this.colorMode === ColorMode.DARK ? '#1A1820' : '#F9F8F5')
   }
 }
