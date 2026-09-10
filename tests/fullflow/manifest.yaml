@@ -105,7 +105,7 @@ flow:
       assert:
         - { status: 0 }
 
-    - id: aa_test_logic               # ⑤ 模拟器实跑单测（43 用例）
+    - id: aa_test_logic               # ⑤ 模拟器实跑单测（47 用例；加用例时同步改计数断言）
       cli:
         cmd: ["D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe", shell, aa, test, "-b", com.zhuolin.yunkai, "-m", entry_test,
               "-s", unittest, OpenHarmonyTestRunner, "-s", class, logicTest]
@@ -113,7 +113,7 @@ flow:
         timeout_s: 600
       assert:
         - { status: 0 }
-        - { text_contains: "Tests run: 43, Failure: 0" }
+        - { text_contains: "Tests run: 47, Failure: 0, Error: 0" }
 
     # ─────────── 门2：界面层（AI 驱动模拟器；动作映射 goto→启动/切页、click→tap、
     # fill→uitest uiInput inputText、expect_visible→dumpLayout 找节点、text_contains→屏上文本）───────────
