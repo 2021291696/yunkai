@@ -226,11 +226,10 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
         }
     }
 
-    // ===== 侧抽屉：上半会话列表 + 下半历史轮次 =====
+    // ===== 侧抽屉：会话列表 =====
     HistoryDrawer(
         visible = vm.showHistory.value,
         convs = vm.convs.toList(),
-        turns = vm.turns.toList(),
         onClose = { vm.showHistory.value = false },
         onNewConversation = {
             vm.startNewConversation()
@@ -241,20 +240,6 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
         },
         onOpenConversation = { id -> vm.openConversation(id) },
         onDeleteConversation = { c -> deleteTarget = c },
-        onOpenTurn = { turnNo ->
-            vm.showHistory.value = false
-            // 轮次号 = 第 n 条 assistant 消息，滚动定位
-            var seen = 0
-            for ((idx, m) in vm.msgs.withIndex()) {
-                if (m.role == "assistant") {
-                    seen += 1
-                    if (seen == turnNo) {
-                        scope.launch { listState.animateScrollToItem(idx) }
-                        break
-                    }
-                }
-            }
-        },
     )
 }
 

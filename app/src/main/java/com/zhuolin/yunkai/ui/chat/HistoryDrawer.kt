@@ -25,7 +25,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -37,44 +36,30 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zhuolin.yunkai.model.Conv
-import com.zhuolin.yunkai.model.Msg
 import com.zhuolin.yunkai.ui.theme.GlassTokens
 import com.zhuolin.yunkai.ui.theme.LocalGlassScheme
 import com.zhuolin.yunkai.ui.theme.TextDark
 import com.zhuolin.yunkai.ui.theme.TextFaint
 import com.zhuolin.yunkai.ui.theme.WarmOrange
-import com.zhuolin.yunkai.ui.theme.WarmOrangeDeep
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-// 会话与历史侧抽屉：上半会话列表（点击进入/长按删除）+ 下半当前会话历史轮次（点击滚动定位）。
+// 会话侧抽屉：会话列表（点击进入/长按删除）。
 // 纯展示组件：数据由 Chat 传入，动作经回调上抛，自身不持有路由/DB 逻辑
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HistoryDrawer(
     visible: Boolean,
     convs: List<Conv>,
-    turns: List<Msg>,
     onClose: () -> Unit,
     onNewConversation: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenConversation: (Long) -> Unit,
     onDeleteConversation: (Conv) -> Unit,
-    onOpenTurn: (Int) -> Unit,
 ) {
     if (!visible) return
     val glass = LocalGlassScheme.current
-
-    // 从 turns 里找该轮对应的问题（轮次列表展示用）
-    fun questionOf(turnNo: Int): String {
-        var q = ""
-        for (m in turns) {
-            if (m.role == "user") q = m.content
-            if (m.role == "assistant" && m.turnNo == turnNo) break
-        }
-        return q.ifEmpty { "（无问题记录）" }
-    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         // 遮罩：点抽屉面板外任意位置即收起（透明，不压暗壁纸）
@@ -147,7 +132,7 @@ fun HistoryDrawer(
                 Text("暂无会话", fontSize = 14.sp, color = TextFaint, modifier = Modifier.padding(16.dp))
             } else {
                 LazyColumn(
-                    modifier = Modifier.fillMaxWidth().fillMaxHeight(0.32f).padding(horizontal = 12.dp),
+                    modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(convs, key = { "${it.id}_${it.updatedAt}" }) { c ->
@@ -169,34 +154,6 @@ fun HistoryDrawer(
                 }
             }
 
-            HorizontalDivider(color = glass.glassBorder, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
-
-            Text("历史轮次", fontSize = 13.sp, color = TextFaint, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
-
-            if (turns.isEmpty()) {
-                Text("还没有讲解记录", fontSize = 14.sp, color = TextFaint, modifier = Modifier.padding(16.dp))
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    items(turns, key = { it.id }) { m ->
-                        if (m.role == "assistant") {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(glass.glassBg, RoundedCornerShape(12.dp))
-                                    .border(GlassTokens.BORDER_W.dp, glass.glassBorder, RoundedCornerShape(12.dp))
-                                    .clickable { onOpenTurn(m.turnNo) }
-                                    .padding(12.dp),
-                            ) {
-                                Text("第${m.turnNo}轮", fontSize = 12.sp, color = WarmOrangeDeep)
-                                Text(questionOf(m.turnNo), fontSize = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            }
-                        }
-                    }
-                }
-            }
             Spacer(Modifier.height(16.dp))
         }
     }
