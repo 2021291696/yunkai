@@ -6,6 +6,7 @@
 //   ConfigurationConstant.ColorMode 是「设值」用（COLOR_MODE_DARK = 0）
 //   ArkUI ColorMode 是「UI 读取」用（LIGHT = 0, DARK = 1）
 import { common, ConfigurationConstant } from '@kit.AbilityKit';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 
 export const THEME_SYSTEM: string = 'system';
 export const THEME_LIGHT: string = 'light';
@@ -33,7 +34,8 @@ export function applyThemeMode(ctx: common.UIAbilityContext, mode: string): void
   try {
     ctx.getApplicationContext().setColorMode(cm);
   } catch (e) {
-    // 设置失败保持原样
+    // 失败保持原样，但必须留痕：否则退化成「资源浅色 + AppStorage 深色」后无从发现
+    hilog.error(0x0000, 'yunkai', 'setColorMode failed: %{public}s', JSON.stringify(e));
   }
   AppStorage.setOrCreate('colorMode', effectiveDark(ctx, mode) ? ColorMode.DARK : ColorMode.LIGHT);
 }

@@ -29,10 +29,11 @@ export default class EntryAbility extends UIAbility {
       font.registerFont({ familyName: 'Sora', familySrc: $rawfile('fonts/Sora.ttf') });
     } catch (e) { /* 字体缺失不致命 */ }
 
-    // 主题档位（system/light/dark）：同步读持久化配置后立即应用。
-    // 不用 Environment.envProp —— 环境变量只反映系统明暗，会把手动档覆盖掉
+    // 主题档位（system/light/dark）：同步读持久化配置。不用 Environment.envProp ——
+    // 环境变量只反映系统明暗，会把手动档覆盖掉
     const themeMode: string = ConfigStore.getThemeModeSync(this.context);
     AppStorage.setOrCreate('themeMode', themeMode);
+    // loadContent 之前先试一次：手动档想让首帧就是对的；此时窗口可能尚未就绪而被忽略（无害）
     applyThemeMode(this.context, themeMode);
 
     // 沉浸式：内容延伸到状态栏/导航条之下
@@ -45,6 +46,10 @@ export default class EntryAbility extends UIAbility {
       }
       hilog.info(DOMAIN, 'testTag', 'Succeeded in loading the content.');
     });
+
+    // SDK 明示 setColorMode 的前置条件：窗口已创建且 UIAbility 页面已 loadContent ——
+    // 故此处必须再应用一次。漏掉会退化成「$r 资源停在浅色档、AppStorage 已是 DARK」的半深色且零信号
+    applyThemeMode(this.context, themeMode);
 
     const win = windowStage.getMainWindowSync();
     const topPx = win.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM).topRect.height;

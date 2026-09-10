@@ -1,70 +1,208 @@
-# 云开（eli5-harmony）全流程测试清单
-# HarmonyOS NEXT / ArkUI；构建=hvigor CLI；部署=hdc；门2=AI 驱动（uitest+截图证据）
+# ═══════════════════════════════════════════════════════════════════
+# yunkai-harmony（云开鸿蒙版）全流程测试清单 v2
+# 平台=cli（HarmonyOS 无 run.py 脚本通道）：门1 走 cli 步骤（hvigor 构建/打包/hdc
+# 装机/模拟器 aa test 单测）；门2 由 AI 编排层按下方 ui 步骤驱动模拟器
+# （hdc + uitest uiInput），证据落
+# tests/fullflow/reports/<时间戳>_ui/artifacts/agent-ui/<runID>/。
+# 模型密钥只在设备 Preferences（本清单不触凭据，铁律 2）。
+# hdc 不在本机 PATH，故步骤里一律写全路径（$HDC 见下方 environment.health 的写法）。
+#
+# 重写说明（2026-09-10）：上一版是 eli5-harmony 时代产物——包名
+# com.zhuolin.eli5harmony（旧包，真机仍装着）、路径写的是已不存在的「列表页 /
+# 🌐 搜索开关」、单测数 19。本版按云开当前形态（打开即对话 + 左侧会话抽屉 +
+# 玻璃主题/主题三档 + 问候式引导页）重写：包名 com.zhuolin.yunkai、入口
+# EntryAbility、单测 43、门2 覆盖抽屉/主题/画布/技能导入。
+# ═══════════════════════════════════════════════════════════════════
+name: yunkai-harmony v2 全流程
 target:
-  platform: cli            # HarmonyOS 生态：门1=cli（构建/单测/装机），门2=AI 驱动（同 desktop 通道）
+  platform: cli
   app:
-    bundle: com.zhuolin.eli5harmony
+    bundle: com.zhuolin.yunkai
     entry: EntryAbility
     device_emulator: "127.0.0.1:5555"
     device_real: "2MH0224513029186"
+    hap: entry/build/default/outputs/default/entry-default-signed.hap
+    test_hap: entry/build/default/outputs/ohosTest/entry-ohosTest-signed.hap
+    device_llm:                   # 模拟器已存配置（门2 真 LLM 路径用），密钥仅在设备侧
+      base_url: https://open.bigmodel.cn/api/paas/v4
+      model: glm-5.3-flash        # 主模型：对话与工具调度
+      long_model: glm-4.7         # use_skill 成功后本轮切长文模型
 
 environment:
-  start: manual            # 模拟器 eli5_emulator 已在线（127.0.0.1:5555）
-  health:
-    - cli: hdc list targets   # 须含 127.0.0.1:5555
+  start: manual                   # AI 编排层：确认模拟器在线（装机在门1 cli 步骤）
+  # CLI 型目标不配 health（run.py 的 health 只认 HTTP dict）——就绪由下方 device_online_check 步骤复验
 
-# 真实凭据经环境变量引用（铁律 2）：LLM key 存于模拟器本地 Preferences，本清单不触凭据
-api_key_env: ELI5_ZHIPU_KEY   # 仅文档声明；门2 用设备端已存配置，不在清单中注入
+review: on                        # 门0 静态审查（logic-review --full，全量 ets）
 
-review: on                    # 门0 静态审查（logic-review 精神，全量 ets）
+diagnosis:
+  logs:
+    - { name: hilog, path: "_tmp/hilog_yunkai.txt", error_patterns: ["jscrash", "Error", "exception"] }
 
-paths:
-  - id: P1_gate1_build_unitest
-    desc: 门1——clean 构建 + 19 个单测 + 签名包装机
-    steps:
-      - cli: clean 全量 assembleHap（BUILD SUCCESSFUL）
-      - cli: ohosTest assembleHap
-      - cli: hdc install signed/unsigned 双包
-      - cli: aa test logicTest → Tests run: 19, Failure: 0
+flow:
+  steps:
+    # ─────────── 门1：CLI 层（hvigor 构建 / 打包 / hdc 装机 / 模拟器单测）───────────
+    # 前置：模拟器息屏时 aa test 会报 10106102（developer mode 下无法自动解锁），
+    # 故先唤醒 + 解锁屏幕（harmonyos 模拟器 UI 自动化已知坑）
+    - id: device_wake_screen
+      cli:
+        cmd: ["D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe", shell, power-shell, wakeup]
+        cwd: "../.."
+        timeout_s: 60
+      assert:
+        - { status: 0 }
 
-  - id: P2_ui_ask_render
-    desc: 门2/AI——核心链：新对话→真连智谱→eli5 HTML 渲染（大字卡片+SVG）
-    ui:
-      - goto: 列表页
-      - click: ＋新对话
-      - fill+send: 任意中文概念题
-      - expect_visible: 大标题卡片（HTML 渲染非白屏）
-    evidence: [screenshot_before_send, screenshot_rendered]
+    - id: device_unlock_screen
+      cli:
+        cmd: ["D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe", shell, power-shell, setmode, "602"]
+        cwd: "../.."
+        timeout_s: 60
+      assert:
+        - { status: 0 }
 
-  - id: P3_ui_draft_probe
-    desc: 门2/AI——探针：新对话即退不留空记录
-    ui:
-      - goto: 列表页（记录基线数）
-      - click: ＋新对话 → 立即返回
-      - expect_visible: 列表条目数 = 基线数（无新增「新对话」）
-    evidence: [screenshot_list_after]
+    - id: device_online_check         # ⓿ 前置：模拟器在线（hdc 目标须含 127.0.0.1:5555）
+      cli:
+        cmd: ["D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe", list, targets]
+        cwd: "../.."
+        timeout_s: 120
+      assert:
+        - { status: 0 }
+        - { text_contains: "127.0.0.1:5555" }
 
-  - id: P4_ui_followup_context
-    desc: 门2/AI——追问承接：第二轮回答体现第一轮语境
-    ui:
-      - 前置: P2 已完成一轮
-      - fill+send: 「那XX上呢」类追问
-      - expect_visible: 新一轮标题/内容承接首轮话题
-    evidence: [screenshot_followup]
+    # java 需在 PATH（hap-sign-tool 是 jar；本机 Temurin 21 已在 PATH）
+    - id: hvigor_clean_assemble       # ① clean 全量构建主包
+      cli:
+        cmd: [node, "D:/Huawei/DevEcoStudio/tools/hvigor/bin/hvigorw.js",
+              clean, "--mode", module, "-p", "product=default", assembleHap]
+        cwd: "../.."
+        timeout_s: 900
+      assert:
+        - { status: 0 }
+        - { text_contains: "BUILD SUCCESSFUL" }
 
-  - id: P5_ui_net_bing
-    desc: 门2/AI——联网轨：🌐开→时效题→必应外部搜索注入
-    ui:
-      - click: 🌐 开关
-      - fill+send: 时效性新闻题
-      - expect_visible: 讲解含新闻/来源要素（必应 hits 注入；模型可能概括不逐字）
-    evidence: [screenshot_net_answer]
+    - id: hvigor_ohostest_assemble    # ② 单测包构建（entry@ohosTest）
+      cli:
+        cmd: [node, "D:/Huawei/DevEcoStudio/tools/hvigor/bin/hvigorw.js",
+              "--mode", module, "-p", "product=default", "-p", "module=entry@ohosTest", assembleHap]
+        cwd: "../.."
+        timeout_s: 900
+      assert:
+        - { status: 0 }
+        - { text_contains: "BUILD SUCCESSFUL" }
 
-  - id: P6_probe_error_path
-    desc: 门2/AI——探针：错误 baseURL → 明确报错不崩溃
-    ui:
-      - 前置: 设置页改 URL 为无效域并保存
-      - fill+send: 任意问题
-      - expect_visible: 「出错了：LLM HTTP …」类 toast，应用不退出
-      - 恢复: 设置页改回正确 URL 并保存
-    evidence: [screenshot_error_toast]
+    - id: hdc_install_app             # ③ 装机：主包（签名）
+      cli:
+        cmd: ["D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe", install, "-r", "entry/build/default/outputs/default/entry-default-signed.hap"]
+        cwd: "../.."
+        timeout_s: 300
+      assert:
+        - { status: 0 }
+
+    - id: hdc_install_test            # ④ 装机：单测包（签名）
+      cli:
+        cmd: ["D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe", install, "-r", "entry/build/default/outputs/ohosTest/entry-ohosTest-signed.hap"]
+        cwd: "../.."
+        timeout_s: 300
+      assert:
+        - { status: 0 }
+
+    - id: aa_test_logic               # ⑤ 模拟器实跑单测（43 用例）
+      cli:
+        cmd: ["D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe", shell, aa, test, "-b", com.zhuolin.yunkai, "-m", entry_test,
+              "-s", unittest, OpenHarmonyTestRunner, "-s", class, logicTest]
+        cwd: "../.."
+        timeout_s: 600
+      assert:
+        - { status: 0 }
+        - { text_contains: "Tests run: 43, Failure: 0" }
+
+    # ─────────── 门2：界面层（AI 驱动模拟器；动作映射 goto→启动/切页、click→tap、
+    # fill→uitest uiInput inputText、expect_visible→dumpLayout 找节点、text_contains→屏上文本）───────────
+    - id: launch_and_guide            # ⑥ 冷启动 → 引导页
+      ui:
+        - { action: goto, url: "app://launch" }         # force-stop + aa start EntryAbility
+        - { action: expect_visible, target: "text=想聊点什么？" }
+        - { action: expect_visible, target: "text=继续昨天的对话" }
+        - { action: expect_visible, target: "text=☰" }   # 左上角侧边栏钮
+      # 断言：引导页为问候式（时段问候 + 三个 chips），无装饰图形、无旧版「问我任何问题」
+
+    - id: drawer_open_and_layout      # ⑦ ☰ → 抽屉结构
+      ui:
+        - { action: click, target: "左上角侧边栏钮 ☰" }
+        - { action: expect_visible, target: "text=会话" }        # 标题（本轮由「会话与历史」改名）
+        - { action: expect_visible, target: "text=✕" }
+        - { action: expect_visible, target: "text=＋ 新对话" }
+        - { action: expect_visible, target: "text=⚙" }           # 无字设置钮
+        - { action: expect_visible, target: "text=长按可删除" }   # 标题行提示
+      # 断言：抽屉内不得出现「会话与历史」「历史轮次」「还没有讲解记录」「收起」；设置不得带文字
+
+    - id: drawer_dismiss_three_ways   # ⑧ 抽屉三条收起路径
+      ui:
+        - { action: click, target: "左上角侧边栏钮 ☰" }
+        - { action: click, target: "抽屉头部右侧 ✕ 钮" }
+        - { action: click, target: "左上角侧边栏钮 ☰" }
+        - { action: click, target: "屏幕右侧非抽屉区域（面板外空白）" }
+        - { action: click, target: "左上角侧边栏钮 ☰" }
+        - { action: click, target: "系统返回（uitest uiInput keyEvent Back）" }
+        - { action: expect_visible, target: "text=想聊点什么？" }
+      # 收起判据（内容级）：三条路径后抽屉面板均消失且**未退出应用**——
+      # 无抽屉时按返回会退出应用，屏上应仍是对话页；退出即判 FAIL
+
+    - id: settings_theme_modes        # ⑨ 主题三档：深色即时生效 + 冷启动持久化 + 跟随系统
+      ui:
+        - { action: click, target: "左上角侧边栏钮 ☰" }
+        - { action: click, target: "抽屉内齿轮设置钮 ⚙" }
+        - { action: expect_visible, target: "text=主题" }
+        - { action: click, target: "主题档位「深色」" }
+        - { action: expect_visible, target: "text=深色" }         # 档位高亮 + 整屏转暗（截图留证）
+        - { action: goto, url: "app://restart" }                  # 冷启动：force-stop + aa start
+        - { action: expect_visible, target: "text=想聊点什么？" }   # 系统为浅色时仍深色 = 读档生效
+        - { action: click, target: "左上角侧边栏钮 ☰" }
+        - { action: click, target: "抽屉内齿轮设置钮 ⚙" }
+        - { action: click, target: "主题档位「跟随系统」" }
+      # 断言：深色档整屏转暗（与浅色截图对比）；冷启动后仍深色（系统为浅 → 只可能来自
+      # 持久化）；切回跟随系统后回到系统档。收尾必须停在「跟随系统」档
+
+    - id: skill_import_paste          # ⑩ 技能库粘贴导入（按钮文案已去 📋）
+      ui:
+        - { action: click, target: "左上角侧边栏钮 ☰" }
+        - { action: click, target: "抽屉内齿轮设置钮 ⚙" }
+        - { action: click, target: "text=技能库" }
+        - { action: click, target: "text=粘贴导入" }
+        - { action: fill, target: "导入文本框", value: "---\nname: 全流程导入技能\ndescription: run-all 门2 粘贴导入\n---\n正文：请回答「导入成功」。" }
+        - { action: click, target: "text=解析并导入" }
+        - { action: expect_visible, target: "text=全流程导入技能" }
+      # 断言：新技能出现在列表；入口文案须为「粘贴导入」（还带 📋 即未同步）
+
+    - id: chat_bare_llm               # ⑪ 裸对话（真 LLM；内容级断言）
+      ui:
+        - { action: goto, url: "app://chat" }
+        - { action: fill, target: "聊天输入框", value: "用一句话回答：1+1等于几？" }
+        - { action: click, target: "text=发送" }
+        - { action: expect_visible, target: "text=2" }
+      # 内容级断言：回复须切题（含「2」）且不含自述失败文案（「出错了」「抱歉」「无法」等判 FAIL）
+
+    - id: chat_eli5_canvas            # ⑫ @eli5 全链路（双模型切换 → HTML → 画布）
+      ui:
+        - { action: fill, target: "聊天输入框", value: "@eli5 讲讲黑洞是怎么形成的" }
+        - { action: click, target: "text=发送" }
+        - { action: expect_visible, target: "text=画布 · 点此全屏查看" }
+        - { action: click, target: "text=画布 · 点此全屏查看" }
+        - { action: expect_visible, target: "text=画布" }
+      # 内容级断言：画布非白屏——整页 HTML 须有大标题与章节正文（含图/目录要素），
+      # 且不得出现「内容无法渲染」占位
+
+    - id: probe_bad_baseurl           # ⑬ 探针：错误 baseURL → 明确报错不崩溃
+      ui:
+        - { action: click, target: "左上角侧边栏钮 ☰" }
+        - { action: click, target: "抽屉内齿轮设置钮 ⚙" }
+        - { action: fill, target: "API 地址输入框", value: "https://invalid.example.invalid/v1" }
+        - { action: click, target: "text=保存" }
+        - { action: click, target: "返回钮 ‹" }
+        - { action: fill, target: "聊天输入框", value: "你好" }
+        - { action: click, target: "text=发送" }
+        - { action: expect_visible, target: "text=出错了" }
+        - { action: click, target: "左上角侧边栏钮 ☰" }
+        - { action: click, target: "抽屉内齿轮设置钮 ⚙" }
+        - { action: fill, target: "API 地址输入框", value: "https://open.bigmodel.cn/api/paas/v4" }
+        - { action: click, target: "text=保存" }
+      # 断言：明确报错提示出现且应用不退出；收尾必须把 baseURL 改回智谱端点（否则污染后续轮次）
