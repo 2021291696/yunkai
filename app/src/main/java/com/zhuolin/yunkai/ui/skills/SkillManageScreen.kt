@@ -290,7 +290,7 @@ fun SkillManageScreen(onBack: () -> Unit = {}) {
                     containerColor = if (vm.mode.value == "import") CardGlass else WarmOrange,
                     contentColor = if (vm.mode.value == "import") WarmOrangeDeep else androidx.compose.ui.graphics.Color.White,
                 ),
-            ) { Text("📋 粘贴导入", fontSize = 16.sp) }
+            ) { Text("粘贴导入", fontSize = 16.sp) }
         }
         Spacer(Modifier.height(24.dp))
     }

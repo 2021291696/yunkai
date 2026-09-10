@@ -5,6 +5,7 @@ import android.webkit.WebView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -63,8 +64,8 @@ fun CanvasScreen(onBack: () -> Unit) {
             Column(
                 modifier = Modifier.fillMaxSize().padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
             ) {
-                Text("⚠️", fontSize = 44.sp)
                 Text("内容无法渲染", fontSize = 16.sp, color = TextMuted)
             }
         } else {

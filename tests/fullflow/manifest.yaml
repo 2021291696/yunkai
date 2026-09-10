@@ -107,7 +107,7 @@ flow:
 
     - id: skill_import_paste        # ④b 自建技能（粘贴导入）
       ui:
-        - { action: click, target: "text=📋 粘贴导入" }
+        - { action: click, target: "text=粘贴导入" }
         - { action: fill, target: "导入文本框", value: "---\nname: 导入技能\ndescription: 粘贴导入测试\n---\n正文：请回答「导入成功」。"}
         - { action: click, target: "text=解析并导入" }
         - { action: expect_visible, target: "text=导入技能" }

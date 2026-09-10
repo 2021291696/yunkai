@@ -45,8 +45,7 @@ fun CanvasCard(html: String, onOpen: () -> Unit) {
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("📘", fontSize = 13.sp)
-            Text("画布 · 点此全屏查看", fontSize = 12.sp, color = TextMuted, modifier = Modifier.padding(start = 6.dp, end = 6.dp).weight(1f))
+            Text("画布 · 点此全屏查看", fontSize = 12.sp, color = TextMuted, modifier = Modifier.padding(end = 6.dp).weight(1f))
             Text("⤢", fontSize = 14.sp, color = WarmOrangeDeep)
         }
 
@@ -56,7 +55,7 @@ fun CanvasCard(html: String, onOpen: () -> Unit) {
                 modifier = Modifier.fillMaxWidth().height(420.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text("⚠️ 内容无法渲染", fontSize = 14.sp, color = TextMuted, modifier = Modifier.padding(top = 190.dp))
+                Text("内容无法渲染", fontSize = 14.sp, color = TextMuted, modifier = Modifier.padding(top = 190.dp))
             }
         } else {
             HtmlCanvas(html = safe, modifier = Modifier.fillMaxWidth().height(420.dp))

@@ -135,13 +135,19 @@ fun HistoryDrawer(
                 ) { Text("⚙", fontSize = 16.sp, color = glass.accent) }
             }
 
-            Text("会话", fontSize = 13.sp, color = TextFaint, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("会话", fontSize = 13.sp, color = TextFaint, modifier = Modifier.weight(1f))
+                Text("长按可删除", fontSize = 11.sp, color = TextFaint)
+            }
 
             if (convs.isEmpty()) {
                 Text("暂无会话", fontSize = 14.sp, color = TextFaint, modifier = Modifier.padding(16.dp))
             } else {
                 LazyColumn(
-                    modifier = Modifier.fillMaxWidth().height(220.dp).padding(horizontal = 12.dp),
+                    modifier = Modifier.fillMaxWidth().fillMaxHeight(0.32f).padding(horizontal = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(convs, key = { "${it.id}_${it.updatedAt}" }) { c ->
