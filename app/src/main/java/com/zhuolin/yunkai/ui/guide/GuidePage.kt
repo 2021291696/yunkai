@@ -57,7 +57,7 @@ fun GuidePage(onAsk: (question: String) -> Unit) {
                     modifier = Modifier
                         .padding(6.dp)
                         .background(CardGlass, RoundedCornerShape(18.dp))
-                        .border(1.dp, CardBorder, RoundedCornerShape(18.dp))
+                        .border(0.5.dp, CardBorder, RoundedCornerShape(18.dp))
                         .clickable { onAsk(q) }
                         .padding(horizontal = 14.dp, vertical = 8.dp),
                 )

@@ -21,7 +21,10 @@ fun NavRoot() {
             )
         }
         composable("settings") {
-            SettingsScreen(onOpenSkills = { navController.navigate("skills") })
+            SettingsScreen(
+                onOpenSkills = { navController.navigate("skills") },
+                onBack = { navController.popBackStack() },
+            )
         }
         composable("skills") {
             SkillManageScreen(onBack = { navController.popBackStack() })

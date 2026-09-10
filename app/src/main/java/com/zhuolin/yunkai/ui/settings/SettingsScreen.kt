@@ -1,6 +1,11 @@
 package com.zhuolin.yunkai.ui.settings
 
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,8 +16,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -27,13 +35,16 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -43,26 +54,66 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.zhuolin.yunkai.YunkaiApp
+import com.zhuolin.yunkai.ui.theme.GlassTokens
+import com.zhuolin.yunkai.ui.theme.LocalGlassScheme
 import com.zhuolin.yunkai.ui.theme.TextFaint
 import com.zhuolin.yunkai.ui.theme.TextMuted
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 // 设置页：OpenAI 兼容三项配置 + 获取模型列表 + 技能自动路由开关 + 独立搜索配置。
 // （联网方式三选已下线：agent 自主决定何时搜索，searchMode 字段保留不迁移）
 @Composable
-fun SettingsScreen(onOpenSkills: () -> Unit = {}) {
+fun SettingsScreen(onOpenSkills: () -> Unit = {}, onBack: () -> Unit = {}) {
     val app = LocalContext.current.applicationContext as YunkaiApp
     val vm: SettingsViewModel = viewModel(factory = viewModelFactory { initializer { SettingsViewModel(app) } })
     val context = LocalContext.current
+    val glass = LocalGlassScheme.current
+    val scope = rememberCoroutineScope()
     var modelMenuExpanded by remember { mutableStateOf(false) }
+
+    // 壁纸选择：系统相册选图 → 拷入沙箱 filesDir → 写 ConfigStore（WallpaperLayer 订阅即时生效）
+    val pickWallpaper = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia(),
+    ) { uri ->
+        if (uri != null) {
+            scope.launch(Dispatchers.IO) {
+                val ok = runCatching {
+                    val dst = java.io.File(context.filesDir, "wallpaper_custom.jpg")
+                    context.contentResolver.openInputStream(uri)?.use { inp ->
+                        dst.outputStream().use { inp.copyTo(it) }
+                    } ?: error("读不到所选图片")
+                    app.configStore.setWallpaper(dst.absolutePath)
+                }.isSuccess
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, if (ok) "壁纸已更换" else "壁纸更换失败", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .statusBarsPadding() // 边缘到边缘后避让状态栏
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 18.dp, vertical = 20.dp),
+            .padding(horizontal = 18.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        Text("设置", fontSize = 26.sp, color = MaterialTheme.colorScheme.onBackground)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            // 玻璃圆返回钮（对齐鸿蒙设置页）
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(CircleShape)
+                    .background(glass.glassBg)
+                    .border(GlassTokens.BORDER_W.dp, glass.glassBorder, CircleShape)
+                    .clickable(onClick = onBack),
+                contentAlignment = Alignment.Center,
+            ) { Text("‹", fontSize = 18.sp, color = glass.textHi) }
+            Text("设置", fontSize = 26.sp, color = MaterialTheme.colorScheme.onBackground)
+        }
 
         // ===== API 配置卡片 =====
         GlassCard {
@@ -165,6 +216,27 @@ fun SettingsScreen(onOpenSkills: () -> Unit = {}) {
             Text("关=仅 @名字 手动触发技能", fontSize = 12.sp, color = TextFaint)
         }
 
+        // ===== 壁纸卡片 =====
+        GlassCard {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("壁纸", fontSize = 15.sp, modifier = Modifier.weight(1f))
+                TextButton(onClick = {
+                    pickWallpaper.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                    )
+                }) { Text("选择图片", color = glass.accent) }
+                TextButton(onClick = {
+                    scope.launch(Dispatchers.IO) {
+                        app.configStore.setWallpaper("")
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, "已恢复默认壁纸", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }) { Text("恢复默认", color = TextMuted) }
+            }
+            Text("壁纸铺在全局背景层，玻璃卡片会透出它", fontSize = 12.sp, color = TextFaint)
+        }
+
         // ===== 技能库入口 =====
         GlassCard {
             Row(
@@ -203,14 +275,14 @@ private fun FieldLabel(text: String) {
     Text(text, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface)
 }
 
-// 玻璃卡：白玻璃底 + 细边框（鸿蒙版同族视觉）
+// 玻璃卡：玻璃底 + 0.5 细边框（方向 A 通透系，色板走 LocalGlassScheme 桥接）
 @Composable
 internal fun GlassCard(content: @Composable () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(GlassTokens.R_CARD.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        border = androidx.compose.foundation.BorderStroke(GlassTokens.BORDER_W.dp, MaterialTheme.colorScheme.outline),
     ) {
         Column(
             modifier = Modifier.padding(16.dp).fillMaxWidth(),
