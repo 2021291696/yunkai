@@ -157,10 +157,13 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
             }
             // 引导态：无任何消息时
             if (vm.msgs.isEmpty() && !vm.loading.value) {
-                GuidePage(onAsk = { q ->
-                    vm.input.value = q
-                    vm.send(context)
-                })
+                GuidePage(
+                    onAsk = { q ->
+                        vm.input.value = q
+                        vm.send(context)
+                    },
+                    convCount = vm.convs.size,
+                )
             }
         }
 
