@@ -19,6 +19,7 @@ import { LlmClient, OpenAiMessage } from './LlmClient';
 import { SkillRepo } from '../store/SkillRepo';
 import { AgentTool } from './tools/AgentTool';
 import { BuiltinTools } from './tools/BuiltinTools';
+import { M2Tools } from './tools/M2Tools';
 
 // 循环事件：tool_start/tool_done 携带工具名与「参数 / 结果前80字」摘要；answer/limit 无工具名
 export class LoopEvent {
@@ -65,6 +66,10 @@ export class AgentLoop {
       }
     };
     const tools: AgentTool[] = BuiltinTools.createAll(ctx, cfg, forcedSkill);
+    // M2 B3/B4：read_file/write_file/memory_save/memory_search 追加进工具表
+    for (const t of M2Tools.createAll(ctx)) {
+      tools.push(t);
+    }
     const toolDefs: ToolDef[] = [];
     for (const t of tools) {
       const def: ToolDef = {
