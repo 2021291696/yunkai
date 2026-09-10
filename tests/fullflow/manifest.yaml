@@ -48,7 +48,7 @@ flow:
     # ─────────── 门1：CLI 层（构建/单测/LLM 主机直连） ───────────
     - id: gradle_unit_tests
       cli:
-        cmd: "gradlew.bat testDebugUnitTest --no-daemon"
+        cmd: "cmd /c gradlew.bat testDebugUnitTest --no-daemon"   # cmd /c：Windows shell=False 下裸 .bat 名解析不稳（cwd 内 exe 搜索不可靠→127）
         cwd: "../.."
         timeout_s: 300
       assert:
@@ -56,7 +56,7 @@ flow:
 
     - id: gradle_assemble_debug
       cli:
-        cmd: "gradlew.bat assembleDebug --no-daemon"
+        cmd: "cmd /c gradlew.bat assembleDebug --no-daemon"
         cwd: "../.."
         timeout_s: 300
       assert:
@@ -64,7 +64,7 @@ flow:
 
     - id: real_llm_integration_test   # 真 LLM 主机直连冒烟（无 key 自动 skip；环境有 key 即真连）
       cli:
-        cmd: "gradlew.bat cleanTestDebugUnitTest testDebugUnitTest --tests com.zhuolin.yunkai.DeepSeekChainTest --no-build-cache --no-daemon"
+        cmd: "cmd /c gradlew.bat cleanTestDebugUnitTest testDebugUnitTest --tests com.zhuolin.yunkai.DeepSeekChainTest --no-build-cache --no-daemon"
         cwd: "../.."
         timeout_s: 300
       assert:
