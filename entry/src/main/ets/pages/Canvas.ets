@@ -62,6 +62,7 @@ struct CanvasPage {
         } else {
           Web({ src: this.src, controller: this.webCtrl })
             .darkMode(WebDarkMode.Auto)
+          .javaScriptAccess(false) // sanitize 已剥 script，这里双保险
             .width('100%')
             .layoutWeight(1)
         }

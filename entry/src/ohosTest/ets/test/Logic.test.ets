@@ -155,6 +155,34 @@ export default function logicTest() {
         expect(out.includes('正文')).assertTrue();
       }
     });
+    it('guard_strips_inline_event_handlers', 0, () => {
+      const doc = '<!DOCTYPE html><html><body><img src="x" onerror="alert(1)"><div onclick="x()"><p>正文</p></div>';
+      const out = HtmlGuard.sanitize(doc);
+      expect(out !== null).assertTrue();
+      expect(out!.includes('onerror')).assertFalse();
+      expect(out!.includes('onclick')).assertFalse();
+      expect(out!.includes('<p>正文</p>')).assertTrue();
+    });
+    it('guard_strips_javascript_protocol_urls', 0, () => {
+      const doc = '<!DOCTYPE html><html><body><a href="javascript:doIt()">go</a><img src=javascript:x()>';
+      const out = HtmlGuard.sanitize(doc);
+      expect(out !== null).assertTrue();
+      expect(out!.includes('javascript:')).assertFalse();
+    });
+    it('guard_strips_iframe_blocks', 0, () => {
+      const doc = '<!DOCTYPE html><html><body><iframe src="https://evil.example"></iframe><p>正文</p>';
+      const out = HtmlGuard.sanitize(doc);
+      expect(out !== null).assertTrue();
+      expect(out!.includes('iframe')).assertFalse();
+      expect(out!.includes('<p>正文</p>')).assertTrue();
+    });
+    it('guard_keeps_normal_links_and_images', 0, () => {
+      const doc = '<!DOCTYPE html><html><body><a href="https://example.com">l</a><img src="pic.png">';
+      const out = HtmlGuard.sanitize(doc);
+      expect(out !== null).assertTrue();
+      expect(out!.includes('https://example.com')).assertTrue();
+      expect(out!.includes('pic.png')).assertTrue();
+    });
     it('skill_repo_crud_and_seed', 0, async () => {
       // 注：getAppContext() 返回的模块级 Context 会被 getRdbStore 原生校验拒绝(401)，
       // 必须升到 ApplicationContext 才能建库。
