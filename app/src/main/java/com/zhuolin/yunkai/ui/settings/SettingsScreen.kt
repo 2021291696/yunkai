@@ -37,6 +37,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,6 +55,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.zhuolin.yunkai.YunkaiApp
+import com.zhuolin.yunkai.store.ConfigStore
 import com.zhuolin.yunkai.ui.theme.GlassTokens
 import com.zhuolin.yunkai.ui.theme.LocalGlassScheme
 import com.zhuolin.yunkai.ui.theme.TextFaint
@@ -72,6 +74,13 @@ fun SettingsScreen(onOpenSkills: () -> Unit = {}, onBack: () -> Unit = {}) {
     val glass = LocalGlassScheme.current
     val scope = rememberCoroutineScope()
     var modelMenuExpanded by remember { mutableStateOf(false) }
+    // 主题模式：写入即生效（不随「保存」），明暗由 MainActivity 订阅 ConfigStore.themeModeFlow 决定
+    var themeMode by remember { mutableStateOf(ConfigStore.THEME_SYSTEM) }
+    val pickTheme: (String) -> Unit = { mode ->
+        themeMode = mode
+        scope.launch(Dispatchers.IO) { app.configStore.setThemeMode(mode) }
+    }
+    LaunchedEffect(Unit) { themeMode = app.configStore.getThemeMode() }
 
     // 壁纸选择：系统相册选图 → 拷入沙箱 filesDir → 写 ConfigStore（WallpaperLayer 订阅即时生效）
     val pickWallpaper = rememberLauncherForActivityResult(
@@ -113,6 +122,17 @@ fun SettingsScreen(onOpenSkills: () -> Unit = {}, onBack: () -> Unit = {}) {
                 contentAlignment = Alignment.Center,
             ) { Text("‹", fontSize = 18.sp, color = glass.textHi) }
             Text("设置", fontSize = 26.sp, color = MaterialTheme.colorScheme.onBackground)
+        }
+
+        // ===== 外观卡片：主题模式 =====
+        GlassCard {
+            Text("外观", fontSize = 16.sp, color = TextMuted)
+            FieldLabel("主题")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ThemeOption("system", "跟随系统", themeMode, pickTheme)
+                ThemeOption("light", "浅色", themeMode, pickTheme)
+                ThemeOption("dark", "深色", themeMode, pickTheme)
+            }
         }
 
         // ===== API 配置卡片 =====
@@ -280,6 +300,15 @@ fun SettingsScreen(onOpenSkills: () -> Unit = {}, onBack: () -> Unit = {}) {
         }
 
         Spacer(Modifier.height(24.dp))
+    }
+}
+
+// 主题档位单选：写完立刻生效（不等「保存」）
+@Composable
+private fun ThemeOption(value: String, label: String, mode: String, onPick: (String) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        RadioButton(selected = mode == value, onClick = { onPick(value) })
+        Text(label, fontSize = 15.sp)
     }
 }
 

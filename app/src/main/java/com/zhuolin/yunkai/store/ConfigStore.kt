@@ -41,6 +41,16 @@ class ConfigStore(private val ctx: Context) {
         }
     }
 
+    // 主题模式：system（跟随系统，默认）/ light / dark。与壁纸同理独立于 AppConfig，
+    // 设置页写入即生效（MainActivity 订阅本 Flow 重新决定明暗，不必过「保存」）
+    val themeModeFlow: Flow<String> = ctx.dataStore.data.map { it[K_THEME_MODE] ?: THEME_SYSTEM }
+
+    suspend fun getThemeMode(): String = ctx.dataStore.data.first()[K_THEME_MODE] ?: THEME_SYSTEM
+
+    suspend fun setThemeMode(mode: String) {
+        ctx.dataStore.edit { p -> p[K_THEME_MODE] = mode }
+    }
+
     // 自定义壁纸（file 绝对路径），空串 = 默认壁纸。独立于 AppConfig，与鸿蒙版 ConfigStore.getWallpaper 同语义。
     val wallpaperFlow: Flow<String> = ctx.dataStore.data.map { it[K_WALLPAPER] ?: "" }
 
@@ -53,6 +63,10 @@ class ConfigStore(private val ctx: Context) {
     }
 
     companion object {
+        const val THEME_SYSTEM = "system"
+        const val THEME_LIGHT = "light"
+        const val THEME_DARK = "dark"
+
         private val K_BASE_URL = stringPreferencesKey("baseUrl")
         private val K_API_KEY = stringPreferencesKey("apiKey")
         private val K_MODEL = stringPreferencesKey("model")
@@ -61,5 +75,6 @@ class ConfigStore(private val ctx: Context) {
         private val K_SEARCH_PROVIDER = stringPreferencesKey("searchProvider")
         private val K_SEARCH_KEY = stringPreferencesKey("searchApiKey")
         private val K_WALLPAPER = stringPreferencesKey("wallpaper")
+        private val K_THEME_MODE = stringPreferencesKey("themeMode")
     }
 }
