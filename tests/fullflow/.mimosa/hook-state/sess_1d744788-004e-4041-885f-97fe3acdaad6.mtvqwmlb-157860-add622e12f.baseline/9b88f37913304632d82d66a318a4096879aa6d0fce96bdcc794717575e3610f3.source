@@ -1,0 +1,39 @@
+import json
+import re
+import sys
+from pathlib import Path
+
+dump_path = sys.argv[1]
+needle = sys.argv[2]
+want_type = sys.argv[3] if len(sys.argv) > 3 else ""
+
+s = Path(dump_path).read_text(encoding="utf-8", errors="replace")
+try:
+    data = json.loads(s, strict=False)
+except Exception:
+    i = s.rfind("]")
+    data = json.loads(s[: i + 1], strict=False)
+
+hits = []
+
+
+def w(n):
+    if isinstance(n, dict):
+        at = n.get("attributes") or {}
+        t = at.get("text") or ""
+        ty = at.get("type") or ""
+        b = at.get("bounds") or ""
+        if needle in t and (not want_type or want_type in ty):
+            m = re.match(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", b)
+            if m:
+                hits.append((int(m.group(1)) + int(m.group(3))) // 2, (int(m.group(2)) + int(m.group(4))) // 2)
+        for c in n.get("children") or []:
+            w(c)
+    elif isinstance(n, list):
+        for c in n:
+            w(c)
+
+
+w(data)
+if hits:
+    print(hits[0][0], hits[0][1])
