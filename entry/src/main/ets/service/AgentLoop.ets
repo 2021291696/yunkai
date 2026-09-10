@@ -42,6 +42,9 @@ interface ToolErrorPayload { error: string }
 // 步数上限：防模型无限调用工具打转；到顶后强制一次无 tools 收尾
 const MAX_STEPS: number = 10;
 
+// M2 文件/记忆工具名（长文形态下撤出工具表并拒绝执行）
+const M2_TOOL_NAMES: string[] = ['read_file', 'write_file', 'memory_save', 'memory_search'];
+
 // system prompt 常量：桌面 agent 人格 + 无合适 skill 直接回答 + 工具守则（等工具结果再答）
 const AGENT_SYSTEM: string = '你是运行在用户桌面上的智能助手，擅长把复杂概念讲到普通人能听懂，回答用中文、简洁友好。\n' +
   '工作守则：\n' +
@@ -119,7 +122,7 @@ export class AgentLoop {
           checkCancel();
           onEvent(AgentLoop.ev('tool_start', tc.function.name, tc.function.arguments));
           const ts = Date.now();
-          const out = await AgentLoop.execTool(tools, tc);
+          const out = await AgentLoop.execTool(tools, tc, longFormActive);
           hilog.info(0x0000, 'yunkai', 'tool %{public}s %{public}dms outLen=%{public}d', tc.function.name, Date.now() - ts, out.length);
           // use_skill 成功返回说明书（非 '{"error"' 开头）→ 本轮余下调用切长文模型；
           // 失败/error 回传不切换，模型仍用主模型自行调整策略
@@ -127,7 +130,7 @@ export class AgentLoop {
             longFormActive = true;
             // M2 文件/记忆工具在长文形态下移出工具表：eli5 的产出契约是「整页 HTML 直接写在
             // 回答正文」，write_file 会把页面吸进沙箱文件让画布判定失效（门2 实测回归）
-            const m2Names: string[] = ['read_file', 'write_file', 'memory_save', 'memory_search'];
+            const m2Names: string[] = M2_TOOL_NAMES;
             toolDefs = toolDefs.filter(d => d.function !== undefined && !m2Names.includes(d.function.name));
           }
           onEvent(AgentLoop.ev('tool_done', tc.function.name, out.substring(0, 80)));
@@ -170,8 +173,14 @@ export class AgentLoop {
     return cfg.model;
   }
 
-  // 单工具执行：未知名/抛异常都收敛为 '{"error":...}' 字符串回传给模型，绝不让循环崩溃
-  private static async execTool(tools: AgentTool[], tc: ToolCall): Promise<string> {
+  // 单工具执行：未知名/抛异常都收敛为 '{"error":...}' 字符串回传给模型，绝不让循环崩溃。
+  // m2Blocked=true（长文形态）时 M2 文件/记忆工具直接拒绝执行——工具表已撤下但模型仍可能
+  // 幻觉调用（实测 glm-4.7 会），放行会让 eli5 的 HTML 流进沙箱使画布判定失效
+  private static async execTool(tools: AgentTool[], tc: ToolCall, m2Blocked: boolean): Promise<string> {
+    if (m2Blocked && M2_TOOL_NAMES.includes(tc.function.name)) {
+      const e: ToolErrorPayload = { error: '当前为讲解长文模式，文件/记忆工具不可用；请把完整内容（含 HTML）直接写在回答正文中' };
+      return JSON.stringify(e);
+    }
     let tool: AgentTool | null = null;
     for (const t of tools) {
       if (t.name === tc.function.name) {
