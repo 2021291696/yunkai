@@ -44,6 +44,11 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
 
     private fun load(id: Long) {
         initialized = true
+        // 换会话即作废在途 send（genId 失配 → 该轮 return）：否则旧轮回来后会把回答写进新会话，
+        // 且 nextId 已归 1 会和 loadTurns 写回的 id 撞车 → LazyColumn("重复 key") 崩。
+        // 鸿蒙版靠 replaceUrl 换新页实例天然规避，移植成单 Activity + 原地换会话后必须显式作废
+        genId += 1
+        loading.value = false
         convId = id
         msgs.clear()
         turns.clear()

@@ -4,6 +4,9 @@
 # 门2 由 AI 编排层按本清单驱动模拟器（android-emulator MCP），证据落
 # tests/fullflow/reports/<时间戳>_ui/artifacts/agent-ui/<runID>/。
 # 密钥只经 DEEPSEEK_API_KEY 环境变量名引用，禁明文（铁律 2）。
+# 环境前置（AI 编排层负责，铁律 3）：JAVA_HOME 必须指完整 JDK 21（Temurin），
+#   ANDROID_HOME=D:\Android\Sdk —— 本机默认 JAVA_HOME 指向 IntelliJ 的 JBR，
+#   无 jlink.exe，会让 JdkImageTransform 直接失败（实测 gate1 RED）。
 #
 # 注（2026-09-09 首战教训）：执行器 fork 在运行时读全局变量，不按枚举路径
 # 强制分支——多分叉结构会全线 RED。故本清单摊平为单路径「base」，
@@ -160,5 +163,19 @@ flow:
         - { action: click, target: "屏幕右侧非抽屉区域（面板外空白）" }
         - { action: fill, target: "聊天输入框", value: "抽屉已收起" }
         - { action: expect_visible, target: "text=抽屉已收起" }
+
+    - id: chat_switch_during_loading  # ⑮ 探针：在途轮换会话（门0 blocking 回归——load() 须作废在途 send）
+      ui:
+        - { action: fill, target: "聊天输入框", value: "用一句话回答：1+1等于几？" }
+        - { action: click, target: "text=发送" }
+        - { action: click, target: "左上角侧边栏按钮 ☰" }
+        - { action: click, target: "text=＋ 新对话" }
+        - { action: expect_visible, target: "text=问我任何问题" }
+        - { action: wait, seconds: 25 }
+        - { action: expect_visible, target: "text=问我任何问题" }
+      # 判据（内容级）：被作废那轮在后台跑完后，新会话必须仍是空态引导页——
+      # 出现 AI 气泡 = 跨会话写入（FAIL）；app 不得崩（旧行为：nextId 归 1
+      # 与 loadTurns 写回的 id 撞车 → LazyColumn 重复 key 崩）。
+      # wait = AI 驱动层 sleep（非 run.py 动作）：等足够时间让废轮在后台跑完。
       # 收起判据（内容级，AI 驱动层读屏复核）：点 ✕ 与点面板外后抽屉面板均须消失；
       # 面板未消失时输入框仍被遮罩/面板覆盖，fill 打不进去 → 文案不可见 → 本步 RED
