@@ -8,3 +8,4 @@ local.properties
 .mimosa/
 .v2c/
 _dump.json
+.kotlin/
