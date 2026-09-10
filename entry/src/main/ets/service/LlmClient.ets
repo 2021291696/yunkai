@@ -1,6 +1,7 @@
 // LLM 客户端：OpenAI 兼容 /chat/completions 与 /models
 // 请求体显式 max_tokens（16384，长 HTML 讲解不截断）；tools 走 OpenAI function calling 协议
 import { http } from '@kit.NetworkKit';
+import { util } from '@kit.ArkTS';
 import { AppConfig, ChatMsg, ToolCall, ToolDef } from '../model/Types';
 
 // 完整 message（含 tool_calls / tool_call_id），供 agent 循环按调用分派；导出供测试 fake 构造脚本
@@ -13,6 +14,16 @@ interface OpenAiChoice { message: OpenAiMessage }
 interface OpenAiResp { choices: OpenAiChoice[] }
 interface ModelsItem { id: string }
 interface ModelsResp { data: ModelsItem[] }
+
+// SSE 流式分片结构（delta 增量；tool_calls 分片带 index）
+interface DeltaFunction { name?: string; arguments?: string }
+interface DeltaToolCall { index?: number; id?: string; function?: DeltaFunction }
+interface DeltaChoice { delta: DeltaBody }
+interface DeltaBody {
+  content?: string;
+  tool_calls?: DeltaToolCall[];
+}
+interface SseChunk { choices?: DeltaChoice[] }
 
 // ponytail: 显式类型，ArkTS 对象字面量必须对应接口
 interface ChatRequestBody {
@@ -38,12 +49,12 @@ export class LlmClient {
     return this.cfg.baseUrl.replace(/\/+$/, '');
   }
 
-  // 构造请求体：stream 固定 false；max_tokens 恒写；tools 非 null 才写（OpenAI 兼容 function calling）
-  static buildRequestBody(model: string, messages: ChatMsg[], tools: ToolDef[] | null): string {
+  // 构造请求体：stream 默认 false（chatStream 显式传 true）；max_tokens 恒写；tools 非 null 才写
+  static buildRequestBody(model: string, messages: ChatMsg[], tools: ToolDef[] | null, stream: boolean = false): string {
     const body: ChatRequestBody = {
       model: model,
       messages: messages,
-      stream: false,
+      stream: stream,
       temperature: 0.6,
       max_tokens: LlmClient.MAX_TOKENS
     };
@@ -123,4 +134,157 @@ export class LlmClient {
       hr.destroy();
     }
   }
+
+  // ── B1 SSE 流式对话 ──
+  // 与 chatMessage 同协议但 stream=true：requestInStream + dataReceive 增量回调。
+  // delta.content 增量经 onDelta(累计文本) 上抛（UI 流式气泡）；delta.tool_calls 分片按
+  // index 组装（id/name 取首片，arguments 顺序拼接）；dataEnd 时 resolve 完整 message
+  // （与 chatMessage 同构，AgentLoop 分派逻辑零改动）。
+  // SSE 分片会切断行——用 TextDecoder(stream 模式) 增量解码 + 手动按 \n 切行保留残行。
+  // 取消：调用方 isCancelled 在 onDelta 里检查（本类不管取消，与 Android 端对称）。
+  async chatStream(messages: ChatMsg[], tools: ToolDef[] | null, onDelta: (partial: string) => void, model?: string): Promise<OpenAiMessage> {
+    return new Promise<OpenAiMessage>((resolve: (v: OpenAiMessage) => void, reject: (e: Error) => void) => {
+      const hr = http.createHttp();
+      const useModel = (model !== undefined && model !== '') ? model : this.cfg.model;
+      const decoder = util.TextDecoder.create('utf-8', { ignoreBOM: false });
+      let pending = '';          // 跨分片的残行
+      let content = '';          // 累计增量文本
+      let done = false;          // dataEnd 已处理（防双 resolve）
+      let httpErr = '';
+      // tool_calls 分片组装：index → (id/name/arguments)
+      const tcIds: Map<number, string> = new Map();
+      const tcNames: Map<number, string> = new Map();
+      const tcArgs: Map<number, string> = new Map();
+      const tcOrder: number[] = [];
+
+      const finish = (): void => {
+        if (done) { return; }
+        done = true;
+        hr.destroy();
+        if (httpErr !== '') {
+          reject(new Error(httpErr));
+          return;
+        }
+        const toolCalls: ToolCall[] = [];
+        for (const idx of tcOrder) {
+          const id = tcIds.get(idx) ?? `call_${idx}`;
+          const name = tcNames.get(idx);
+          if (name === undefined) { continue; }
+          const tc: ToolCall = { id: id, type: 'function', function: { name: name, arguments: tcArgs.get(idx) ?? '{}' } };
+          toolCalls.push(tc);
+        }
+        const msg: OpenAiMessage = { content: content };
+        if (toolCalls.length > 0) { msg.tool_calls = toolCalls; }
+        resolve(msg);
+      };
+
+      const applyDelta = (deltaObj: DeltaBody): void => {
+        if (typeof deltaObj.content === 'string' && deltaObj.content.length > 0) {
+          content += deltaObj.content;
+          onDelta(content);
+        }
+        const tcs = deltaObj.tool_calls;
+        if (tcs !== undefined && tcs !== null && Array.isArray(tcs)) {
+          for (const tc of tcs) {
+            let idx = 0;
+            if (typeof tc.index === 'number') { idx = tc.index; }
+            if (!tcArgs.has(idx)) {
+              tcArgs.set(idx, '');
+              tcOrder.push(idx);
+              if (typeof tc.id === 'string' && tc.id !== '') { tcIds.set(idx, tc.id); }
+              if (tc.function !== undefined && typeof tc.function.name === 'string' && tc.function.name !== '') {
+                tcNames.set(idx, tc.function.name);
+              }
+            } else {
+              if (typeof tc.id === 'string' && tc.id !== '' && !tcIds.has(idx)) { tcIds.set(idx, tc.id); }
+              if (tc.function !== undefined && typeof tc.function.name === 'string' && tc.function.name !== '' && !tcNames.has(idx)) {
+                tcNames.set(idx, tc.function.name);
+              }
+            }
+            if (tc.function !== undefined && typeof tc.function.arguments === 'string') {
+              tcArgs.set(idx, (tcArgs.get(idx) ?? '') + tc.function.arguments);
+            }
+          }
+        }
+      };
+
+      const feedLines = (chunk: string): void => {
+        pending += chunk;
+        // SSE 事件以 \n 分隔；\r 容错（部分端点用 \r\n）
+        let nl = pending.indexOf('\n');
+        while (nl >= 0) {
+          let line = pending.substring(0, nl);
+          if (line.endsWith('\r')) { line = line.substring(0, line.length - 1); }
+          pending = pending.substring(nl + 1);
+          if (line.startsWith('data:')) {
+            const payload = line.substring(5).trim();
+            if (payload === '[DONE]') { finish(); return; }
+            if (payload !== '') {
+              try {
+                const obj = JSON.parse(payload) as SseChunk;
+                if (obj.choices !== undefined && obj.choices !== null && obj.choices.length > 0) {
+                  applyDelta(obj.choices[0].delta);
+                }
+              } catch (e) {
+                // 单片解析失败不致命：跳过该行（分片边界已在行切分时保证）
+              }
+            }
+          }
+          nl = pending.indexOf('\n');
+        }
+      };
+
+      hr.on('headersReceive', (header: Object) => {
+        // 头部到达时无动作；错误码在 dataReceive/dataEnd 阶段由 respCode 判定
+      });
+      hr.on('dataReceive', (data: ArrayBuffer) => {
+        if (done) { return; }
+        try {
+          const chunk = decoder.decodeToString(new Uint8Array(data));
+          feedLines(chunk);
+        } catch (e) {
+          httpErr = `流式解码失败: ${e instanceof Error ? e.message : String(e)}`;
+          finish();
+        }
+      });
+      hr.on('dataEnd', () => {
+        // 冲刷残行（若服务端最后无换行）
+        if (pending.startsWith('data:')) {
+          const payload = pending.substring(5).trim();
+          if (payload === '[DONE]') {
+            // 结束标记
+          } else if (payload !== '') {
+            try {
+              const obj = JSON.parse(payload) as SseChunk;
+              if (obj.choices !== undefined && obj.choices !== null && obj.choices.length > 0) {
+                applyDelta(obj.choices[0].delta);
+              }
+            } catch (e) {
+              // 忽略
+            }
+          }
+        }
+        finish();
+      });
+
+      const opt: http.HttpRequestOptions = {
+        method: http.RequestMethod.POST,
+        header: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.cfg.apiKey}` },
+        extraData: LlmClient.buildRequestBody(useModel, messages, tools, true),
+        readTimeout: 600000,
+        connectTimeout: 15000,
+        expectDataType: http.HttpDataType.STRING
+      };
+      hr.requestInStream(`${this.base()}/chat/completions`, opt).then((respCode: number) => {
+        if (respCode < 200 || respCode >= 300) {
+          httpErr = `LLM HTTP ${respCode}`;
+          finish();
+        }
+      }).catch((e: Error) => {
+        httpErr = `LLM HTTP: ${e.message}`;
+        finish();
+      });
+    });
+  }
+
 }

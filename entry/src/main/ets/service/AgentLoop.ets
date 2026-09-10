@@ -57,7 +57,8 @@ export class AgentLoop {
   static async run(cfg: AppConfig, ctx: common.Context, history: ChatMsg[], question: string,
     forcedSkill: AgentSkill | null, onEvent: (e: LoopEvent) => void,
     fakeChat?: (messages: ChatMsg[], tools: ToolDef[] | null) => Promise<OpenAiMessage>,
-    isCancelled?: () => boolean): Promise<LoopResult> {
+    isCancelled?: () => boolean,
+    onDelta?: (partial: string) => void): Promise<LoopResult> {
     const checkCancel = (): void => {
       if (isCancelled !== undefined && isCancelled()) {
         throw new Error(AgentLoop.CANCELLED_MSG);
@@ -86,19 +87,24 @@ export class AgentLoop {
     // 切到 cfg.longModel（glm-4.7 无思考、可出完整长文）；模型选择收敛在 pickModel 单点。
     const llm = new LlmClient(cfg);
     let longFormActive = false;
-    const doChat = async (ms: ChatMsg[], ts: ToolDef[] | null): Promise<OpenAiMessage> => {
+    const doChat = async (ms: ChatMsg[], ts: ToolDef[] | null, onDelta?: (partial: string) => void): Promise<OpenAiMessage> => {
       const model = AgentLoop.pickModel(cfg, longFormActive);
       if (fakeChat !== undefined) {
         return fakeChat(ms, ts);
       }
-      return llm.chatMessage(ms, ts, model);
+      // B1 SSE：增量经 onDelta 上抛（UI 流式气泡）；取消由调用方在 onDelta 里检查
+      return llm.chatStream(ms, ts, (partial: string) => {
+        if (onDelta !== undefined && onDelta !== null) {
+          onDelta(partial);
+        }
+      }, model);
     };
 
     for (let step = 1; step <= MAX_STEPS; step++) {
       checkCancel();
       const t0 = Date.now();
       hilog.info(0x0000, 'yunkai', 'llm call step=%{public}d model=%{public}s msgs=%{public}d', step, AgentLoop.pickModel(cfg, longFormActive), messages.length);
-      const msg = await doChat(messages, toolDefs.length > 0 ? toolDefs : null);
+      const msg = await doChat(messages, toolDefs.length > 0 ? toolDefs : null, onDelta);
       hilog.info(0x0000, 'yunkai', 'llm resp step=%{public}d %{public}dms toolCalls=%{public}d contentLen=%{public}d', step, Date.now() - t0, msg.tool_calls !== undefined ? msg.tool_calls.length : 0, msg.content.length);
       if (msg.tool_calls !== undefined && msg.tool_calls.length > 0) {
         const asst: ChatMsg = { role: 'assistant', content: msg.content, tool_calls: msg.tool_calls };

@@ -53,6 +53,7 @@ struct Chat {
   @State input: string = '';
   @State loading: boolean = false;
   @State showHistory: boolean = false;
+  @State streamText: string = '';
   @State genId: number = 0;
   private nextId: number = 1;
   private listScroller: Scroller = new Scroller();
@@ -189,8 +190,13 @@ struct Chat {
         this.scrollToBottom();
       };
 
+      const onDelta = (partial: string): void => {
+        if (gen !== this.genId) { return; }
+        this.streamText = partial;
+        this.scrollToBottom();
+      };
       const r: LoopResult = await AgentLoop.run(cfg, this.ctx(), history, q, forcedSkill, onEvent,
-        undefined, (): boolean => { return gen !== this.genId; });
+        undefined, (): boolean => { return gen !== this.genId; }, onDelta);
       if (gen !== this.genId) { return; }
 
       // 输出形态（全 app 唯一口径）：sanitize 通过且 sanitize 后内容仍以 <!DOCTYPE/<html 开头
@@ -232,7 +238,7 @@ struct Chat {
         this.toast('出错了：' + em);
       }
     } finally {
-      if (gen === this.genId) { this.loading = false; }
+      if (gen === this.genId) { this.loading = false; this.streamText = ''; }
     }
   }
 
@@ -401,6 +407,28 @@ struct Chat {
               }
             }, (m: RenderMsg) => `msg_${m.id}`)
 
+            // B1 流式气泡：增量文本非空时渲染生长中的回答（打字机体验）；落库仍走唯一成功路径
+            if (this.loading && this.streamText !== '') {
+              ListItem() {
+                Text(this.streamText)
+                  .fontSize(14)
+                  .lineHeight(23)
+                  .fontColor($r('app.color.text_hi'))
+                  .fontFamily('Sora, HarmonyOS Sans')
+                  .backgroundColor($r('app.color.glass_bg'))
+                  .backdropBlur(ThemeTokens.BLUR_CARD)
+                  .borderRadius({
+                    topLeft: ThemeTokens.R_BUBBLE,
+                    topRight: ThemeTokens.R_BUBBLE,
+                    bottomRight: ThemeTokens.R_TIGHT,
+                    bottomLeft: ThemeTokens.R_BUBBLE
+                  })
+                  .padding({ left: 17, right: 17, top: 13, bottom: 13 })
+                  .constraintSize({ maxWidth: '82%' })
+                  .width('82%')
+              }
+              .transition(TransitionEffect.OPACITY)
+            }
             // 时间线卡：只在 loading 时渲染于流末尾（旧全屏遮罩已删）
             if (this.loading) {
               ListItem() {
