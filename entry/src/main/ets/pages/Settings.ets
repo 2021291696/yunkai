@@ -1,6 +1,7 @@
 // 设置页：外观（壁纸自定义）+ OpenAI 兼容三项配置 + 获取模型列表 + 技能自动路由开关 + 独立搜索配置 + 关于
 // （联网方式三选已下线：agent 自主决定何时搜索，searchMode 字段保留不迁移）
 import { router, promptAction } from '@kit.ArkUI';
+import { bundleManager } from '@kit.AbilityKit';
 import { common } from '@kit.AbilityKit';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import { fileIo as fs } from '@kit.CoreFileKit';
@@ -46,6 +47,7 @@ struct Settings {
   @State fetchingModels: boolean = false;
   @State wallpaperLabel: string = '默认';
   @State themeMode: string = THEME_SYSTEM;
+  @State versionName: string = '';
 
   private ctx(): common.UIAbilityContext {
     return getContext(this) as common.UIAbilityContext;
@@ -53,6 +55,10 @@ struct Settings {
 
   aboutToAppear(): void {
     this.loadConfig();
+    // 版本号读包信息（不再硬编码；与 app.json5 的 versionName 同源）
+    this.versionName = bundleManager.getBundleInfoForSelfSync(
+      bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT).versionName;
+
     this.themeMode = ConfigStore.getThemeModeSync(this.ctx());
     ConfigStore.getWallpaper(this.ctx())
       .then((p: string) => { this.wallpaperLabel = p === '' ? '默认' : '自定义'; });
@@ -228,30 +234,31 @@ struct Settings {
           }
           .width('100%')
           .alignItems(VerticalAlign.Center)
-          Row() {
+          Row({ space: 10 }) {
             Text('壁纸').fontSize(15).fontColor($r('app.color.text_hi'))
-            Blank()
             Text(this.wallpaperLabel).fontSize(13).fontColor($r('app.color.text_low'))
-            Button('更换')
+            Blank()
+            Button('恢复默认')
+              .fontSize(13)
+              .height(30)
+              .fontColor($r('app.color.text_mid'))
+              .backgroundColor($r('app.color.glass_bg_strong'))
+              .borderRadius(15)
+              .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+              .onClick(() => { this.resetWallpaper(); })
+            Button('选择图片')
               .fontSize(13)
               .height(30)
               .fontColor($r('app.color.text_hi'))
               .backgroundColor($r('app.color.glass_bg_strong'))
               .borderRadius(15)
               .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
-              .margin({ left: 10 })
               .onClick(() => {
                 this.pickWallpaper();
               })
           }
           .width('100%')
           .alignItems(VerticalAlign.Center)
-          .gesture(
-            LongPressGesture()
-              .onAction(() => { this.resetWallpaper(); })
-          )
-          Text('长按此行恢复默认壁纸')
-            .fontSize(11).fontColor($r('app.color.text_low')).width('100%')
         }
         .glassCard()
 
@@ -404,7 +411,7 @@ struct Settings {
           Text('一个安静的 AI 对话空间')
             .fontSize(12)
             .fontColor($r('app.color.text_mid'))
-          Text('版本 0.2.0')
+          Text(`版本 ${this.versionName}`)
             .fontSize(10.5)
             .fontColor($r('app.color.text_low'))
         }
