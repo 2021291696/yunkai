@@ -5,6 +5,7 @@ import { ThemeTokens } from '../theme/ThemeTokens';
 
 @Component
 export struct HistoryDrawer {
+  @StorageProp('statusBarH') statusBarH: number = 0;
   convs: Conv[] = [];
   turns: Msg[] = [];
   onClose: () => void = (): void => {};
@@ -58,7 +59,7 @@ export struct HistoryDrawer {
       }
       .width('100%')
       .alignItems(VerticalAlign.Center)
-      .padding(16)
+      .padding({ left: 16, right: 16, top: this.statusBarH + 16, bottom: 16 })
 
       Row({ space: 10 }) {
         Button('＋ 新对话')
