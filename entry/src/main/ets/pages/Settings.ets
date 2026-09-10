@@ -327,7 +327,13 @@ struct Settings {
           Text('›').fontSize(20).fontColor($r('app.color.accent'))
         }
         .padding({ left: 16, right: 16, top: 14, bottom: 14 })
-        .glassCard()
+        // Row 不能用 @Extend(Column) 的 glassCard()，内联相同样式
+        .borderRadius(ThemeTokens.R_CARD)
+        .backgroundColor($r('app.color.glass_bg'))
+        .backdropBlur(ThemeTokens.BLUR_CARD)
+        .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+        .shadow({ radius: 28, color: '#40000000', offsetY: 8 })
+        .width('100%')
         .onClick(() => {
           router.pushUrl({ url: 'pages/SkillManage' });
         })
