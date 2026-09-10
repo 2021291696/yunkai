@@ -1,5 +1,6 @@
 package com.zhuolin.yunkai.ui.theme
 
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -24,6 +25,20 @@ import com.zhuolin.yunkai.store.ConfigStore
 // 全局壁纸层：照片 + 亮度/饱和度滤镜 + 纵向/横向渐变遮罩。置于页面 Box 最底层。
 // 换壁纸 = 设置页写入 ConfigStore.wallpaper（绝对路径），这里用 Flow 订阅即时生效。
 // 滤镜语义对齐鸿蒙版：暗色 brightness 0.45 / 亮色 1.06，saturate 0.85。
+
+// 壁纸解码上限：按屏幕高度的两倍采样（壁纸是 Crop 铺满，宽度由纵横比自然覆盖）。
+// 用户可能选 12MP 相册照——全尺寸解码 ≈48MB 位图且在主线程会冻结首帧，必须先探测尺寸再降采样。
+private const val WALLPAPER_MAX_HEIGHT_PX = 2400
+
+private fun decodeScaled(path: String): Bitmap? = runCatching {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeFile(path, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+    var sample = 1
+    while (bounds.outHeight / (sample * 2) >= WALLPAPER_MAX_HEIGHT_PX) sample *= 2
+    BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample })
+}.getOrNull()
+
 @Composable
 fun WallpaperLayer(modifier: Modifier = Modifier) {
     val glass = LocalGlassScheme.current
@@ -32,11 +47,14 @@ fun WallpaperLayer(modifier: Modifier = Modifier) {
     val customPath by produceState(initialValue = "") {
         store.wallpaperFlow.collect { value = it }
     }
-    val customBitmap = remember(customPath) {
-        if (customPath.isNotEmpty()) {
-            runCatching { BitmapFactory.decodeFile(customPath)?.asImageBitmap() }.getOrNull()
-        } else null
+    // 解码放 Default 线程（12MP 照片解码数百 ms，主线程会掉帧）；remember(customPath) 失败时不卡 UI，回落默认壁纸
+    val customBitmap = produceState<androidx.compose.ui.graphics.ImageBitmap?>(initialValue = null, customPath) {
+        value = if (customPath.isEmpty()) null
+        else kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            decodeScaled(customPath)?.asImageBitmap()
+        }
     }
+    val bitmap = customBitmap.value
     // saturate(0.85) 再乘亮度系数；亮度 >1 的部分由 ColorMatrix 自然钳制
     val filter = remember(glass.isDark) {
         val m = ColorMatrix().apply { setToSaturation(0.85f) }
@@ -46,9 +64,9 @@ fun WallpaperLayer(modifier: Modifier = Modifier) {
     }
 
     Box(modifier = modifier.fillMaxSize()) {
-        if (customBitmap != null) {
+        if (bitmap != null) {
             Image(
-                bitmap = customBitmap,
+                bitmap = bitmap,
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
