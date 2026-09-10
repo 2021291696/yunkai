@@ -46,6 +46,9 @@ object AgentLoop {
     // 取消专用错误消息：调用方按此静默吞（引擎层中断，结果直接丢弃）
     const val CANCELLED_MSG: String = "AGENT_LOOP_CANCELLED"
 
+    // M2 文件/记忆工具名（长文形态下撤出工具表并拒绝执行）
+    private val M2_TOOL_NAMES = setOf("read_file", "write_file", "memory_save", "memory_search")
+
     private val json = Json { ignoreUnknownKeys = true }
 
     // system prompt 常量：桌面 agent 人格 + 无合适 skill 直接回答 + 工具守则（等工具结果再答）
@@ -127,7 +130,7 @@ object AgentLoop {
                     checkCancel(isCancelled)
                     onEvent(LoopEvent("tool_start", tc.function.name, tc.function.arguments))
                     val ts = System.currentTimeMillis()
-                    val out = execTool(tools, tc)
+                    val out = execTool(tools, tc, longFormActive)
                     Log.i("yunkai", "tool ${tc.function.name} ${System.currentTimeMillis() - ts}ms outLen=${out.length}")
                     // use_skill 成功返回说明书（非 '{"error"' 开头）→ 本轮余下调用切长文模型；
                     // 失败/error 回传不切换，模型仍用主模型自行调整策略
@@ -173,7 +176,12 @@ object AgentLoop {
     }
 
     // 单工具执行：未知名/抛异常都收敛为 '{"error":...}' 字符串回传给模型，绝不让循环崩溃
-    private suspend fun execTool(tools: List<AgentTool>, tc: ToolCall): String {
+    private suspend fun execTool(tools: List<AgentTool>, tc: ToolCall, m2Blocked: Boolean): String {
+        // 长文形态拒绝 M2 工具：工具表已撤下但模型仍可能幻觉调用（实测 glm-4.7 会），
+        // 放行会让 eli5 的 HTML 流进沙箱使画布判定失效
+        if (m2Blocked && tc.function.name in M2_TOOL_NAMES) {
+            return BuiltinTools.err("当前为讲解长文模式，文件/记忆工具不可用；请把完整内容（含 HTML）直接写在回答正文中")
+        }
         val tool = tools.firstOrNull { it.name == tc.function.name }
             ?: return BuiltinTools.err("未知工具: ${tc.function.name}")
         return try {
