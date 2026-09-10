@@ -15,6 +15,7 @@ import { HistoryDrawer } from './HistoryDrawer';
 import { GuidePage } from './GuidePage';
 import { ThemeTokens } from '../theme/ThemeTokens';
 import { WallpaperLayer } from '../common/WallpaperLayer';
+import { MarkdownText } from '../common/MarkdownLite';
 
 // 画布 HTML 的 AppStorage 暂存 key（Chat → Canvas 页传参用，避开 router params 大字符串）
 const CANVAS_HTML_KEY: string = 'canvasHtml';
@@ -377,11 +378,9 @@ struct Chat {
                       }
                       .width('100%')
                     } else {
-                      Text(m.content)
-                        .fontSize(14)
-                        .lineHeight(23)
-                        .fontColor($r('app.color.text_hi'))
-                        .fontFamily('Sora, HarmonyOS Sans')
+                      // B2 markdown 气泡：assistant 文本走 MarkdownText（粗体/行内码/标题/列表），
+                      // 颜色字体在组件内逐 Text 节点对齐气泡原样式
+                      MarkdownText({ text: m.content })
                         .backgroundColor($r('app.color.glass_bg'))
                         .backdropBlur(ThemeTokens.BLUR_CARD)
                         .borderRadius({
@@ -410,11 +409,8 @@ struct Chat {
             // B1 流式气泡：增量文本非空时渲染生长中的回答（打字机体验）；落库仍走唯一成功路径
             if (this.loading && this.streamText !== '') {
               ListItem() {
-                Text(this.streamText)
-                  .fontSize(14)
-                  .lineHeight(23)
-                  .fontColor($r('app.color.text_hi'))
-                  .fontFamily('Sora, HarmonyOS Sans')
+                // B1 流式 + B2 markdown：增量文本同样走 MarkdownText（与落库后的回答气泡同渲染口径）
+                MarkdownText({ text: this.streamText })
                   .backgroundColor($r('app.color.glass_bg'))
                   .backdropBlur(ThemeTokens.BLUR_CARD)
                   .borderRadius({
