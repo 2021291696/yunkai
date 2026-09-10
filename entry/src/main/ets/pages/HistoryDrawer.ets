@@ -26,12 +26,17 @@ export struct HistoryDrawer {
   build() {
     Column() {
       Row() {
-        Text('会话与历史')
+        Text('会话')
           .fontSize(18)
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.text_hi'))
           .fontFamily('Sora, HarmonyOS Sans')
           .layoutWeight(1)
+        // 长按删除是本列表唯一的隐藏操作，提示挂在标题行（下方不再单起一行分区标题）
+        Text('长按可删除')
+          .fontSize(10)
+          .fontColor($r('app.color.text_low'))
+          .margin({ right: 10 })
         Button('✕')
           .width(34)
           .height(34)
@@ -72,19 +77,6 @@ export struct HistoryDrawer {
       }
       .width('100%')
       .padding({ left: 16, right: 16, bottom: 10 })
-
-      Row() {
-        Text('会话')
-          .fontSize(11)
-          .fontColor($r('app.color.text_low'))
-          .letterSpacing(1.2)
-          .layoutWeight(1)
-        Text('长按可删除')
-          .fontSize(10)
-          .fontColor($r('app.color.text_low'))
-      }
-      .width('100%')
-      .padding({ left: 16, right: 16, bottom: 6 })
 
       if (this.convs.length === 0) {
         Text('暂无会话').fontSize(14).fontColor($r('app.color.text_low')).padding(16)
