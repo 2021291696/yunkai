@@ -5,26 +5,33 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -69,94 +76,123 @@ fun HistoryDrawer(
         return q.ifEmpty { "（无问题记录）" }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxHeight()
-            .fillMaxWidth(0.86f)
-            .background(glass.glassBgStrong) // 玻璃面板，透出壁纸
-            .statusBarsPadding() // 抽屉头部避让状态栏
-            .navigationBarsPadding()
-            .padding(top = 16.dp),
-    ) {
-        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-            Text("会话与历史", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextDark, modifier = Modifier.weight(1f))
-            Text("收起 ✕", fontSize = 15.sp, color = WarmOrangeDeep, modifier = Modifier
-                .clickable(onClick = onClose))
-        }
+    Box(modifier = Modifier.fillMaxSize()) {
+        // 遮罩：点抽屉面板外任意位置即收起（透明，不压暗壁纸）
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onClose,
+                ),
+        )
 
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        Column(
+            modifier = Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(0.86f)
+                .background(glass.glassBgStrong) // 玻璃面板，透出壁纸
+                .statusBarsPadding() // 抽屉头部避让状态栏
+                .navigationBarsPadding()
+                .padding(top = 16.dp),
         ) {
-            Button(
-                onClick = onNewConversation,
-                modifier = Modifier.weight(1f).height(34.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = WarmOrange, contentColor = androidx.compose.ui.graphics.Color.White),
-            ) { Text("＋ 新对话", fontSize = 14.sp) }
-            Button(
-                onClick = onOpenSettings,
-                modifier = Modifier.weight(1f).height(34.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = glass.glassBg, contentColor = glass.accent),
-            ) { Text("设置", fontSize = 14.sp) }
-        }
-
-        Text("会话", fontSize = 13.sp, color = TextFaint, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
-
-        if (convs.isEmpty()) {
-            Text("暂无会话", fontSize = 14.sp, color = TextFaint, modifier = Modifier.padding(16.dp))
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth().height(220.dp).padding(horizontal = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                items(convs, key = { "${it.id}_${it.updatedAt}" }) { c ->
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(glass.glassBg, RoundedCornerShape(12.dp))
-                            .border(GlassTokens.BORDER_W.dp, glass.glassBorder, RoundedCornerShape(12.dp))
-                            .combinedClickable(
-                                onClick = { onOpenConversation(c.id) },
-                                onLongClick = { onDeleteConversation(c) },
-                            )
-                            .padding(12.dp),
-                    ) {
-                        Text(c.title, fontSize = 15.sp, color = TextDark, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(timeLabel(c.updatedAt), fontSize = 12.sp, color = TextFaint)
-                    }
-                }
+                Text("会话与历史", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextDark, modifier = Modifier.weight(1f))
+                // 收起钮只留符号（无「收起」二字），圆玻璃钮对齐全 app 圆钮惯例
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(glass.glassBg)
+                        .border(GlassTokens.BORDER_W.dp, glass.glassBorder, CircleShape)
+                        .clickable(onClick = onClose),
+                    contentAlignment = Alignment.Center,
+                ) { Text("✕", fontSize = 14.sp, color = glass.textHi) }
             }
-        }
 
-        HorizontalDivider(color = glass.glassBorder, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
-
-        Text("历史轮次", fontSize = 13.sp, color = TextFaint, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
-
-        if (turns.isEmpty()) {
-            Text("还没有讲解记录", fontSize = 14.sp, color = TextFaint, modifier = Modifier.padding(16.dp))
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                items(turns, key = { it.id }) { m ->
-                    if (m.role == "assistant") {
+                Button(
+                    onClick = onNewConversation,
+                    modifier = Modifier.weight(1f).height(34.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = WarmOrange, contentColor = androidx.compose.ui.graphics.Color.White),
+                ) { Text("＋ 新对话", fontSize = 14.sp) }
+                // 设置入口：只留齿轮符号（无「设置」二字），留在抽屉内
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(glass.glassBg)
+                        .border(GlassTokens.BORDER_W.dp, glass.glassBorder, CircleShape)
+                        .clickable(onClick = onOpenSettings),
+                    contentAlignment = Alignment.Center,
+                ) { Text("⚙", fontSize = 16.sp, color = glass.accent) }
+            }
+
+            Text("会话", fontSize = 13.sp, color = TextFaint, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
+
+            if (convs.isEmpty()) {
+                Text("暂无会话", fontSize = 14.sp, color = TextFaint, modifier = Modifier.padding(16.dp))
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().height(220.dp).padding(horizontal = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(convs, key = { "${it.id}_${it.updatedAt}" }) { c ->
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .background(glass.glassBg, RoundedCornerShape(12.dp))
                                 .border(GlassTokens.BORDER_W.dp, glass.glassBorder, RoundedCornerShape(12.dp))
-                                .clickable { onOpenTurn(m.turnNo) }
+                                .combinedClickable(
+                                    onClick = { onOpenConversation(c.id) },
+                                    onLongClick = { onDeleteConversation(c) },
+                                )
                                 .padding(12.dp),
                         ) {
-                            Text("第${m.turnNo}轮", fontSize = 12.sp, color = WarmOrangeDeep)
-                            Text(questionOf(m.turnNo), fontSize = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(c.title, fontSize = 15.sp, color = TextDark, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(timeLabel(c.updatedAt), fontSize = 12.sp, color = TextFaint)
                         }
                     }
                 }
             }
+
+            HorizontalDivider(color = glass.glassBorder, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+
+            Text("历史轮次", fontSize = 13.sp, color = TextFaint, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
+
+            if (turns.isEmpty()) {
+                Text("还没有讲解记录", fontSize = 14.sp, color = TextFaint, modifier = Modifier.padding(16.dp))
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(turns, key = { it.id }) { m ->
+                        if (m.role == "assistant") {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(glass.glassBg, RoundedCornerShape(12.dp))
+                                    .border(GlassTokens.BORDER_W.dp, glass.glassBorder, RoundedCornerShape(12.dp))
+                                    .clickable { onOpenTurn(m.turnNo) }
+                                    .padding(12.dp),
+                            ) {
+                                Text("第${m.turnNo}轮", fontSize = 12.sp, color = WarmOrangeDeep)
+                                Text(questionOf(m.turnNo), fontSize = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(16.dp))
         }
-        Spacer(Modifier.height(16.dp))
     }
 }
 

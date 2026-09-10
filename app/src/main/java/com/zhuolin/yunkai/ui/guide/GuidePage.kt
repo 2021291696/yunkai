@@ -24,7 +24,7 @@ import com.zhuolin.yunkai.ui.theme.CardGlass
 import com.zhuolin.yunkai.ui.theme.TextDark
 import com.zhuolin.yunkai.ui.theme.TextMuted
 
-// 引导态：无任何消息时的冷启动页（🌤️ + 快捷问题 chips；第三个 chip 演示 @eli5 强制技能语法）。
+// 引导态：无任何消息时的冷启动页（标题 + 快捷问题 chips；第三个 chip 演示 @eli5 强制技能语法）。
 // 点 chips 经 onAsk(question) 上抛，由 Chat 页填输入并触发发送
 private val QUESTIONS = listOf(
     "为什么天空是蓝色的？",
@@ -40,8 +40,6 @@ fun GuidePage(onAsk: (question: String) -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Text("🌤️", fontSize = 60.sp)
-        Spacer(Modifier.padding(4.dp))
         Text("问我任何问题", fontSize = 20.sp, fontWeight = FontWeight.Medium, color = TextDark)
         Text("我会用大白话和图讲给你听", fontSize = 14.sp, color = TextMuted)
         Spacer(Modifier.padding(8.dp))

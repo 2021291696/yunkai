@@ -1,5 +1,6 @@
 package com.zhuolin.yunkai.ui.chat
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -7,6 +8,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
@@ -69,6 +71,9 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
     val scope = rememberCoroutineScope()
     var deleteTarget by remember { mutableStateOf<Conv?>(null) }
 
+    // 抽屉打开时，系统返回键优先收起抽屉（而不是退出 app）
+    BackHandler(enabled = vm.showHistory.value) { vm.showHistory.value = false }
+
     LaunchedEffect(Unit) { vm.initIfNeed(-1L) }
     // 新消息/时间线上屏自动滚底
     LaunchedEffect(vm.msgs.size, vm.timeline.size, vm.loading.value) {
@@ -96,7 +101,7 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
     Column(
         modifier = Modifier.fillMaxSize().imePadding(), // 透明底，透出 WallpaperLayer
     ) {
-        // ===== 顶栏：悬浮玻璃圆钮 + 标题，无整条栏背景（对齐鸿蒙）=====
+        // ===== 顶栏：左上角侧边栏钮 + 居中标题，无整条栏背景（对齐鸿蒙）=====
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -105,6 +110,15 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(CircleShape)
+                    .background(glass.glassBg)
+                    .glassBorder(CircleShape)
+                    .clickable { scope.launch { vm.openHistory() } },
+                contentAlignment = Alignment.Center,
+            ) { Text("☰", fontSize = 15.sp, color = glass.textHi) }
             Text(
                 vm.title.value,
                 fontSize = 15.sp,
@@ -114,15 +128,7 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
             )
-            Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(CircleShape)
-                    .background(glass.glassBg)
-                    .glassBorder(CircleShape)
-                    .clickable { scope.launch { vm.openHistory() } },
-                contentAlignment = Alignment.Center,
-            ) { Text("⋯", fontSize = 14.sp, color = glass.textHi) }
+            Spacer(Modifier.size(34.dp)) // 右侧等宽占位：标题保持视觉居中
         }
 
         // ===== 消息流 =====

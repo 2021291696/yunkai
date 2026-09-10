@@ -85,15 +85,15 @@ flow:
 
     - id: config_save_restore       # ③ 配置保存 + 杀进程重进恢复
       ui:
-        - { action: click, target: "text=历史" }
-        - { action: click, target: "text=设置" }
+        - { action: click, target: "左上角侧边栏按钮 ☰" }
+        - { action: click, target: "抽屉内齿轮设置钮 ⚙" }
         - { action: fill, target: "API 地址输入框", value: "https://api.deepseek.com/v1" }
         - { action: fill, target: "API 密钥输入框", value: "${DEVICE_LLM_KEY}" }
         - { action: fill, target: "模型名输入框", value: "deepseek-chat" }
         - { action: click, target: "text=保存" }
         - { action: goto, url: "app://restart" }          # 杀进程重启
-        - { action: click, target: "text=历史" }
-        - { action: click, target: "text=设置" }
+        - { action: click, target: "左上角侧边栏按钮 ☰" }
+        - { action: click, target: "抽屉内齿轮设置钮 ⚙" }
         - { action: expect_visible, target: "text=https://api.deepseek.com/v1" }
 
     - id: skill_create_form         # ④ 自建技能（新建表单）
@@ -146,7 +146,19 @@ flow:
     - id: history_and_delete        # ⑨ 历史抽屉（恢复/新对话）
       ui:
         - { action: click, target: "text=‹ 返回" }
-        - { action: click, target: "text=历史" }
+        - { action: click, target: "左上角侧边栏按钮 ☰" }
         - { action: expect_visible, target: "text=会话与历史" }
         - { action: click, target: "text=＋ 新对话" }
         - { action: expect_visible, target: "text=新对话" }
+
+    - id: drawer_dismiss          # ⑩ 抽屉收起：✕ 符号钮 / 点面板外区域
+      ui:
+        - { action: click, target: "左上角侧边栏按钮 ☰" }
+        - { action: expect_visible, target: "text=会话与历史" }
+        - { action: click, target: "抽屉头部右侧 ✕ 钮（无「收起」二字）" }
+        - { action: click, target: "左上角侧边栏按钮 ☰" }
+        - { action: click, target: "屏幕右侧非抽屉区域（面板外空白）" }
+        - { action: fill, target: "聊天输入框", value: "抽屉已收起" }
+        - { action: expect_visible, target: "text=抽屉已收起" }
+      # 收起判据（内容级，AI 驱动层读屏复核）：点 ✕ 与点面板外后抽屉面板均须消失；
+      # 面板未消失时输入框仍被遮罩/面板覆盖，fill 打不进去 → 文案不可见 → 本步 RED
