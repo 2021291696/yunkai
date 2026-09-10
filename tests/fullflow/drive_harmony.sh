@@ -32,7 +32,17 @@ tap() { "$HDC" shell uitest uiInput click "$1" "$2" >/dev/null 2>&1; sleep 2.5; 
 key() { "$HDC" shell uitest uiInput keyEvent "$1" >/dev/null 2>&1; sleep 2; }
 wake() { "$HDC" shell power-shell wakeup >/dev/null 2>&1; "$HDC" shell power-shell setmode 602 >/dev/null 2>&1; sleep 2; }
 launch() { "$HDC" shell aa force-stop "$BUNDLE" >/dev/null 2>&1; sleep 1; "$HDC" shell aa start -a EntryAbility -b "$BUNDLE" >/dev/null 2>&1; sleep 9; }
-dump() { "$HDC" shell uitest dumpLayout -p /data/local/tmp/d.json >/dev/null 2>&1; "$HDC" file recv /data/local/tmp/d.json "$DUMP_WIN" >/dev/null 2>&1; }
+dump() { # dumpLayout 滚动动画期会静默失败而 file recv 留旧图（坑4）——md5 不变就重拉，最多 4 次
+  local old="" new=""
+  [ -f "$DUMP_WIN" ] && old=$(md5sum "$DUMP_WIN" 2>/dev/null | cut -d' ' -f1)
+  for k in 1 2 3 4; do
+    "$HDC" shell uitest dumpLayout -p /data/local/tmp/d.json >/dev/null 2>&1
+    "$HDC" file recv /data/local/tmp/d.json "$DUMP_WIN" >/dev/null 2>&1
+    new=$(md5sum "$DUMP_WIN" 2>/dev/null | cut -d' ' -f1)
+    if [ -n "$new" ] && [ "$new" != "$old" ]; then return 0; fi
+    sleep 1
+  done
+}
 walk() { DUMP_PATH="$DUMP_WIN" MODE="$1" ARG="$2" python -c "
 import json, os, re, sys
 s = open(os.environ['DUMP_PATH'], encoding='utf-8', errors='replace').read()
@@ -56,8 +66,12 @@ walk_node(data)
 if mode == 'list': print('   ' + ' | '.join(texts[:20])); sys.exit()
 if mode == 'count': print(sum(1 for t in texts if arg in t)); sys.exit()
 if hits:
-    m = re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', hits[0])
-    print((int(m.group(1))+int(m.group(3)))//2, (int(m.group(2))+int(m.group(4)))//2)
+    import re as _re
+    for _b in hits:
+        _m = _re.match(r'\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]', _b)
+        if _m and int(_m.group(3)) - int(_m.group(1)) > 0 and int(_m.group(4)) - int(_m.group(2)) > 0:
+            print((int(_m.group(1))+int(_m.group(3)))//2, (int(_m.group(2))+int(_m.group(4)))//2)
+            break
 "; }
 texts() { walk list; }
 count() { walk count "$1"; }
@@ -66,7 +80,7 @@ absent() { C=$(count "$1"); if [ "$C" = "0" ]; then echo "  PASS 确认无「$1�
 xy_of() { walk text "$1"; }
 xy_type() { walk type "$1"; }
 tap_text() { XY=$(xy_of "$1"); if [ -z "$XY" ]; then echo "  tap_text FAIL「$1」"; return 1; fi; echo "  tap_text「$1」→ $XY"; tap $XY; }
-tap_text_scroll() { for i in 1 2 3 4 5; do XY=$(xy_of "$1"); if [ -n "$XY" ]; then echo "  tap_text_scroll「$1」→ $XY"; tap $XY; return 0; fi; "$HDC" shell uitest uiInput swipe 660 1700 660 700 700 >/dev/null 2>&1; sleep 1.3; done; echo "  FAIL 找不到「$1」"; return 1; }
+tap_text_scroll() { for i in 1 2 3 4 5 6 7 8; do XY=$(xy_of "$1"); if [ -n "$XY" ]; then echo "  tap_text_scroll「$1」→ $XY (第${i}次定位)"; tap $XY; return 0; fi; "$HDC" shell uitest uiInput swipe 660 1700 660 700 700 >/dev/null 2>&1; sleep 1.3; done; XY=$(xy_of "$1"); if [ -n "$XY" ]; then echo "  tap_text_scroll「$1」→ $XY (末次定位)"; tap $XY; return 0; fi; echo "  FAIL 找不到「$1」"; return 1; }
 shot() { R="/data/local/tmp/shot_$(date +%H%M%S)_$RANDOM.png"; "$HDC" shell uitest screenCap -p "$R" >/dev/null 2>&1; "$HDC" file recv "$R" "$EV\\$1" >/dev/null 2>&1
   F="$EV_LOCAL/$1"; if [ -f "$F" ] && head -c 4 "$F" | od -An -tx1 | tr -d ' \n' | grep -qi "89504e47"; then echo "  [证据] $1 OK"; else echo "  [证据] $1 FAIL"; fi; }
 input_chat() { XY=$(xy_type TextInput); [ -z "$XY" ] && XY=$(xy_type TextArea); [ -z "$XY" ] && { echo "  找不到输入框"; return 1; }
@@ -95,10 +109,15 @@ s10_import() { wake; launch; to_settings; tap_text_scroll '技能库'; sleep 3; 
   tap_text_scroll '解析并导入'; sleep 3; dump; echo "⑩ 导入后："; texts; shot 10b_imported.png; expect '全流程导入技能'; absent '解析并导入'; }
 s11_bare() { wake; launch; input_chat '用一句话回答：1+1等于几？'; dump; echo "⑪ 输入后："; texts; send_chat; sleep 30; dump; echo "⑪ 回答："; texts; shot 11_bare.png; }
 s12_canvas() { wake; launch; tap_text '@eli5 讲讲黑洞'; sleep 170; dump; echo "⑫ 画布卡："; texts; shot 12a_card.png; tap_text '画布 · 点此全屏查看'; sleep 5; shot 12b_canvas.png; }
-s13_badurl() { wake; launch; to_settings; edit_field '660 1112' 'https://invalid.example.invalid/v1'
-  tap_text_scroll '保存'; sleep 2; tap 60 204; sleep 3; input_chat '你好'; send_chat; sleep 10; shot 13_error.png
-  to_settings; edit_field '660 1112' 'https://open.bigmodel.cn/api/paas/v4'; tap_text_scroll '保存'; sleep 2
-  dump; expect 'open.bigmodel'; }
+s13_badurl() { wake; launch; to_settings; edit_field '660 1043' 'https://invalid.example.invalid/v1'
+  # 保存后 app 自动回对话页（无需再点返回）；错误提示是 4s Toast——连拍抓帧
+  tap_text_scroll '保存'; sleep 3; input_chat '你好'; send_chat
+  for i in 0 1 2 3 4 5 6 7; do shot "13t_0$i.png"; sleep 1.3; done
+  dump; echo "⑬ 错误态（机制证据用 hilog 的 send failed 行核对）:"; texts
+  to_settings; edit_field '660 1043' 'https://open.bigmodel.cn/api/paas/v4'; tap_text_scroll '保存'; sleep 2
+  to_settings; dump; expect 'open.bigmodel'; shot 13_restored.png; }
+# 注意：edit_field 的清空依赖 keyEvent 2082+2055，在中文 composing 态会失效——
+# 若字段值越改越乱，先点「中/英」切英文模式再 edit_field（20260911 门2 实测）
 
 usage() { echo "可用步骤：6 7 8 9 10 11 12 13（对应 manifest 的 ui 步骤）"; }
 [ $# -eq 0 ] && { usage; exit 0; }
