@@ -7,9 +7,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -44,14 +47,18 @@ fun WallpaperLayer(modifier: Modifier = Modifier) {
     val glass = LocalGlassScheme.current
     val context = LocalContext.current
     val store = remember { ConfigStore(context.applicationContext) }
-    val customPath by produceState(initialValue = "") {
-        store.wallpaperFlow.collect { value = it }
+    // 壁纸源 = path + gen 代数：设置页固定写同一文件名（wallpaper_custom.jpg），二次换壁纸时
+    // 路径不变内容变——只以路径为 key 不触发重解码，gen 随每次 flow 发射递增保证必触发
+    var wallSrc by remember { mutableStateOf("" to 0) }
+    LaunchedEffect(Unit) {
+        store.wallpaperFlow.collect { path -> wallSrc = path to (wallSrc.second + 1) }
     }
-    // 解码放 Default 线程（12MP 照片解码数百 ms，主线程会掉帧）；remember(customPath) 失败时不卡 UI，回落默认壁纸
-    val customBitmap = produceState<androidx.compose.ui.graphics.ImageBitmap?>(initialValue = null, customPath) {
-        value = if (customPath.isEmpty()) null
+    // 解码放 Default 线程（12MP 照片解码数百 ms，主线程会掉帧）；失败时不卡 UI，回落默认壁纸
+    val customBitmap = produceState<androidx.compose.ui.graphics.ImageBitmap?>(initialValue = null, wallSrc) {
+        val (path, _) = wallSrc
+        value = if (path.isEmpty()) null
         else kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-            decodeScaled(customPath)?.asImageBitmap()
+            decodeScaled(path)?.asImageBitmap()
         }
     }
     val bitmap = customBitmap.value

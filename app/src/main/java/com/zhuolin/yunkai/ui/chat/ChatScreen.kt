@@ -157,7 +157,7 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
                                 bottomEnd = GlassTokens.R_TIGHT.dp, bottomStart = GlassTokens.R_BUBBLE.dp,
                             )
                             Text(
-                                vm.streamText.value,
+                                renderMarkdownSingle(vm.streamText.value),
                                 fontSize = 14.sp,
                                 lineHeight = 23.sp,
                                 color = glass.textHi,
@@ -310,7 +310,7 @@ private fun MessageItem(m: RenderMsg, onOpenCanvas: () -> Unit) {
                 bottomEnd = GlassTokens.R_BUBBLE.dp, bottomStart = GlassTokens.R_TIGHT.dp,
             )
             Text(
-                m.content,
+                renderMarkdownSingle(m.content),
                 fontSize = 14.sp,
                 lineHeight = 23.sp,
                 color = glass.textHi,
