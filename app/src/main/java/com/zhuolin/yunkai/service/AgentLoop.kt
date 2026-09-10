@@ -133,6 +133,10 @@ object AgentLoop {
                     // 失败/error 回传不切换，模型仍用主模型自行调整策略
                     if (tc.function.name == "use_skill" && !out.startsWith("{\"error\"")) {
                         longFormActive = true
+                        // M2 文件/记忆工具在长文形态下移出工具表：eli5 的产出契约是「整页 HTML 直接写在
+                        // 回答正文」，write_file 会把页面吸进沙箱文件让画布判定失效（门2 实测回归）
+                        val m2 = setOf("read_file", "write_file", "memory_save", "memory_search")
+                        toolDefs.removeAll { it.function?.name in m2 }
                     }
                     onEvent(LoopEvent("tool_done", tc.function.name, out.substring(0, minOf(80, out.length))))
                     messages.add(ChatMsg(role = "tool", content = out, toolCallId = tc.id))
