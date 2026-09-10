@@ -9,6 +9,7 @@ import { ConfigStore } from '../store/ConfigStore';
 import { LlmClient } from '../service/LlmClient';
 import { ThemeTokens } from '../theme/ThemeTokens';
 import { WallpaperLayer } from '../common/WallpaperLayer';
+import { applyThemeMode, THEME_DARK, THEME_LIGHT, THEME_SYSTEM } from '../common/ThemeMode';
 
 // TODO(task7): 新名字确定后全局替换
 const APP_NAME: string = '云开';
@@ -44,6 +45,7 @@ struct Settings {
   @State modelSelected: string = '';
   @State fetchingModels: boolean = false;
   @State wallpaperLabel: string = '默认';
+  @State themeMode: string = THEME_SYSTEM;
 
   private ctx(): common.UIAbilityContext {
     return getContext(this) as common.UIAbilityContext;
@@ -51,8 +53,18 @@ struct Settings {
 
   aboutToAppear(): void {
     this.loadConfig();
+    this.themeMode = ConfigStore.getThemeModeSync(this.ctx());
     ConfigStore.getWallpaper(this.ctx())
       .then((p: string) => { this.wallpaperLabel = p === '' ? '默认' : '自定义'; });
+  }
+
+  // 主题档位切换：持久化 + 立即生效（setColorMode 换 $r 资源档，同时刷 AppStorage）
+  private pickTheme(mode: string): void {
+    this.themeMode = mode;
+    ConfigStore.setThemeMode(this.ctx(), mode).then(() => {
+      AppStorage.setOrCreate('themeMode', mode);
+      applyThemeMode(this.ctx(), mode);
+    });
   }
 
   private async loadConfig(): Promise<void> {
@@ -182,6 +194,40 @@ struct Settings {
         // ===== 外观卡片：壁纸自定义（点更换 / 长按恢复默认） =====
         Column({ space: 10 }) {
           Text('外观').fontSize(16).fontColor($r('app.color.text_mid')).width('100%')
+          // 主题档位：写入即生效（手动档调 setColorMode，跟随系统档吃系统明暗）
+          Row({ space: 8 }) {
+            Text('主题').fontSize(15).fontColor($r('app.color.text_hi'))
+            Blank()
+            Button('跟随系统')
+              .fontSize(12)
+              .height(30)
+              .padding({ left: 12, right: 12 })
+              .fontColor(this.themeMode === THEME_SYSTEM ? $r('app.color.accent') : $r('app.color.text_hi'))
+              .backgroundColor(this.themeMode === THEME_SYSTEM ? $r('app.color.glass_bg_strong') : $r('app.color.glass_bg'))
+              .borderRadius(15)
+              .border({ width: ThemeTokens.BORDER_W, color: this.themeMode === THEME_SYSTEM ? $r('app.color.accent') : $r('app.color.glass_border') })
+              .onClick(() => { this.pickTheme(THEME_SYSTEM); })
+            Button('浅色')
+              .fontSize(12)
+              .height(30)
+              .padding({ left: 12, right: 12 })
+              .fontColor(this.themeMode === THEME_LIGHT ? $r('app.color.accent') : $r('app.color.text_hi'))
+              .backgroundColor(this.themeMode === THEME_LIGHT ? $r('app.color.glass_bg_strong') : $r('app.color.glass_bg'))
+              .borderRadius(15)
+              .border({ width: ThemeTokens.BORDER_W, color: this.themeMode === THEME_LIGHT ? $r('app.color.accent') : $r('app.color.glass_border') })
+              .onClick(() => { this.pickTheme(THEME_LIGHT); })
+            Button('深色')
+              .fontSize(12)
+              .height(30)
+              .padding({ left: 12, right: 12 })
+              .fontColor(this.themeMode === THEME_DARK ? $r('app.color.accent') : $r('app.color.text_hi'))
+              .backgroundColor(this.themeMode === THEME_DARK ? $r('app.color.glass_bg_strong') : $r('app.color.glass_bg'))
+              .borderRadius(15)
+              .border({ width: ThemeTokens.BORDER_W, color: this.themeMode === THEME_DARK ? $r('app.color.accent') : $r('app.color.glass_border') })
+              .onClick(() => { this.pickTheme(THEME_DARK); })
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
           Row() {
             Text('壁纸').fontSize(15).fontColor($r('app.color.text_hi'))
             Blank()

@@ -1,7 +1,9 @@
-import { AbilityConstant, ConfigurationConstant, UIAbility, Want } from '@kit.AbilityKit';
+import { AbilityConstant, Configuration, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window, font } from '@kit.ArkUI';
 import { SkillRepo } from '../store/SkillRepo';
+import { ConfigStore } from '../store/ConfigStore';
+import { applyThemeMode, configIsDark, THEME_SYSTEM } from '../common/ThemeMode';
 
 const DOMAIN = 0x0000;
 
@@ -27,8 +29,11 @@ export default class EntryAbility extends UIAbility {
       font.registerFont({ familyName: 'Sora', familySrc: $rawfile('fonts/Sora.ttf') });
     } catch (e) { /* 字体缺失不致命 */ }
 
-    // colorMode 注入 AppStorage 供组件读取
-    Environment.envProp('colorMode', ColorMode.LIGHT);
+    // 主题档位（system/light/dark）：同步读持久化配置后立即应用。
+    // 不用 Environment.envProp —— 环境变量只反映系统明暗，会把手动档覆盖掉
+    const themeMode: string = ConfigStore.getThemeModeSync(this.context);
+    AppStorage.setOrCreate('themeMode', themeMode);
+    applyThemeMode(this.context, themeMode);
 
     // 沉浸式：内容延伸到状态栏/导航条之下
     windowStage.getMainWindowSync().setWindowLayoutFullScreen(true);
@@ -46,17 +51,19 @@ export default class EntryAbility extends UIAbility {
     const navPx = win.getWindowAvoidArea(window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR).bottomRect.height;
     AppStorage.setOrCreate('statusBarH', px2vp(topPx));
     AppStorage.setOrCreate('navBarH', px2vp(navPx));
-
-    try {
-      this.context.getApplicationContext().setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
-    } catch (err) {
-      hilog.error(DOMAIN, 'testTag', 'Failed to set colorMode. Cause: %{public}s', JSON.stringify(err));
-    }
   }
 
   onWindowStageDestroy(): void {
     // Main window is destroyed, release UI related resources
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onWindowStageDestroy');
+  }
+
+  // 系统明暗切换：仅「跟随系统」档同步给按明暗分支的组件（手动档不受影响）
+  onConfigurationUpdate(newConfig: Configuration): void {
+    const mode: string | undefined = AppStorage.get<string>('themeMode');
+    if (mode === undefined || mode === THEME_SYSTEM) {
+      AppStorage.setOrCreate('colorMode', configIsDark(newConfig.colorMode) ? ColorMode.DARK : ColorMode.LIGHT);
+    }
   }
 
   onForeground(): void {

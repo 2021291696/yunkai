@@ -31,6 +31,18 @@ export class ConfigStore {
     await p.flush();
   }
 
+  // 同步读主题模式：EntryAbility 启动早期就要应用，异步读会先渲染错档一帧
+  static getThemeModeSync(ctx: common.UIAbilityContext): string {
+    const p: preferences.Preferences = preferences.getPreferencesSync(ctx, { name: 'appConfig' });
+    return p.getSync('themeMode', 'system') as string;
+  }
+
+  static async setThemeMode(ctx: common.UIAbilityContext, mode: string): Promise<void> {
+    const p = await preferences.getPreferences(ctx, 'appConfig');
+    await p.put('themeMode', mode);
+    await p.flush();
+  }
+
   static async getWallpaper(ctx: common.UIAbilityContext): Promise<string> {
     const p = await preferences.getPreferences(ctx, 'appConfig');
     return (await p.get('wallpaper', '')) as string;
