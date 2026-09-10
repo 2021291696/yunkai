@@ -240,7 +240,8 @@ export class LlmClient {
       hr.on('dataReceive', (data: ArrayBuffer) => {
         if (done) { return; }
         try {
-          const chunk = decoder.decodeToString(new Uint8Array(data));
+          // stream:true 必传——跨分片切开的多字节 UTF-8（中文必中）要靠解码器缓存残字节
+          const chunk = decoder.decodeToString(new Uint8Array(data), { stream: true });
           feedLines(chunk);
         } catch (e) {
           httpErr = `流式解码失败: ${e instanceof Error ? e.message : String(e)}`;
