@@ -1,30 +1,17 @@
-// 会话与历史侧抽屉：上半会话列表（点击进入/长按删除）+ 下半当前会话历史轮次（点击滚动定位）。
+// 会话侧抽屉：会话列表（点击进入/长按删除）。
 // 纯展示组件：数据由 Chat 传入，动作经回调上抛（含 onClose），自身不持有路由/DB 逻辑
-import { Conv, Msg } from '../model/Types';
+import { Conv } from '../model/Types';
 import { ThemeTokens } from '../theme/ThemeTokens';
 
 @Component
 export struct HistoryDrawer {
   @StorageProp('statusBarH') statusBarH: number = 0;
   convs: Conv[] = [];
-  turns: Msg[] = [];
   onClose: () => void = (): void => {};
   onNewConversation: () => void = (): void => {};
   onOpenSettings: () => void = (): void => {};
   onOpenConversation: (id: number) => void = (id: number): void => {};
   onDeleteConversation: (c: Conv) => void = (c: Conv): void => {};
-  onOpenTurn: (turnNo: number) => void = (turnNo: number): void => {};
-
-  // 从 turns 里找该轮对应的问题（轮次列表展示用）
-  private questionOf(turnNo: number): string {
-    let q = '';
-    for (let i = 0; i < this.turns.length; i++) {
-      const m: Msg = this.turns[i];
-      if (m.role === 'user') { q = m.content; }
-      if (m.role === 'assistant' && m.turnNo === turnNo) { break; }
-    }
-    return q === '' ? '（无问题记录）' : q;
-  }
 
   private timeLabel(ts: number): string {
     const d = new Date(ts);
@@ -131,49 +118,6 @@ export struct HistoryDrawer {
               )
             }
           }, (c: Conv) => `${c.id}_${c.updatedAt}`)
-        }
-        .height('32%')
-        .width('100%')
-        .padding({ left: 12, right: 12 })
-      }
-
-      Divider().color($r('app.color.glass_border')).margin({ left: 16, right: 16, top: 8, bottom: 8 })
-
-      Text('历史轮次')
-        .fontSize(11)
-        .fontColor($r('app.color.text_low'))
-        .letterSpacing(1.2)
-        .width('100%')
-        .padding({ left: 16, bottom: 6 })
-
-      if (this.turns.length === 0) {
-        Text('还没有讲解记录').fontSize(14).fontColor($r('app.color.text_low')).padding(16)
-      } else {
-        List({ space: 8 }) {
-          ForEach(this.turns, (m: Msg) => {
-            if (m.role === 'assistant') {
-              ListItem() {
-                Column({ space: 4 }) {
-                  Text(`第${m.turnNo}轮`)
-                    .fontSize(12).fontColor($r('app.color.accent'))
-                  Text(this.questionOf(m.turnNo))
-                    .fontSize(15)
-                    .fontColor($r('app.color.text_hi'))
-                    .maxLines(2)
-                    .textOverflow({ overflow: TextOverflow.Ellipsis })
-                    .width('100%')
-                }
-                .alignItems(HorizontalAlign.Start)
-                .padding(12)
-                .borderRadius(16)
-                .backgroundColor($r('app.color.glass_bg'))
-                .backdropBlur(ThemeTokens.BLUR_CARD)
-                .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
-                .width('100%')
-                .onClick(() => { this.onOpenTurn(m.turnNo); })
-              }
-            }
-          }, (m: Msg) => `${m.id}`)
         }
         .layoutWeight(1)
         .width('100%')

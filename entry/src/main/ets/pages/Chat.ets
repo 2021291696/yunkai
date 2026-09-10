@@ -299,26 +299,6 @@ struct Chat {
     }
   }
 
-  // 点历史轮次 → 滚动消息流到对应 assistant 消息（轮次号 = 第 n 条 assistant 消息）
-  private openTurn(turnNo: number): void {
-    this.showHistory = false;
-    const idx: number = this.msgIndexOfTurn(turnNo);
-    if (idx >= 0) {
-      this.listScroller.scrollToIndex(idx, true);
-    }
-  }
-
-  private msgIndexOfTurn(turnNo: number): number {
-    let seen: number = 0;
-    for (let i = 0; i < this.msgs.length; i++) {
-      if (this.msgs[i].role === 'assistant') {
-        seen += 1;
-        if (seen === turnNo) { return i; }
-      }
-    }
-    return -1;
-  }
-
   build() {
     Stack() {
       // 全局壁纸层垫底
@@ -543,7 +523,6 @@ struct Chat {
 
         HistoryDrawer({
           convs: this.convs,
-          turns: this.turns,
           onClose: (): void => { this.showHistory = false; },
           onNewConversation: (): void => { this.startNewConversation(); },
           onOpenSettings: (): void => {
@@ -552,7 +531,6 @@ struct Chat {
           },
           onOpenConversation: (id: number): void => { this.openConversation(id); },
           onDeleteConversation: (c: Conv): void => { this.confirmDelete(c); },
-          onOpenTurn: (turnNo: number): void => { this.openTurn(turnNo); }
         })
       }
     }
