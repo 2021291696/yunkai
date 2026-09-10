@@ -14,6 +14,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.decodeFromJsonElement
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.Response
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -61,9 +62,9 @@ class LlmClient(private val cfg: AppConfig) {
             ignoreUnknownKeys = true
         }
 
-        // 构造请求体：stream 固定 false；max_tokens 恒写；tools 非 null 才写（OpenAI 兼容 function calling）
-        fun buildRequestBody(model: String, messages: List<ChatMsg>, tools: List<ToolDef>?): String =
-            bodyJson.encodeToString(ChatRequestBody.serializer(), ChatRequestBody(model, messages, tools = tools))
+        // 构造请求体：stream 默认 false（chatStream 显式传 true）；max_tokens 恒写；tools 非 null 才写
+        fun buildRequestBody(model: String, messages: List<ChatMsg>, tools: List<ToolDef>?, stream: Boolean = false): String =
+            bodyJson.encodeToString(ChatRequestBody.serializer(), ChatRequestBody(model, messages, stream = stream, tools = tools))
 
         // 解析完整 message（含 tool_calls），供 agent 循环按调用分派。
         // 解析边界归一（对齐鸿蒙版）：
@@ -126,6 +127,95 @@ class LlmClient(private val cfg: AppConfig) {
             val obj = json.parseToJsonElement(text) as? JsonObject ?: throw Exception("模型列表格式非法")
             val data = obj["data"] as? JsonArray ?: emptyList()
             data.mapNotNull { (it as? JsonObject)?.get("id")?.let { v -> (v as? JsonPrimitive)?.content } }
+        }
+    }
+
+    // ── B1 SSE 流式对话 ──
+    // 与 chatMessage 同协议，但 stream=true：阻塞读响应体逐行解析 SSE（不引 okhttp-sse 依赖）。
+    // delta.content 增量经 onDelta(累计文本) 上抛（UI 流式气泡）；delta.tool_calls 分片按 index
+    // 组装（id/function.name 取首片，arguments 顺序拼接）。流结束返回与非流式同构的完整 message，
+    // AgentLoop 分派逻辑零改动。取消由调用方 isCancelled 轮询在 onDelta 里抛 CANCELLED_MSG。
+    // 约束：必须在 IO 线程调用（内部无切线程，与 chatMessage 同纪律）。
+    suspend fun chatStream(
+        messages: List<ChatMsg>,
+        tools: List<ToolDef>?,
+        model: String?,
+        onDelta: (String) -> Unit,
+    ): OpenAiMessage = withContext(Dispatchers.IO) {
+        val useModel = if (!model.isNullOrEmpty()) model else cfg.model
+        val req = Request.Builder()
+            .url("${base()}/chat/completions")
+            .header("Content-Type", "application/json")
+            .header("Authorization", "Bearer ${cfg.apiKey}")
+            .post(buildRequestBody(useModel, messages, tools, stream = true).toRequestBody("application/json".toMediaType()))
+            .build()
+        client.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) {
+                val errText = resp.body?.string() ?: ""
+                throw Exception("LLM HTTP ${resp.code}: ${errText.take(300)}")
+            }
+            val source = resp.body?.source() ?: throw Exception("LLM 响应无 body")
+            var content = StringBuilder()
+            // tool_calls 分片组装：index → (id, name, arguments)，arguments 顺序拼接
+            val tcIds = mutableMapOf<Int, String>()
+            val tcNames = mutableMapOf<Int, String>()
+            val tcArgs = mutableMapOf<Int, StringBuilder>()
+            var tcOrder: MutableList<Int> = mutableListOf()
+            var sawDone = false
+
+            fun applyDelta(delta: JsonObject?) {
+                if (delta == null) return
+                val c = delta["content"]
+                if (c is JsonPrimitive && c.isString && c.content.isNotEmpty()) {
+                    content.append(c.content)
+                    onDelta(content.toString())
+                }
+                val tcs = delta["tool_calls"]
+                if (tcs is JsonArray) {
+                    for (e in tcs) {
+                        val tc = e as? JsonObject ?: continue
+                        val idx = (tc["index"] as? JsonPrimitive)?.content?.toIntOrNull() ?: 0
+                        if (!tcArgs.containsKey(idx)) {
+                            tcOrder.add(idx)
+                            tcArgs[idx] = StringBuilder()
+                            val id = (tc["id"] as? JsonPrimitive)?.content
+                            if (!id.isNullOrEmpty()) tcIds[idx] = id
+                            val fn = tc["function"] as? JsonObject
+                            val name = (fn?.get("name") as? JsonPrimitive)?.content
+                            if (!name.isNullOrEmpty()) tcNames[idx] = name
+                        } else {
+                            val id = (tc["id"] as? JsonPrimitive)?.content
+                            if (!id.isNullOrEmpty() && !tcIds.containsKey(idx)) tcIds[idx] = id
+                            val fn = tc["function"] as? JsonObject
+                            val name = (fn?.get("name") as? JsonPrimitive)?.content
+                            if (!name.isNullOrEmpty() && !tcNames.containsKey(idx)) tcNames[idx] = name
+                        }
+                        val fa = (tc["function"] as? JsonObject)?.get("arguments")
+                        if (fa is JsonPrimitive && fa.isString) tcArgs[idx]!!.append(fa.content)
+                    }
+                }
+            }
+
+            while (true) {
+                val line = source.readUtf8Line() ?: break
+                if (!line.startsWith("data:")) continue
+                val payload = line.removePrefix("data:").trim()
+                if (payload == "[DONE]") { sawDone = true; break }
+                if (payload.isEmpty()) continue
+                val obj = runCatching { bodyJson.parseToJsonElement(payload) }.getOrNull() as? JsonObject
+                    ?: continue
+                val choices = obj["choices"] as? JsonArray ?: continue
+                if (choices.isEmpty()) continue
+                applyDelta((choices[0] as? JsonObject)?.get("delta") as? JsonObject)
+            }
+
+            val toolCalls: List<ToolCall>? = if (tcOrder.isEmpty()) null else tcOrder.mapNotNull { idx ->
+                val id = tcIds[idx] ?: "call_$idx"
+                val name = tcNames[idx] ?: return@mapNotNull null
+                ToolCall(id = id, type = "function", function = com.zhuolin.yunkai.model.FunctionCall(
+                    name = name, arguments = tcArgs[idx]?.toString() ?: "{}"))
+            }
+            OpenAiMessage(content = content.toString(), toolCalls = toolCalls)
         }
     }
 }

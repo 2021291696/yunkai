@@ -22,6 +22,8 @@ import android.util.Log
 // 可测性：run 末位可选参 fakeChat 注入假 LLM（生产不传，走真 LlmClient.chatMessage）。
 // 取消：run 末位可选参 isCancelled 轮询取消旗标，命中即抛 Error(CANCELLED_MSG)，
 // 由调用方（Chat 页）静默吞掉；引擎层中断保证后台不再烧 token / 跑工具副作用。
+// B1 流式：run 末位可选参 onDelta 上抛当前步增量文本（累计），UI 据此渲染流式气泡；最终
+// 落库仍走唯一成功路径（与增量渲染解耦）。
 // 【M2 待办】skill description 注入防御：技能 description 来自用户/导入内容，直接拼进 system prompt
 //   可能夹带 prompt injection（「忽略以上指令」类）；上线前需转义/长度截断/敏感内容过滤。
 // 【M2 待办】多工具并发与 tool 结果预算截断：同一轮 tool_calls 目前串行执行；且 tool 结果全文回填
@@ -70,6 +72,7 @@ object AgentLoop {
         onEvent: (LoopEvent) -> Unit,
         fakeChat: (suspend (List<ChatMsg>, List<ToolDef>?, model: String) -> OpenAiMessage)? = null,
         isCancelled: (() -> Boolean)? = null,
+        onDelta: ((String) -> Unit)? = null,
     ): LoopResult {
         val tools: List<AgentTool> = BuiltinTools.createAll(cfg, forcedSkill, skillRepo)
         val toolDefs: MutableList<ToolDef> = mutableListOf()
@@ -102,7 +105,12 @@ object AgentLoop {
             if (fakeChat != null) {
                 return fakeChat(ms, ts, model)
             }
-            return llm.chatMessage(ms, ts, model)
+            // B1 SSE：非流式保持兜底；流式增量经 onDelta 上抛（UI 流式气泡）。
+            // 取消：轮询旗标在 onDelta 里检查，命中即抛（中断读流、断连省 token）。
+            return llm.chatStream(ms, ts, model) { partial ->
+                checkCancel(isCancelled)
+                onDelta?.invoke(partial)
+            }
         }
 
         for (step in 1..MAX_STEPS) {

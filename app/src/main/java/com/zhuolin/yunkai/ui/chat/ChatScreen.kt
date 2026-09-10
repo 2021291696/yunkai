@@ -147,6 +147,29 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
                 }
                 // 时间线卡：只在 loading 时渲染于流末尾
                 if (vm.loading.value) {
+                    // B1 流式气泡：增量文本非空时渲染生长中的回答（打字机体验）；
+                    // 净空语义不变——流式渲染仅为预览，落库仍走唯一成功路径
+                    if (vm.streamText.value.isNotEmpty()) {
+                        item(key = "stream") {
+                            val maxBubble = (LocalConfiguration.current.screenWidthDp * 0.82f).dp
+                            val streamShape = RoundedCornerShape(
+                                topStart = GlassTokens.R_BUBBLE.dp, topEnd = GlassTokens.R_BUBBLE.dp,
+                                bottomEnd = GlassTokens.R_TIGHT.dp, bottomStart = GlassTokens.R_BUBBLE.dp,
+                            )
+                            Text(
+                                vm.streamText.value,
+                                fontSize = 14.sp,
+                                lineHeight = 23.sp,
+                                color = glass.textHi,
+                                modifier = Modifier
+                                    .widthIn(max = maxBubble)
+                                    .shadow(8.dp, streamShape, clip = false, ambientColor = BubbleShadow, spotColor = BubbleShadow)
+                                    .background(glass.glassBg, streamShape)
+                                    .border(GlassTokens.BORDER_W.dp, glass.glassBorder, streamShape)
+                                    .padding(horizontal = 17.dp, vertical = 13.dp),
+                            )
+                        }
+                    }
                     item(key = "timeline") {
                         TimelineCard(
                             timeline = vm.timeline.toList(),

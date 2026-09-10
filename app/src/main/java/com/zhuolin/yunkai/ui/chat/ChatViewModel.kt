@@ -30,6 +30,8 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
     var loading = mutableStateOf(false)
     var title = mutableStateOf("")
     var showHistory = mutableStateOf(false)
+    // B1 流式：非空=正在流式生成（值=当前累计文本）；完成/取消/失败后清空
+    var streamText = mutableStateOf("")
     var convId: Long = -1L
     private var nextId: Long = 1L
     private var genId: Long = 0L
@@ -109,6 +111,7 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
         genId = gen
         loading.value = true
         timeline.clear()
+        streamText.value = ""
 
         // 用户气泡先上屏（草稿会话此时尚未落库）
         msgs.add(RenderMsg(nextId++, "user", q0, ReplyKind.TEXT))
@@ -156,6 +159,11 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
                         }
                     },
                     isCancelled = { gen != genId },
+                    onDelta = { partial ->
+                        if (gen == genId) {
+                            streamText.value = partial
+                        }
+                    },
                 )
                 if (gen != genId) return@launch
 
@@ -193,7 +201,10 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
                     toast(context, "出错了：$em")
                 }
             } finally {
-                if (gen == genId) loading.value = false
+                if (gen == genId) {
+                    loading.value = false
+                    streamText.value = ""
+                }
             }
         }
     }
