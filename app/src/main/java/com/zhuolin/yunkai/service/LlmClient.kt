@@ -2,6 +2,7 @@ package com.zhuolin.yunkai.service
 
 import com.zhuolin.yunkai.model.AppConfig
 import com.zhuolin.yunkai.model.ChatMsg
+import com.zhuolin.yunkai.model.ChatMsgListJsonTransform
 import com.zhuolin.yunkai.model.ToolCall
 import com.zhuolin.yunkai.model.ToolDef
 import kotlinx.coroutines.Dispatchers
@@ -34,7 +35,7 @@ data class OpenAiMessage(
 @Serializable
 private data class ChatRequestBody(
     val model: String,
-    val messages: List<ChatMsg>,
+    @Serializable(with = ChatMsgListJsonTransform::class) val messages: List<ChatMsg>,
     val stream: Boolean = false,
     val temperature: Double = 0.6,
     @SerialName("max_tokens") val maxTokens: Long = 16384L,

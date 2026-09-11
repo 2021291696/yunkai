@@ -16,8 +16,10 @@ import kotlinx.serialization.json.buildJsonObject
 // OpenAI 兼容对话消息：assistant 发起工具调用时携带 toolCalls；
 // role=tool 回传结果时 toolCallId 对应调用 id。
 // 多模态：contentParts 非空时请求体 content 序列化为数组（text/image_url，OpenAI 兼容），
-// 否则保持字符串原样（history/工具回传零改动）——由 ChatMsgJsonTransform 在编码层转换
-@Serializable(with = ChatMsgJsonTransform::class)
+// 否则保持字符串原样（history/工具回传零改动）。
+// ⚠️ 转换放在「列表级」ChatMsgListJsonTransform：不能给 ChatMsg 挂 @Serializable(with=X)——
+//    X 内再取 ChatMsg.serializer() 会拿到 X 自己，自引用循环初始化直接 NPE（单测实测）
+@Serializable
 data class ChatMsg(
     val role: String,
     val content: String = "",
@@ -26,31 +28,22 @@ data class ChatMsg(
     @SerialName("tool_call_id") val toolCallId: String? = null,
 )
 
-// 编码期转换：content_parts 存在 → content 字段改输出数组 [text?, image_url...]；
-// content_parts 为空 → 原样字符串。解码期 content 数组 → 拼回文本（工具回传不涉及图片）
-object ChatMsgJsonTransform : JsonTransformingSerializer<ChatMsg>(ChatMsg.serializer()) {
-    override fun transformSerialize(element: JsonElement): JsonElement {
+// 编码期转换（纯工具）：content_parts 存在 → content 字段改输出数组；否则原样字符串
+object ChatMsgJsonTransform {
+    fun toWire(element: JsonElement): JsonElement {
         val obj = element as? JsonObject ?: return element
-        val parts = obj["content_parts"] as? JsonArray
-        if (parts == null) {
-            return buildJsonObject {
-                for ((k, v) in obj) if (k != "content_parts") put(k, v)
-            }
+        val parts = obj["content_parts"] as? JsonArray ?: return buildJsonObject {
+            for ((k, v) in obj) if (k != "content_parts") put(k, v)
         }
-        val text = (obj["content"] as? JsonPrimitive)?.content ?: ""
+        // contentParts 非空时以 parts 为唯一权威：不再由 content 字段额外补 text part，
+        // 否则调用方（VM 已把问题文字放进 parts）会得到重复文本（单测实测 3 元素 vs 期望 2）
         return buildJsonObject {
             for ((k, v) in obj) if (k != "content" && k != "content_parts") put(k, v)
-            put("content", buildJsonArray {
-                if (text.isNotBlank()) add(buildJsonObject {
-                    put("type", JsonPrimitive("text"))
-                    put("text", JsonPrimitive(text))
-                })
-                for (p in parts) add(p)
-            })
+            put("content", buildJsonArray { for (p in parts) add(p) })
         }
     }
 
-    override fun transformDeserialize(element: JsonElement): JsonElement {
+    fun fromWire(element: JsonElement): JsonElement {
         val obj = element as? JsonObject ?: return element
         val arr = obj["content"] as? JsonArray ?: return element
         val texts = arr.mapNotNull { (it as? JsonObject)?.get("text")?.let { t -> (t as? JsonPrimitive)?.content } }
@@ -58,6 +51,21 @@ object ChatMsgJsonTransform : JsonTransformingSerializer<ChatMsg>(ChatMsg.serial
             for ((k, v) in obj) if (k != "content") put(k, v)
             put("content", JsonPrimitive(texts.joinToString("\n")))
         }
+    }
+}
+
+// 列表级 transform：ChatRequestBody.messages 的序列化器（逐元素过 ChatMsgJsonTransform）
+object ChatMsgListJsonTransform : JsonTransformingSerializer<List<ChatMsg>>(
+    kotlinx.serialization.builtins.ListSerializer(ChatMsg.serializer()),
+) {
+    override fun transformSerialize(element: JsonElement): JsonElement {
+        val arr = element as? JsonArray ?: return element
+        return buildJsonArray { for (e in arr) add(ChatMsgJsonTransform.toWire(e)) }
+    }
+
+    override fun transformDeserialize(element: JsonElement): JsonElement {
+        val arr = element as? JsonArray ?: return element
+        return buildJsonArray { for (e in arr) add(ChatMsgJsonTransform.fromWire(e)) }
     }
 }
 
