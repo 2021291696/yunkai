@@ -44,6 +44,7 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.coroutines.android)
     implementation(libs.serialization.json)
+    implementation(libs.pdfbox.android)   // 二期 PDF 文字型抽取（仅 Android；鸿蒙 PDF 挂 backlog）
     implementation(libs.lifecycle.viewmodel.compose)
     implementation(libs.lifecycle.runtime.compose)
     implementation(libs.activity.compose)

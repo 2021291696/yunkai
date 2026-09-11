@@ -4,16 +4,17 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.core.content.FileProvider
-import java.io.File
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -24,6 +25,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -86,8 +89,6 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
     var deleteTarget by remember { mutableStateOf<Conv?>(null) }
     // ===== 一期附件：+ 面板（拍照/相册/文件）+ 多图 chips =====
     var showAttach by remember { mutableStateOf(false) }
-    val sheetState = rememberModalBottomSheetState()
-    val camUri = remember { mutableStateOf<Uri?>(null) }
     val pickImages = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
         uris.take(5).forEachIndexed { i, u -> vm.addPicked(PickedItem(u.toString(), "图片${i + 1}", "image/*", true)) }
     }
@@ -100,9 +101,6 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
                 vm.toast(context, "暂不支持该类型（支持 txt / md / csv / docx / xlsx / pdf）")
             }
         }
-    }
-    val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
-        if (ok) camUri.value?.let { vm.addPicked(PickedItem(it.toString(), "照片", "image/jpeg", true)) }
     }
 
     // 抽屉打开时，系统返回键优先收起抽屉（而不是退出 app）
@@ -132,230 +130,258 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
         )
     }
 
-    Column(
-        modifier = Modifier.fillMaxSize().imePadding(), // 透明底，透出 WallpaperLayer
-    ) {
-        // ===== 顶栏：左上角侧边栏钮 + 居中标题，无整条栏背景（对齐鸿蒙）=====
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(CircleShape)
-                    .background(glass.glassBg)
-                    .glassBorder(CircleShape)
-                    .clickable { scope.launch { vm.openHistory() } },
-                contentAlignment = Alignment.Center,
-            ) { Text("☰", fontSize = 15.sp, color = glass.textHi) }
-            Text(
-                vm.title.value,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Medium,
-                color = glass.textHi,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.weight(1f),
-                maxLines = 1,
-            )
-            Spacer(Modifier.size(34.dp)) // 右侧等宽占位：标题保持视觉居中
-        }
-
-        // ===== 消息流 =====
-        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                items(vm.msgs, key = { it.id }) { m ->
-                    MessageItem(m, onOpenCanvas = {
-                        com.zhuolin.yunkai.ui.canvas.CanvasHolder.html = m.content
-                        onOpenCanvas()
-                    })
-                }
-                // 时间线卡：只在 loading 时渲染于流末尾
-                if (vm.loading.value) {
-                    // B1 流式气泡：增量文本非空时渲染生长中的回答（打字机体验）；
-                    // 净空语义不变——流式渲染仅为预览，落库仍走唯一成功路径
-                    if (vm.streamText.value.isNotEmpty()) {
-                        item(key = "stream") {
-                            val maxBubble = (LocalConfiguration.current.screenWidthDp * 0.82f).dp
-                            val streamShape = RoundedCornerShape(
-                                topStart = GlassTokens.R_BUBBLE.dp, topEnd = GlassTokens.R_BUBBLE.dp,
-                                bottomEnd = GlassTokens.R_TIGHT.dp, bottomStart = GlassTokens.R_BUBBLE.dp,
-                            )
-                            Text(
-                                renderMarkdownSingle(vm.streamText.value),
-                                fontSize = 14.sp,
-                                lineHeight = 23.sp,
-                                color = glass.textHi,
-                                modifier = Modifier
-                                    .widthIn(max = maxBubble)
-                                    .shadow(8.dp, streamShape, clip = false, ambientColor = BubbleShadow, spotColor = BubbleShadow)
-                                    .background(glass.glassBg, streamShape)
-                                    .border(GlassTokens.BORDER_W.dp, glass.glassBorder, streamShape)
-                                    .padding(horizontal = 17.dp, vertical = 13.dp),
-                            )
-                        }
-                    }
-                    item(key = "timeline") {
-                        TimelineCard(
-                            timeline = vm.timeline.toList(),
-                            onCancel = { vm.cancelLoading() },
-                        )
-                    }
-                }
-            }
-            // 引导态：无任何消息时
-            if (vm.msgs.isEmpty() && !vm.loading.value) {
-                GuidePage(
-                    onAsk = { q ->
-                        vm.input.value = q
-                        vm.send(context)
-                    },
-                    convCount = vm.convs.size,
-                )
-            }
-        }
-
-        // ===== 底部胶囊输入坞 =====
+    Box(modifier = Modifier.fillMaxSize()) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(start = 14.dp, end = 14.dp, bottom = 22.dp),
+            modifier = Modifier.fillMaxSize().imePadding(), // 透明底，透出 WallpaperLayer
         ) {
-            // 附件 chips：缩略图（图片）或文件名（txt），点 ✕ 移除
-            if (vm.picked.value.isNotEmpty()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    for (item in vm.picked.value) {
-                        Box(
-                            modifier = Modifier
-                                .size(52.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(glass.glassBgStrong)
-                                .border(GlassTokens.BORDER_W.dp, glass.glassBorder, RoundedCornerShape(10.dp))
-                                .clickable { vm.removePicked(item.uri) },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            if (item.isImage) {
-                                val bmp = remember(item.uri) { loadThumb(context, item.uri) }
-                                if (bmp != null) {
-                                    Image(
-                                        bitmap = bmp,
-                                        contentDescription = item.name,
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Crop,
-                                    )
-                                } else { Text("🖼", fontSize = 18.sp) }
-                            } else {
-                                Text("📄", fontSize = 18.sp)
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .size(16.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xAA000000)),
-                                contentAlignment = Alignment.Center,
-                            ) { Text("✕", fontSize = 9.sp, color = Color.White) }
-                        }
-                    }
-                }
-            }
+            // ===== 顶栏：左上角侧边栏钮 + 居中标题，无整条栏背景（对齐鸿蒙）=====
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .shadow(10.dp, CircleShape, clip = false, ambientColor = Color(0x44000000), spotColor = Color(0x44000000))
-                    .clip(CircleShape)
-                    .background(glass.glassBgStrong)
-                    .glassBorder(CircleShape)
-                    .padding(horizontal = 6.dp, vertical = 6.dp),
+                    .statusBarsPadding()
+                    .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Box(
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(34.dp)
                         .clip(CircleShape)
                         .background(glass.glassBg)
                         .glassBorder(CircleShape)
-                        .clickable(enabled = !vm.loading.value) { showAttach = true },
+                        .clickable { scope.launch { vm.openHistory() } },
                     contentAlignment = Alignment.Center,
-                ) { Text("＋", fontSize = 17.sp, color = glass.textHi) }
-                TextField(
-                    value = vm.input.value,
-                    onValueChange = { vm.input.value = it },
-                    placeholder = { Text("问我任何问题…", color = glass.textLow, fontSize = 14.sp) },
+                ) { Text("☰", fontSize = 15.sp, color = glass.textHi) }
+                Text(
+                    vm.title.value,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = glass.textHi,
+                    textAlign = TextAlign.Center,
                     modifier = Modifier.weight(1f),
-                    enabled = !vm.loading.value,
-                    maxLines = 4,
-                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = glass.textHi),
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent,
-                        disabledContainerColor = Color.Transparent,
-                        focusedIndicatorColor = Color.Transparent,
-                        unfocusedIndicatorColor = Color.Transparent,
-                        disabledIndicatorColor = Color.Transparent,
-                        cursorColor = glass.accent,
-                    ),
+                    maxLines = 1,
                 )
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(glass.accent)
-                        .clickable { if (vm.loading.value) vm.cancelLoading() else vm.send(context) },
-                    contentAlignment = Alignment.Center,
+                Spacer(Modifier.size(34.dp)) // 右侧等宽占位：标题保持视觉居中
+            }
+
+            // ===== 消息流 =====
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Text(
-                        if (vm.loading.value) "■" else "↑",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
+                    items(vm.msgs, key = { it.id }) { m ->
+                        MessageItem(m, onOpenCanvas = {
+                            com.zhuolin.yunkai.ui.canvas.CanvasHolder.html = m.content
+                            onOpenCanvas()
+                        })
+                    }
+                    // 时间线卡：只在 loading 时渲染于流末尾
+                    if (vm.loading.value) {
+                        // B1 流式气泡：增量文本非空时渲染生长中的回答（打字机体验）；
+                        // 净空语义不变——流式渲染仅为预览，落库仍走唯一成功路径
+                        if (vm.streamText.value.isNotEmpty()) {
+                            item(key = "stream") {
+                                val maxBubble = (LocalConfiguration.current.screenWidthDp * 0.82f).dp
+                                val streamShape = RoundedCornerShape(
+                                    topStart = GlassTokens.R_BUBBLE.dp, topEnd = GlassTokens.R_BUBBLE.dp,
+                                    bottomEnd = GlassTokens.R_TIGHT.dp, bottomStart = GlassTokens.R_BUBBLE.dp,
+                                )
+                                Text(
+                                    renderMarkdownSingle(vm.streamText.value),
+                                    fontSize = 14.sp,
+                                    lineHeight = 23.sp,
+                                    color = glass.textHi,
+                                    modifier = Modifier
+                                        .widthIn(max = maxBubble)
+                                        .shadow(8.dp, streamShape, clip = false, ambientColor = BubbleShadow, spotColor = BubbleShadow)
+                                        .background(glass.glassBg, streamShape)
+                                        .border(GlassTokens.BORDER_W.dp, glass.glassBorder, streamShape)
+                                        .padding(horizontal = 17.dp, vertical = 13.dp),
+                                )
+                            }
+                        }
+                        item(key = "timeline") {
+                            TimelineCard(
+                                timeline = vm.timeline.toList(),
+                                onCancel = { vm.cancelLoading() },
+                            )
+                        }
+                    }
+                }
+                // 引导态：无任何消息时
+                if (vm.msgs.isEmpty() && !vm.loading.value) {
+                    GuidePage(
+                        onAsk = { q ->
+                            vm.input.value = q
+                            vm.send(context)
+                        },
+                        convCount = vm.convs.size,
                     )
                 }
             }
-            Text(
-                "内容由 AI 生成，请甄别",
-                fontSize = 10.sp,
-                color = glass.textLow,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+
+            // ===== 底部胶囊输入坞 =====
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(start = 14.dp, end = 14.dp, bottom = 22.dp),
+            ) {
+                // 附件 chips：缩略图（图片）或文件名（txt），点 ✕ 移除
+                if (vm.picked.value.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        for (item in vm.picked.value) {
+                            Box(
+                                modifier = Modifier
+                                    .size(52.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(glass.glassBgStrong)
+                                    .border(GlassTokens.BORDER_W.dp, glass.glassBorder, RoundedCornerShape(10.dp))
+                                    .clickable { vm.removePicked(item.uri) },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (item.isImage) {
+                                    val bmp = remember(item.uri) { loadThumb(context, item.uri) }
+                                    if (bmp != null) {
+                                        Image(
+                                            bitmap = bmp,
+                                            contentDescription = item.name,
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Crop,
+                                        )
+                                    } else { Text("🖼", fontSize = 18.sp) }
+                                } else {
+                                    Text("📄", fontSize = 18.sp)
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .size(16.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xAA000000)),
+                                    contentAlignment = Alignment.Center,
+                                ) { Text("✕", fontSize = 9.sp, color = Color.White) }
+                            }
+                        }
+                    }
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .shadow(10.dp, CircleShape, clip = false, ambientColor = Color(0x44000000), spotColor = Color(0x44000000))
+                        .clip(CircleShape)
+                        .background(glass.glassBgStrong)
+                        .glassBorder(CircleShape)
+                        .padding(horizontal = 6.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(glass.glassBg)
+                            .glassBorder(CircleShape)
+                            .clickable(enabled = !vm.loading.value) { showAttach = true },
+                        contentAlignment = Alignment.Center,
+                    ) { Text("＋", fontSize = 17.sp, color = glass.textHi) }
+                    TextField(
+                        value = vm.input.value,
+                        onValueChange = { vm.input.value = it },
+                        placeholder = { Text("问我任何问题…", color = glass.textLow, fontSize = 14.sp) },
+                        modifier = Modifier.weight(1f),
+                        enabled = !vm.loading.value,
+                        maxLines = 4,
+                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = glass.textHi),
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            disabledContainerColor = Color.Transparent,
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                            disabledIndicatorColor = Color.Transparent,
+                            cursorColor = glass.accent,
+                        ),
+                    )
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(glass.accent)
+                            .clickable { if (vm.loading.value) vm.cancelLoading() else vm.send(context) },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            if (vm.loading.value) "■" else "↑",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                        )
+                    }
+                }
+                Text(
+                    "内容由 AI 生成，请甄别",
+                    fontSize = 10.sp,
+                    color = glass.textLow,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                )
+            }
+        }
+
+        // ===== 附件面板：自绘玻璃底部面板（遮罩淡入 + 底部滑入，点遮罩关闭）=====
+        // 来源=相册/文件（拍照已并入相册选择器自带的拍照入口）
+        AnimatedVisibility(
+            visible = showAttach,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Color(0x73000000))
+                    .clickable { showAttach = false }
             )
         }
-    }
-
-    // ===== 附件面板：拍照 / 相册 / 文件 =====
-    if (showAttach) {
-        ModalBottomSheet(onDismissRequest = { showAttach = false }, sheetState = sheetState) {
-            Column(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
-                AttachRow("📷 拍照") {
-                    val f = File(context.cacheDir, "cam/").apply { mkdirs() }
-                    val img = File(f, "cam_${System.currentTimeMillis()}.jpg")
-                    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", img)
-                    camUri.value = uri
-                    showAttach = false
-                    takePicture.launch(uri)
-                }
-                AttachRow("🖼 相册") { showAttach = false; pickImages.launch("image/*") }
-                AttachRow("📄 文件") { showAttach = false; pickFile.launch(arrayOf("*/*")) }
+        AnimatedVisibility(
+            visible = showAttach,
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter),
+        ) {
+            val sheetShape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(sheetShape)
+                    .background(glass.glassBgStrong)
+                    .border(GlassTokens.BORDER_W.dp, glass.glassBorder, sheetShape)
+                    .navigationBarsPadding()
+                    .padding(top = 10.dp, bottom = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Box(
+                    Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .width(36.dp)
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(glass.textLow.copy(alpha = 0.45f))
+                )
+                Spacer(Modifier.height(6.dp))
+                AttachRow("🖼  相册") { showAttach = false; pickImages.launch("image/*") }
+                AttachRow("📄  文件") { showAttach = false; pickFile.launch(arrayOf("*/*")) }
             }
         }
     }
-
-    // ===== 侧抽屉：会话列表 =====
     HistoryDrawer(
         visible = vm.showHistory.value,
         convs = vm.convs.toList(),
@@ -480,9 +506,15 @@ private fun TimelineCard(
 private fun AttachRow(label: String, onClick: () -> Unit) {
     val glass = LocalGlassScheme.current
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 22.dp, vertical = 16.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(54.dp)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 22.dp),
         verticalAlignment = Alignment.CenterVertically,
-    ) { Text(label, fontSize = 15.sp, color = glass.textHi) }
+    ) {
+        Text(label, fontSize = 15.sp, color = glass.textHi)
+    }
 }
 
 // 本地 uri 缩略图（12MP 相册图必须降采样，否则 chips 会 OOM）
