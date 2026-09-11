@@ -102,24 +102,12 @@ fun HistoryDrawer(
                 .navigationBarsPadding()
                 .padding(top = 16.dp),
         ) {
-            // ☰ 随面板滑入滑出（与主页面 ☰ 同位，视觉上跟着抽屉动）
-            Box(modifier = Modifier.fillMaxWidth()) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .offset(x = 14.dp, y = (-4).dp)
-                        .size(34.dp)
-                        .clip(CircleShape)
-                        .background(glass.glassBg)
-                        .border(GlassTokens.BORDER_W.dp, glass.glassBorder, CircleShape)
-                        .clickable(onClick = onClose),
-                    contentAlignment = Alignment.Center,
-                ) { Text("☰", fontSize = 15.sp, color = glass.textHi) }
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(start = 58.dp, end = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
+            // 标题行让位 58 给常驻 ☰（☰ 不属于抽屉，全 app 只此一颗）
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 58.dp, end = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
                 Text("会话", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextDark, modifier = Modifier.weight(1f))
                 // 设置入口：只留齿轮符号（无「设置」二字）
                 Box(
@@ -142,7 +130,6 @@ fun HistoryDrawer(
                     contentAlignment = Alignment.Center,
                 ) { Text("✕", fontSize = 14.sp, color = glass.textHi) }
             }
-        }
 
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),

@@ -148,15 +148,7 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(CircleShape)
-                        .background(glass.glassBg)
-                        .glassBorder(CircleShape)
-                        .clickable { showAttach = false; scope.launch { vm.openHistory() } },
-                    contentAlignment = Alignment.Center,
-                ) { Text("☰", fontSize = 15.sp, color = glass.textHi) }
+                Spacer(Modifier.size(34.dp)) // 左侧占位：标题保持视觉居中（☰ 常驻最上层）
                 Text(
                     vm.title.value,
                     fontSize = 15.sp,
@@ -392,6 +384,27 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
         onDeleteConversation = { c -> deleteTarget = c },
     )
 
+    // 常驻 ☰：全 app 只此一颗，盖在抽屉之上，原地开/关
+    Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .statusBarsPadding()
+                .padding(start = 14.dp, top = 12.dp)
+                .size(34.dp)
+                .clip(CircleShape)
+                .background(glass.glassBg)
+                .glassBorder(CircleShape)
+                .clickable {
+                    if (vm.showHistory.value) {
+                        vm.showHistory.value = false
+                    } else {
+                        showAttach = false; scope.launch { vm.openHistory() }
+                    }
+                },
+            contentAlignment = Alignment.Center,
+        ) { Text("☰", fontSize = 15.sp, color = glass.textHi) }
+    }
 }
 
 // 0.5dp 玻璃描边（对齐鸿蒙 ThemeTokens.BORDER_W）；Composable 扩展以便读当前色板
