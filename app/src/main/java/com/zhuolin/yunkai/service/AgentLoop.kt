@@ -2,6 +2,7 @@ package com.zhuolin.yunkai.service
 
 import com.zhuolin.yunkai.model.AgentSkill
 import com.zhuolin.yunkai.model.AppConfig
+import com.zhuolin.yunkai.model.ContentPart
 import com.zhuolin.yunkai.model.ChatMsg
 import com.zhuolin.yunkai.model.JsonSchema
 import com.zhuolin.yunkai.model.ToolCall
@@ -78,6 +79,8 @@ object AgentLoop {
         isCancelled: (() -> Boolean)? = null,
         onDelta: ((String) -> Unit)? = null,
         extraTools: List<AgentTool> = emptyList(),
+        // 一期图片链路：带图提问时用户消息的 contentParts 由调用方传入（文字仍走 question）
+        extraUserParts: List<ContentPart>? = null,
     ): LoopResult {
         val tools: List<AgentTool> = BuiltinTools.createAll(cfg, forcedSkill, skillRepo) + extraTools
         val toolDefs: MutableList<ToolDef> = mutableListOf()
@@ -94,7 +97,7 @@ object AgentLoop {
         // skillBlock 注入条件化：autoRoute=false 且无 @指定时不注入技能清单（仅 @名字 手动触发；
         // forcedSkill 不受 autoRoute 影响——用户显式点名必须生效）
         val sysMsg = ChatMsg(role = "system", content = AGENT_SYSTEM + skillBlock(skillRepo, cfg.autoRoute, forcedSkill))
-        val userMsg = ChatMsg(role = "user", content = question)
+        val userMsg = ChatMsg(role = "user", content = question, contentParts = extraUserParts)
         val messages: MutableList<ChatMsg> = mutableListOf(sysMsg)
         messages.addAll(history)
         messages.add(userMsg)

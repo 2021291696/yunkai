@@ -5,16 +5,73 @@ package com.zhuolin.yunkai.model
 //    一律用 @SerialName 映射——缺了它 function calling 在真机上静默失效
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonTransformingSerializer
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
 
 // OpenAI 兼容对话消息：assistant 发起工具调用时携带 toolCalls；
-// role=tool 回传结果时 toolCallId 对应调用 id
-@Serializable
+// role=tool 回传结果时 toolCallId 对应调用 id。
+// 多模态：contentParts 非空时请求体 content 序列化为数组（text/image_url，OpenAI 兼容），
+// 否则保持字符串原样（history/工具回传零改动）——由 ChatMsgJsonTransform 在编码层转换
+@Serializable(with = ChatMsgJsonTransform::class)
 data class ChatMsg(
     val role: String,
-    val content: String,
+    val content: String = "",
+    @SerialName("content_parts") val contentParts: List<ContentPart>? = null,
     @SerialName("tool_calls") val toolCalls: List<ToolCall>? = null,
     @SerialName("tool_call_id") val toolCallId: String? = null,
 )
+
+// 编码期转换：content_parts 存在 → content 字段改输出数组 [text?, image_url...]；
+// content_parts 为空 → 原样字符串。解码期 content 数组 → 拼回文本（工具回传不涉及图片）
+object ChatMsgJsonTransform : JsonTransformingSerializer<ChatMsg>(ChatMsg.serializer()) {
+    override fun transformSerialize(element: JsonElement): JsonElement {
+        val obj = element as? JsonObject ?: return element
+        val parts = obj["content_parts"] as? JsonArray
+        if (parts == null) {
+            return buildJsonObject {
+                for ((k, v) in obj) if (k != "content_parts") put(k, v)
+            }
+        }
+        val text = (obj["content"] as? JsonPrimitive)?.content ?: ""
+        return buildJsonObject {
+            for ((k, v) in obj) if (k != "content" && k != "content_parts") put(k, v)
+            put("content", buildJsonArray {
+                if (text.isNotBlank()) add(buildJsonObject {
+                    put("type", JsonPrimitive("text"))
+                    put("text", JsonPrimitive(text))
+                })
+                for (p in parts) add(p)
+            })
+        }
+    }
+
+    override fun transformDeserialize(element: JsonElement): JsonElement {
+        val obj = element as? JsonObject ?: return element
+        val arr = obj["content"] as? JsonArray ?: return element
+        val texts = arr.mapNotNull { (it as? JsonObject)?.get("text")?.let { t -> (t as? JsonPrimitive)?.content } }
+        return buildJsonObject {
+            for ((k, v) in obj) if (k != "content") put(k, v)
+            put("content", JsonPrimitive(texts.joinToString("\n")))
+        }
+    }
+}
+
+// 多模态 content 数组元素：type=text 带 text；type=image_url 带 imageUrl.url（data:base64 或 http）
+@Serializable
+data class ContentPart(
+    val type: String,
+    val text: String? = null,
+    @SerialName("image_url") val imageUrl: ContentImage? = null,
+)
+
+@Serializable
+data class ContentImage(val url: String)
+
 
 // OpenAI 兼容 function calling 协议
 @Serializable

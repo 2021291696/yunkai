@@ -1,6 +1,19 @@
 package com.zhuolin.yunkai.ui.chat
 
+import android.graphics.BitmapFactory
+import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.core.content.FileProvider
+import java.io.File
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -61,6 +74,7 @@ import kotlinx.coroutines.launch
 // 对话页（打开即对话的家）：消息流 List（用户气泡/回答气泡/画布卡）+ AgentLoop 发送管线
 // + 内联过程时间线卡 + 侧抽屉（会话列表 + 历史轮次）+ @提及解析 + 引导态
 // 视觉：方向 A 通透系玻璃——页面透明底透出壁纸层，悬浮玻璃圆钮 + 玻璃气泡 + 胶囊输入坞
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
     val app = LocalContext.current.applicationContext as YunkaiApp
@@ -70,6 +84,22 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     var deleteTarget by remember { mutableStateOf<Conv?>(null) }
+    // ===== 一期附件：+ 面板（拍照/相册/文件）+ 多图 chips =====
+    var showAttach by remember { mutableStateOf(false) }
+    val sheetState = rememberModalBottomSheetState()
+    val camUri = remember { mutableStateOf<Uri?>(null) }
+    val pickImages = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        uris.take(5).forEachIndexed { i, u -> vm.addPicked(PickedItem(u.toString(), "图片${i + 1}", "image/*", true)) }
+    }
+    val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { u ->
+        if (u != null) {
+            val name = queryDisplayName(context, u) ?: "附件.txt"
+            vm.addPicked(PickedItem(u.toString(), name, "text/plain", false))
+        }
+    }
+    val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
+        if (ok) camUri.value?.let { vm.addPicked(PickedItem(it.toString(), "照片", "image/jpeg", true)) }
+    }
 
     // 抽屉打开时，系统返回键优先收起抽屉（而不是退出 app）
     BackHandler(enabled = vm.showHistory.value) { vm.showHistory.value = false }
@@ -197,6 +227,48 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
                 .navigationBarsPadding()
                 .padding(start = 14.dp, end = 14.dp, bottom = 22.dp),
         ) {
+            // 附件 chips：缩略图（图片）或文件名（txt），点 ✕ 移除
+            if (vm.picked.value.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    for (item in vm.picked.value) {
+                        Box(
+                            modifier = Modifier
+                                .size(52.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(glass.glassBgStrong)
+                                .border(GlassTokens.BORDER_W.dp, glass.glassBorder, RoundedCornerShape(10.dp))
+                                .clickable { vm.removePicked(item.uri) },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (item.isImage) {
+                                val bmp = remember(item.uri) { loadThumb(context, item.uri) }
+                                if (bmp != null) {
+                                    Image(
+                                        bitmap = bmp,
+                                        contentDescription = item.name,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop,
+                                    )
+                                } else { Text("🖼", fontSize = 18.sp) }
+                            } else {
+                                Text("📄", fontSize = 18.sp)
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .size(16.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xAA000000)),
+                                contentAlignment = Alignment.Center,
+                            ) { Text("✕", fontSize = 9.sp, color = Color.White) }
+                        }
+                    }
+                }
+            }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -208,6 +280,15 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(glass.glassBg)
+                        .glassBorder(CircleShape)
+                        .clickable(enabled = !vm.loading.value) { showAttach = true },
+                    contentAlignment = Alignment.Center,
+                ) { Text("＋", fontSize = 17.sp, color = glass.textHi) }
                 TextField(
                     value = vm.input.value,
                     onValueChange = { vm.input.value = it },
@@ -249,6 +330,24 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             )
+        }
+    }
+
+    // ===== 附件面板：拍照 / 相册 / 文件 =====
+    if (showAttach) {
+        ModalBottomSheet(onDismissRequest = { showAttach = false }, sheetState = sheetState) {
+            Column(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+                AttachRow("📷 拍照") {
+                    val f = File(context.cacheDir, "cam/").apply { mkdirs() }
+                    val img = File(f, "cam_${System.currentTimeMillis()}.jpg")
+                    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", img)
+                    camUri.value = uri
+                    showAttach = false
+                    takePicture.launch(uri)
+                }
+                AttachRow("🖼 相册") { showAttach = false; pickImages.launch("image/*") }
+                AttachRow("📄 文件") { showAttach = false; pickFile.launch(arrayOf("text/plain")) }
+            }
         }
     }
 
@@ -371,3 +470,38 @@ private fun TimelineCard(
         }
     }
 }
+
+// 面板行：整行可点，左图标右文案
+@Composable
+private fun AttachRow(label: String, onClick: () -> Unit) {
+    val glass = LocalGlassScheme.current
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 22.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) { Text(label, fontSize = 15.sp, color = glass.textHi) }
+}
+
+// 本地 uri 缩略图（12MP 相册图必须降采样，否则 chips 会 OOM）
+private fun loadThumb(context: android.content.Context, uri: String): androidx.compose.ui.graphics.ImageBitmap? {
+    return try {
+        val u = Uri.parse(uri)
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        context.contentResolver.openInputStream(u)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        if (bounds.outWidth <= 0) return null
+        var sample = 1
+        while (bounds.outWidth / (sample * 2) >= 128) sample *= 2
+        val bmp = context.contentResolver.openInputStream(u)?.use {
+            BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample })
+        }
+        bmp?.asImageBitmap()
+    } catch (e: Exception) {
+        null
+    }
+}
+
+// OpenDocument 返回的 uri → 显示名（DISPLAY_NAME 查询失败回落 null）
+private fun queryDisplayName(context: android.content.Context, uri: Uri): String? = runCatching {
+    context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+        if (c.moveToFirst()) c.getString(0) else null
+    }
+}.getOrNull()

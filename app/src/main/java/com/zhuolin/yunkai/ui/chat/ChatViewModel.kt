@@ -14,6 +14,8 @@ import com.zhuolin.yunkai.model.Msg
 import com.zhuolin.yunkai.service.AgentLoop
 import com.zhuolin.yunkai.service.HtmlGuard
 import com.zhuolin.yunkai.service.LoopEvent
+import com.zhuolin.yunkai.model.ContentImage
+import com.zhuolin.yunkai.model.ContentPart
 import com.zhuolin.yunkai.service.ReplyKind
 import kotlinx.coroutines.launch
 
@@ -21,6 +23,17 @@ import kotlinx.coroutines.launch
 data class RenderMsg(val id: Long, val role: String, val content: String, val kind: String)
 
 // 对话页状态：发送管线走 AgentLoop（onEvent 实时推时间线；取消旗标 genId 失配即停）
+// 一期附件：图片（多图≤5，压缩后走多模态 contentParts）或 txt（单文件≤5MB/正文3万字截断）
+data class PickedItem(
+    val uri: String,
+    val name: String,
+    val mime: String,
+    val isImage: Boolean,
+) {
+    val label: String
+        get() = if (isImage) "🖼 $name" else "📄 $name"
+}
+
 class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
     val msgs = mutableStateListOf<RenderMsg>()
     val turns = mutableStateListOf<Msg>()
@@ -32,6 +45,7 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
     var showHistory = mutableStateOf(false)
     // B1 流式：非空=正在流式生成（值=当前累计文本）；完成/取消/失败后清空
     var streamText = mutableStateOf("")
+    var picked = mutableStateOf(listOf<PickedItem>())
     var convId: Long = -1L
     private var nextId: Long = 1L
     private var genId: Long = 0L
@@ -95,6 +109,52 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
         Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
     }
 
+    // ===== 一期附件 =====
+    fun addPicked(item: PickedItem) {
+        if (picked.value.size >= 5) { return }          // 上限 5（图片与 txt 合计）
+        if (picked.value.any { it.uri == item.uri }) { return }
+        picked.value = picked.value + item
+    }
+
+    fun removePicked(uri: String) {
+        picked.value = picked.value.filter { it.uri != uri }
+    }
+
+    // uri 图片 → 长边 1280 JPEG(85) → base64（同 Wallpaper 的采样探测思路，防 12MP 原图撑爆请求）
+    private fun compressToB64(context: Context, uri: String): String {
+        val resolver = context.contentResolver
+        val input = resolver.openInputStream(android.net.Uri.parse(uri)) ?: throw Exception("读取图片失败")
+        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeStream(input, null, bounds)
+        input.close()
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw Exception("图片解码失败")
+        var sample = 1
+        val maxSide = 1280
+        while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxSide) sample *= 2
+        val input2 = resolver.openInputStream(android.net.Uri.parse(uri)) ?: throw Exception("图片解码失败")
+        val bmp = android.graphics.BitmapFactory.decodeStream(input2, null,
+            android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
+        input2.close()
+            ?: throw Exception("图片解码失败")
+        val safeBmp = bmp ?: throw Exception("图片解码失败")
+        val out = java.io.ByteArrayOutputStream()
+        safeBmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, out)
+        return android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
+    }
+
+    // uri 文本 → 内容（≤5MB；正文截断 3 万字并标注）
+    private fun readTextFile(context: Context, uri: String): String {
+        val input = context.contentResolver.openInputStream(android.net.Uri.parse(uri))
+        val bytes = input?.readBytes() ?: throw Exception("读取文件失败")
+        input.close()
+        if (bytes.size > 5 * 1024 * 1024) throw Exception("文件超过 5MB 上限")
+        var text = String(bytes, Charsets.UTF_8)
+        if (text.length > 30000) {
+            text = text.substring(0, 30000) + "\n…（已截断）"
+        }
+        return text
+    }
+
     fun cancelLoading() {
         genId += 1
         loading.value = false
@@ -104,8 +164,9 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
     // 净空语义：唯一落库点=真实回答成功之后（取消/抛错/写库失败都不留记录）；
     // 草稿会话此刻才 create，user 行先于 assistant 行写入
     fun send(context: Context) {
+        val items = picked.value           // 附件快照：发送期间增删不影响本轮
         val q0 = input.value.trim()
-        if (q0.isEmpty() || loading.value) return
+        if (q0.isEmpty() && items.isEmpty() || loading.value) return
         input.value = ""
         val gen = genId + 1
         genId = gen
@@ -113,8 +174,15 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
         timeline.clear()
         streamText.value = ""
 
-        // 用户气泡先上屏（草稿会话此时尚未落库）
-        msgs.add(RenderMsg(nextId++, "user", q0, ReplyKind.TEXT))
+        // 用户气泡先上屏（草稿会话此时尚未落库）；带附件时正文追加摘要行
+        val attachSummary = if (items.isEmpty()) "" else buildString {
+            val imgs = items.count { it.isImage }
+            val files = items.filter { !it.isImage }
+            if (imgs > 0) append("\n\n[图片×$imgs]")
+            for (f in files) append("\n[附件 ${f.name}]")
+        }
+        val userText = q0 + attachSummary
+        msgs.add(RenderMsg(nextId++, "user", userText, ReplyKind.TEXT))
 
         viewModelScope.launch {
             try {
@@ -151,8 +219,23 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
                     }
                 }
 
+                // 一期附件→contentParts：文字（问题+txt正文）+ 图片（压缩 base64）
+                val parts: List<ContentPart>? = if (items.isEmpty()) null else buildList<ContentPart> {
+                    val txtParts = items.filter { !it.isImage }.map { readTextFile(context, it.uri) }
+                    val fullText = listOf(q) + txtParts
+                    if (fullText.any { it.isNotBlank() }) {
+                        add(ContentPart(type = "text", text = fullText.filter { it.isNotBlank() }.joinToString("\n\n")))
+                    }
+                    for (it in items.filter { it.isImage }) {
+                        add(ContentPart(
+                            type = "image_url",
+                            imageUrl = ContentImage("data:image/jpeg;base64," + compressToB64(context, it.uri)),
+                        ))
+                    }
+                }
                 val r = AgentLoop.run(
                     cfg, app.skillRepo, history, q, forcedSkill,
+                    extraUserParts = parts,
                     onEvent = { e ->
                         if (gen == genId) {
                             timeline.add(e)
@@ -182,9 +265,9 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
                 if (convId <= 0) {
                     convId = app.conversationRepo.create("新对话")
                 }
-                app.messageRepo.add(convId, "user", q0, ReplyKind.TEXT)
+                app.messageRepo.add(convId, "user", userText, ReplyKind.TEXT)
                 app.messageRepo.add(convId, "assistant", content, kind)
-                app.conversationRepo.setTitleIfPlaceholder(convId, q0)
+                app.conversationRepo.setTitleIfPlaceholder(convId, q0.ifEmpty { "图片提问" })
                 app.conversationRepo.touch(convId)
                 refreshConvs()
                 for (c in convs) {
@@ -194,6 +277,7 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
                     }
                 }
                 msgs.add(RenderMsg(nextId++, "assistant", content, kind))
+                picked.value = emptyList()    // 发送成功即清空（失败保留可重试）
                 loadTurns()
             } catch (e: Exception) {
                 val em = e.message ?: ""
