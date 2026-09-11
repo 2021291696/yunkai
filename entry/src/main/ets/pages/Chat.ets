@@ -1,6 +1,6 @@
 // 对话页（打开即对话的家）：消息流 List（用户气泡/回答气泡/画布卡）+ AgentLoop 发送管线
 // + 内联过程时间线卡 + 侧抽屉（会话列表 + 历史轮次双段）+ @提及解析
-import { router, promptAction } from '@kit.ArkUI';
+import { router, promptAction, display } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 // 一期图片链路：相册/拍照/文件选择 + 图片压缩 + base64
@@ -75,6 +75,7 @@ struct Chat {
   @State input: string = '';
   @State loading: boolean = false;
   @State showHistory: boolean = false;
+  @State screenW: number = 0; // 拉头 ☰ 开态挂在抽屉右缘所需（vp）
   @State streamText: string = '';
   @State genId: number = 0;
   @State picked: PickedItem[] = [];
@@ -94,6 +95,8 @@ struct Chat {
       this.convId = -1;
     }
     this.init();
+    const disp = display.getDefaultDisplaySync();
+    this.screenW = disp.width / disp.densityPixels;
   }
 
   // 加载会话：turns 逐条转 RenderMsg，assistant 按 ReplyKind.detect 判画布卡/气泡
@@ -755,7 +758,7 @@ struct Chat {
           .animation({ duration: 260, curve: Curve.FastOutSlowIn }))
       }
 
-      // 常驻 ☰：全 app 只此一颗，盖在抽屉之上，原地开/关
+      // 拉头 ☰：全 app 只此一颗，挂在抽屉右缘随其滑动（收起时停在屏幕左缘）
       Button('☰')
         .width(34)
         .height(34)
@@ -766,7 +769,9 @@ struct Chat {
         .borderRadius(17)
         .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
         .padding(0)
-        .position({ x: 14, y: this.statusBarH + 12 })
+        .position({ x: 0, y: this.statusBarH + 12 })
+        .translate({ x: this.showHistory ? this.screenW * 0.86 - 34 : 0 })
+        .animation({ duration: 260, curve: Curve.FastOutSlowIn })
         .onClick(() => {
           if (this.showHistory) { this.showHistory = false; } else { this.showAttach = false; this.openHistory(); }
         })
