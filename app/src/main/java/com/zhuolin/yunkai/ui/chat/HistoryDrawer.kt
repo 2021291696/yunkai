@@ -62,10 +62,11 @@ fun HistoryDrawer(
     val glass = LocalGlassScheme.current
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // 遮罩：点抽屉面板外任意位置即收起（透明，不压暗壁纸）
+        // 遮罩：35% 压暗底层，抽屉轮廓立起来；点外部即收起
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .background(androidx.compose.ui.graphics.Color(0x59000000))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -78,17 +79,28 @@ fun HistoryDrawer(
                 .fillMaxHeight()
                 .fillMaxWidth(0.86f)
                 .background(glass.glassBgStrong) // 玻璃面板，透出壁纸
+                .background(glass.glassBgStrong) // 双层同色叠加：玻璃提实（遮罩+玻璃组合）
                 .statusBarsPadding() // 抽屉头部避让状态栏
                 .navigationBarsPadding()
                 .padding(top = 16.dp),
         ) {
+            // 左侧让位悬浮 ☰（14 + 34 + 10）；⚙ 挪顶栏与 ✕ 并排；删常驻「长按可删除」提示
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                modifier = Modifier.fillMaxWidth().padding(start = 58.dp, end = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text("会话", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextDark, modifier = Modifier.weight(1f))
-                // 长按删除是本列表唯一的隐藏操作，提示挂在标题行（下方不再单起一行分区标题）
-                Text("长按可删除", fontSize = 11.sp, color = TextFaint, modifier = Modifier.padding(end = 10.dp))
+                // 设置入口：只留齿轮符号（无「设置」二字）
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(glass.glassBg)
+                        .border(GlassTokens.BORDER_W.dp, glass.glassBorder, CircleShape)
+                        .clickable(onClick = onOpenSettings),
+                    contentAlignment = Alignment.Center,
+                ) { Text("⚙", fontSize = 16.sp, color = glass.accent) }
                 // 收起钮只留符号（无「收起」二字），圆玻璃钮对齐全 app 圆钮惯例
                 Box(
                     modifier = Modifier
@@ -110,16 +122,6 @@ fun HistoryDrawer(
                     modifier = Modifier.weight(1f).height(34.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = WarmOrange, contentColor = androidx.compose.ui.graphics.Color.White),
                 ) { Text("＋ 新对话", fontSize = 14.sp) }
-                // 设置入口：只留齿轮符号（无「设置」二字），留在抽屉内
-                Box(
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(CircleShape)
-                        .background(glass.glassBg)
-                        .border(GlassTokens.BORDER_W.dp, glass.glassBorder, CircleShape)
-                        .clickable(onClick = onOpenSettings),
-                    contentAlignment = Alignment.Center,
-                ) { Text("⚙", fontSize = 16.sp, color = glass.accent) }
             }
 
             if (convs.isEmpty()) {

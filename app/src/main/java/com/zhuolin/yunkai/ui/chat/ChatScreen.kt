@@ -9,6 +9,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -105,6 +108,8 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
 
     // 抽屉打开时，系统返回键优先收起抽屉（而不是退出 app）
     BackHandler(enabled = vm.showHistory.value) { vm.showHistory.value = false }
+    // 附件面板展开时，返回键只收面板
+    BackHandler(enabled = showAttach) { showAttach = false }
 
     LaunchedEffect(Unit) { vm.initIfNeed(-1L) }
     // 新消息/时间线上屏自动滚底
@@ -143,15 +148,7 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(CircleShape)
-                        .background(glass.glassBg)
-                        .glassBorder(CircleShape)
-                        .clickable { scope.launch { vm.openHistory() } },
-                    contentAlignment = Alignment.Center,
-                ) { Text("☰", fontSize = 15.sp, color = glass.textHi) }
+                Spacer(Modifier.size(34.dp)) // 左侧占位：标题保持视觉居中（☰ 已悬浮到最上层）
                 Text(
                     vm.title.value,
                     fontSize = 15.sp,
@@ -221,6 +218,14 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
                         convCount = vm.convs.size,
                     )
                 }
+                // 附件面板展开时：点消息区任意处收起面板
+                if (showAttach) {
+                    Box(
+                        Modifier
+                            .matchParentSize()
+                            .pointerInput(showAttach) { detectTapGestures { showAttach = false } },
+                    )
+                }
             }
 
             // ===== 底部胶囊输入坞 =====
@@ -272,91 +277,82 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
                         }
                     }
                 }
-                // 输入坞形状：附件面板展开时去掉下圆角，与下方面板连成一块玻璃
-                val dockShape = if (showAttach) {
-                    RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp, bottomEnd = 0.dp, bottomStart = 0.dp)
-                } else CircleShape
-                Row(
+                // ===== 输入坞合体：输入行与附件选项同属一块玻璃（四角全圆角、无内部线条）=====
+                val dockCorner by animateDpAsState(if (showAttach) 26.dp else 100.dp, label = "dockCorner")
+                val dockShape = RoundedCornerShape(dockCorner)
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .shadow(10.dp, CircleShape, clip = false, ambientColor = Color(0x44000000), spotColor = Color(0x44000000))
-                        .clip(CircleShape)
+                        .shadow(10.dp, dockShape, clip = false, ambientColor = Color(0x44000000), spotColor = Color(0x44000000))
+                        .clip(dockShape)
                         .background(glass.glassBgStrong)
-                        .glassBorder(CircleShape)
-                        .padding(horizontal = 6.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        .glassBorder(dockShape),
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(glass.glassBg)
-                            .glassBorder(CircleShape)
-                            .clickable(enabled = !vm.loading.value) { showAttach = true },
-                        contentAlignment = Alignment.Center,
-                    ) { Text("＋", fontSize = 17.sp, color = glass.textHi) }
-                    TextField(
-                        value = vm.input.value,
-                        onValueChange = { vm.input.value = it },
-                        placeholder = { Text("问我任何问题…", color = glass.textLow, fontSize = 14.sp) },
-                        modifier = Modifier.weight(1f),
-                        enabled = !vm.loading.value,
-                        maxLines = 4,
-                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = glass.textHi),
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = Color.Transparent,
-                            unfocusedContainerColor = Color.Transparent,
-                            disabledContainerColor = Color.Transparent,
-                            focusedIndicatorColor = Color.Transparent,
-                            unfocusedIndicatorColor = Color.Transparent,
-                            disabledIndicatorColor = Color.Transparent,
-                            cursorColor = glass.accent,
-                        ),
-                    )
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(glass.accent)
-                            .clickable { if (vm.loading.value) vm.cancelLoading() else vm.send(context) },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            if (vm.loading.value) "■" else "↑",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                        )
-                    }
-                }
-                // ===== 附件面板：挂在输入栏下方（把输入栏顶上去，与输入坞连成一块）=====
-                // 无遮罩覆盖；关闭 = 再点 ＋ 或选完自动关
-                AnimatedVisibility(
-                    visible = showAttach,
-                    enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(),
-                    exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut(),
-                ) {
-                    Column(
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp))
-                            .background(glass.glassBgStrong),
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                            .padding(horizontal = 6.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         Box(
-                            Modifier
-                                .align(Alignment.CenterHorizontally)
-                                .padding(top = 8.dp)
-                                .width(36.dp)
-                                .height(4.dp)
-                                .clip(RoundedCornerShape(2.dp))
-                                .background(glass.textLow.copy(alpha = 0.45f))
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(glass.glassBg)
+                                .glassBorder(CircleShape)
+                                .clickable(enabled = !vm.loading.value) { showAttach = !showAttach },
+                            contentAlignment = Alignment.Center,
+                        ) { Text("＋", fontSize = 17.sp, color = glass.textHi) }
+                        TextField(
+                            value = vm.input.value,
+                            onValueChange = { vm.input.value = it },
+                            placeholder = { Text("问我任何问题…", color = glass.textLow, fontSize = 14.sp) },
+                            modifier = Modifier.weight(1f),
+                            enabled = !vm.loading.value,
+                            maxLines = 4,
+                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = glass.textHi),
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                disabledContainerColor = Color.Transparent,
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent,
+                                disabledIndicatorColor = Color.Transparent,
+                                cursorColor = glass.accent,
+                            ),
                         )
-                        Spacer(Modifier.height(4.dp))
-                        AttachRow("🖼  相册") { showAttach = false; pickImages.launch("image/*") }
-                        AttachRow("📄  文件") { showAttach = false; pickFile.launch(arrayOf("*/*")) }
-                        Spacer(Modifier.height(8.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(glass.accent)
+                                .clickable { if (vm.loading.value) vm.cancelLoading() else vm.send(context) },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                if (vm.loading.value) "■" else "↑",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                            )
+                        }
+                    }
+                    // 附件选项：与输入行同一块玻璃；关闭 = ＋ 切换 / 点面板外 / 返回键
+                    AnimatedVisibility(
+                        visible = showAttach,
+                        enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(),
+                        exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut(),
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 6.dp, end = 6.dp, bottom = 6.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            AttachRow("相册") { showAttach = false; pickImages.launch("image/*") }
+                            AttachRow("文件") { showAttach = false; pickFile.launch(arrayOf("*/*")) }
+                        }
                     }
                 }
                 // 面板展开时隐藏免责声明（否则夹在输入栏与面板之间）
@@ -387,6 +383,28 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
         onOpenConversation = { id -> vm.openConversation(id) },
         onDeleteConversation = { c -> deleteTarget = c },
     )
+
+    // 悬浮 ☰：盖在抽屉之上，原地变开关（抽屉开着时点它收起）
+    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .align(Alignment.TopStart)
+            .statusBarsPadding()
+            .padding(start = 14.dp, top = 12.dp)
+            .size(34.dp)
+            .clip(CircleShape)
+            .background(glass.glassBg)
+            .glassBorder(CircleShape)
+            .clickable {
+                if (vm.showHistory.value) {
+                    vm.showHistory.value = false
+                } else {
+                    showAttach = false; scope.launch { vm.openHistory() }
+                }
+            },
+            contentAlignment = Alignment.Center,
+        ) { Text("☰", fontSize = 15.sp, color = glass.textHi) }
+    }
 }
 
 // 0.5dp 玻璃描边（对齐鸿蒙 ThemeTokens.BORDER_W）；Composable 扩展以便读当前色板
