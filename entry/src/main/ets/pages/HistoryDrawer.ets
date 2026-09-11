@@ -36,6 +36,7 @@ export struct HistoryDrawer {
           .fontColor($r('app.color.text_hi'))
           .fontFamily('Sora, HarmonyOS Sans')
           .layoutWeight(1)
+        // ✕ 已删——拉头 ☰ 即开关
         Button('⚙')
           .width(34)
           .height(34)
@@ -47,22 +48,11 @@ export struct HistoryDrawer {
           .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
           .padding(0)
           .onClick(() => { this.onOpenSettings(); })
-        Button('✕')
-          .width(34)
-          .height(34)
-          .fontSize(14)
-          .fontColor($r('app.color.text_hi'))
-          .backgroundColor($r('app.color.glass_bg'))
-          .backdropBlur(20)
-          .borderRadius(17)
-          .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
-          .padding(0)
-          .onClick(() => { this.onClose(); })
       }
       .width('100%')
       .alignItems(VerticalAlign.Center)
       .hitTestBehavior(HitTestMode.Transparent)
-      .padding({ left: 58, right: 16, top: this.statusBarH + 16, bottom: 16 })
+      .padding({ left: 58, right: 40, top: this.statusBarH + 16, bottom: 16 })
       }
       .width('100%')
 
