@@ -102,14 +102,14 @@ fun HistoryDrawer(
                 .navigationBarsPadding()
                 .padding(top = 16.dp),
         ) {
-            // 标题行让位 58 给常驻 ☰（☰ 不属于抽屉，全 app 只此一颗）
+            // 标题行让位 58 给常驻 ☰；右侧让位 50 给拉头（开态挂右缘），✕ 已由拉头取代
             Row(
-                modifier = Modifier.fillMaxWidth().padding(start = 58.dp, end = 16.dp),
+                modifier = Modifier.fillMaxWidth().padding(start = 58.dp, end = 50.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text("会话", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextDark, modifier = Modifier.weight(1f))
-                // 设置入口：只留齿轮符号（无「设置」二字）
+                // 设置入口：只留齿轮符号（无「设置」二字）；✕ 已删——拉头 ☰ 即开关
                 Box(
                     modifier = Modifier
                         .size(34.dp)
@@ -119,16 +119,6 @@ fun HistoryDrawer(
                         .clickable(onClick = onOpenSettings),
                     contentAlignment = Alignment.Center,
                 ) { Text("⚙", fontSize = 16.sp, color = glass.accent) }
-                // 收起钮只留符号（无「收起」二字），圆玻璃钮对齐全 app 圆钮惯例
-                Box(
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(CircleShape)
-                        .background(glass.glassBg)
-                        .border(GlassTokens.BORDER_W.dp, glass.glassBorder, CircleShape)
-                        .clickable(onClick = onClose),
-                    contentAlignment = Alignment.Center,
-                ) { Text("✕", fontSize = 14.sp, color = glass.textHi) }
             }
 
             Row(
