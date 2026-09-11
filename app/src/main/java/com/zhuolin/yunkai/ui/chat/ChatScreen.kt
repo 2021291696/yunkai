@@ -10,6 +10,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -29,6 +30,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -384,13 +386,20 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
         onDeleteConversation = { c -> deleteTarget = c },
     )
 
-    // 常驻 ☰：全 app 只此一颗，盖在抽屉之上，原地开/关
+    // 拉头 ☰：全 app 只此一颗，挂在抽屉右缘随其滑动（收起时停在屏幕左缘）
+    val drawerW = (LocalConfiguration.current.screenWidthDp * 0.86f).dp
+    val handleX by animateDpAsState(
+        targetValue = if (vm.showHistory.value) drawerW - 34.dp else 0.dp,
+        animationSpec = tween(260),
+        label = "handleX",
+    )
     Box(modifier = Modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .statusBarsPadding()
-                .padding(start = 14.dp, top = 12.dp)
+                .offset(x = handleX)
+                .padding(top = 12.dp)
                 .size(34.dp)
                 .clip(CircleShape)
                 .background(glass.glassBg)
