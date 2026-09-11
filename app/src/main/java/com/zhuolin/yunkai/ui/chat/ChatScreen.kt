@@ -93,8 +93,12 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
     }
     val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { u ->
         if (u != null) {
-            val name = queryDisplayName(context, u) ?: "附件.txt"
-            vm.addPicked(PickedItem(u.toString(), name, "text/plain", false))
+            val name = queryDisplayName(context, u) ?: "附件"
+            if (vm.isSupportedFile(name)) {
+                vm.addPicked(PickedItem(u.toString(), name, "text/plain", false))
+            } else {
+                vm.toast(context, "暂不支持该类型（支持 txt / md / csv / docx / xlsx / pdf）")
+            }
         }
     }
     val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
@@ -346,7 +350,7 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
                     takePicture.launch(uri)
                 }
                 AttachRow("🖼 相册") { showAttach = false; pickImages.launch("image/*") }
-                AttachRow("📄 文件") { showAttach = false; pickFile.launch(arrayOf("text/plain")) }
+                AttachRow("📄 文件") { showAttach = false; pickFile.launch(arrayOf("*/*")) }
             }
         }
     }

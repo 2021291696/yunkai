@@ -110,6 +110,13 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
     }
 
     // ===== 一期附件 =====
+    // 鏀寔鐨勬枃浠跺悗缂€锛堜簩鏈燂紱PDF 浠呮枃瀛楀瀷锛屾壂鎻忎欢鍦ㄦ娊鍙栧悗鎻愮ず鏈彇鍒版枃鏈級
+    fun isSupportedFile(name: String): Boolean {
+        val n = name.lowercase()
+        return n.endsWith(".txt") || n.endsWith(".md") || n.endsWith(".csv") ||
+            n.endsWith(".docx") || n.endsWith(".xlsx") || n.endsWith(".pdf")
+    }
+
     fun addPicked(item: PickedItem) {
         if (picked.value.size >= 5) { return }          // 上限 5（图片与 txt 合计）
         if (picked.value.any { it.uri == item.uri }) { return }
@@ -142,13 +149,15 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
         return android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
     }
 
-    // uri 文本 → 内容（≤5MB；正文截断 3 万字并标注）
-    private fun readTextFile(context: Context, uri: String): String {
+    // 附件读取（≤5MB；正文截断 3 万字并标注）：txt 直读；docx/xlsx/pdf 走 DocTextExtractor
+    // （二期；鸿蒙侧对应 docx/xlsx，PDF 挂 backlog）
+    private fun readAttachment(context: Context, uri: String, name: String): String {
         val input = context.contentResolver.openInputStream(android.net.Uri.parse(uri))
         val bytes = input?.readBytes() ?: throw Exception("读取文件失败")
         input.close()
         if (bytes.size > 5 * 1024 * 1024) throw Exception("文件超过 5MB 上限")
-        var text = String(bytes, Charsets.UTF_8)
+        var text = com.zhuolin.yunkai.service.DocTextExtractor.extract(name, bytes)
+        if (text.isBlank()) throw Exception("未能从该文件抽取到文本（扫描件或空文档）")
         if (text.length > 30000) {
             text = text.substring(0, 30000) + "\n…（已截断）"
         }
@@ -221,7 +230,7 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
 
                 // 一期附件→contentParts：文字（问题+txt正文）+ 图片（压缩 base64）
                 val parts: List<ContentPart>? = if (items.isEmpty()) null else buildList<ContentPart> {
-                    val txtParts = items.filter { !it.isImage }.map { readTextFile(context, it.uri) }
+                    val txtParts = items.filter { !it.isImage }.map { readAttachment(context, it.uri, it.name) }
                     val fullText = listOf(q) + txtParts
                     if (fullText.any { it.isNotBlank() }) {
                         add(ContentPart(type = "text", text = fullText.filter { it.isNotBlank() }.joinToString("\n\n")))

@@ -24,6 +24,8 @@ class YunkaiApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // 二期 PDF 抽取：PdfBox-Android 需要初始化资源加载器（字体/编码表），否则抽文本抛错
+        com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(applicationContext)
         // 首启播种内置 eli5 技能（幂等：无 eli5 行才插；失败不影响启动）
         appScope.launch {
             try {
