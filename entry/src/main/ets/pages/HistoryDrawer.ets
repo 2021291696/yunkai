@@ -25,18 +25,27 @@ export struct HistoryDrawer {
 
   build() {
     Column() {
-      Row() {
+      // 双层同色叠加：玻璃提实（遮罩+玻璃组合），保留一点透感
+      Column() {
+      // 左侧让位悬浮 ☰（14 + 34 + 10）；⚙ 设置钮挪顶栏与 ✕ 并排；删常驻「长按可删除」提示
+      Row({ space: 10 }) {
         Text('会话')
           .fontSize(18)
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.text_hi'))
           .fontFamily('Sora, HarmonyOS Sans')
           .layoutWeight(1)
-        // 长按删除是本列表唯一的隐藏操作，提示挂在标题行（下方不再单起一行分区标题）
-        Text('长按可删除')
-          .fontSize(10)
-          .fontColor($r('app.color.text_low'))
-          .margin({ right: 10 })
+        Button('⚙')
+          .width(34)
+          .height(34)
+          .fontSize(16)
+          .fontColor($r('app.color.accent'))
+          .backgroundColor($r('app.color.glass_bg'))
+          .backdropBlur(20)
+          .borderRadius(17)
+          .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+          .padding(0)
+          .onClick(() => { this.onOpenSettings(); })
         Button('✕')
           .width(34)
           .height(34)
@@ -51,7 +60,7 @@ export struct HistoryDrawer {
       }
       .width('100%')
       .alignItems(VerticalAlign.Center)
-      .padding({ left: 16, right: 16, top: this.statusBarH + 16, bottom: 16 })
+      .padding({ left: 58, right: 16, top: this.statusBarH + 16, bottom: 16 })
 
       Row({ space: 10 }) {
         Button('＋ 新对话')
@@ -62,18 +71,6 @@ export struct HistoryDrawer {
           .borderRadius(999)
           .layoutWeight(1)
           .onClick(() => { this.onNewConversation(); })
-        // 设置入口：只留齿轮符号（无「设置」二字），留在抽屉内
-        Button('⚙')
-          .width(34)
-          .height(34)
-          .fontSize(16)
-          .fontColor($r('app.color.accent'))
-          .backgroundColor($r('app.color.glass_bg'))
-          .backdropBlur(20)
-          .borderRadius(17)
-          .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
-          .padding(0)
-          .onClick(() => { this.onOpenSettings(); })
       }
       .width('100%')
       .padding({ left: 16, right: 16, bottom: 10 })
@@ -115,6 +112,10 @@ export struct HistoryDrawer {
         .width('100%')
         .padding({ left: 12, right: 12 })
       }
+      }
+      .width('100%')
+      .backgroundColor($r('app.color.glass_bg_strong'))
+      .alignItems(HorizontalAlign.Start)
     }
     .width('86%')
     .height('100%')

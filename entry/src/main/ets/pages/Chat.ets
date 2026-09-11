@@ -377,6 +377,10 @@ struct Chat {
 
   // 抽屉打开时，系统返回手势/按键优先收起抽屉（而不是退出页面）
   onBackPress(): boolean {
+    if (this.showAttach) {
+      this.showAttach = false;
+      return true;
+    }
     if (this.showHistory) {
       this.showHistory = false;
       return true;
@@ -437,19 +441,10 @@ struct Chat {
       Column() {
         // ===== 顶栏：左上角侧边栏钮 + 居中标题（对齐 Android 版）=====
         Row({ space: 10 }) {
-          Button('☰')
+          // 左侧占位：标题保持视觉居中（☰ 已悬浮到 Stack 最上层）
+          Row()
             .width(34)
             .height(34)
-            .fontSize(15)
-            .fontColor($r('app.color.text_hi'))
-            .backgroundColor($r('app.color.glass_bg'))
-            .backdropBlur(20)
-            .borderRadius(17)
-            .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
-            .padding(0)
-            .onClick(() => {
-              this.openHistory();
-            })
           Text(this.title)
             .fontSize(15)
             .fontWeight(FontWeight.Medium)
@@ -605,6 +600,13 @@ struct Chat {
               }
             })
           }
+          // 附件面板展开时：点消息区任意处收起面板
+          if (this.showAttach) {
+            Column()
+              .width('100%')
+              .height('100%')
+              .onClick(() => { this.showAttach = false; })
+          }
         }
         .layoutWeight(1)
         .width('100%')
@@ -647,81 +649,71 @@ struct Chat {
             .width('100%')
             .padding({ bottom: 8 })
           }
-          // 附件面板已改自绘玻璃底部浮层（见 build 末尾，与 Android 对齐）
-          Row({ space: 10 }) {
-            // 附件入口：＋ → 面板（拍照/相册/文件）
-            Text('＋')
-              .fontSize(17)
-              .fontColor($r('app.color.text_hi'))
-              .width(40)
-              .height(40)
-              .textAlign(TextAlign.Center)
-              .borderRadius(20)
-              .backgroundColor($r('app.color.glass_bg'))
-              .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
-              .enabled(!this.loading)
-              .onClick(() => { this.showAttach = !this.showAttach; })
-            TextInput({ text: this.input, placeholder: '问我任何问题…' })
-              .type(InputType.Normal)
-              .layoutWeight(1)
-              .height(40)
-              .backgroundColor(Color.Transparent)
-              .fontColor($r('app.color.text_hi'))
-              .placeholderColor($r('app.color.text_low'))
-              .fontSize(14)
-              .padding({ left: 16, right: 8 })
-              .enabled(!this.loading)
-              .onChange((v: string) => { this.input = v; })
-              .onSubmit(() => { this.send(); })
+          // ===== 输入坞合体：输入行与附件选项同属一块玻璃（四角全圆角、无内部线条）=====
+          // 关闭 = ＋ 切换 / 点面板外收起 / 返回键收起
+          Column() {
+            Row({ space: 10 }) {
+              // 附件入口：＋ 开/关面板
+              Text('＋')
+                .fontSize(17)
+                .fontColor($r('app.color.text_hi'))
+                .width(40)
+                .height(40)
+                .textAlign(TextAlign.Center)
+                .borderRadius(20)
+                .backgroundColor($r('app.color.glass_bg'))
+                .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+                .enabled(!this.loading)
+                .onClick(() => { this.showAttach = !this.showAttach; })
+              TextInput({ text: this.input, placeholder: '问我任何问题…' })
+                .type(InputType.Normal)
+                .layoutWeight(1)
+                .height(40)
+                .backgroundColor(Color.Transparent)
+                .fontColor($r('app.color.text_hi'))
+                .placeholderColor($r('app.color.text_low'))
+                .fontSize(14)
+                .padding({ left: 16, right: 8 })
+                .enabled(!this.loading)
+                .onChange((v: string) => { this.input = v; })
+                .onSubmit(() => { this.send(); })
 
-            Button(this.loading ? '■' : '↑')
-              .width(40)
-              .height(40)
-              .fontSize(18)
-              .fontWeight(FontWeight.Bold)
-              .fontColor('#FFFFFF')
-              .backgroundColor($r('app.color.accent'))
-              .borderRadius(20)
-              .padding(0)
-              .onClick(() => {
-                if (this.loading) { this.cancelLoading(); } else { this.send(); }
-              })
-          }
-          .width('100%')
-          .padding({ left: 6, right: 6, top: 6, bottom: 6 })
-          .backgroundColor($r('app.color.glass_bg_strong'))
-          .backdropBlur(ThemeTokens.BLUR_DOCK)
-          .borderRadius(this.showAttach
-            ? { topLeft: 26, topRight: 26, bottomLeft: 0, bottomRight: 0 }
-            : 999)
-          .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
-          .shadow({ radius: 30, color: '#44000000', offsetY: 10 })
-          .alignItems(VerticalAlign.Center)
-
-          // ===== 附件面板：挂在输入栏下方（把输入栏顶上去，与输入坞连成一块）=====
-          // 无遮罩覆盖；关闭 = 再点 ＋ 或选完自动关（与 Android 同款形态）
-          if (this.showAttach) {
-            Column({ space: 2 }) {
-              Column()
-                .width(36)
-                .height(4)
-                .borderRadius(2)
-                .backgroundColor($r('app.color.text_low'))
-                .opacity(0.45)
-                .margin({ top: 8 })
-              this.attachRow('🖼  相册', (): void => { this.showAttach = false; this.pickImages(); })
-              this.attachRow('📄  文件', (): void => { this.showAttach = false; this.pickFile(); })
+              Button(this.loading ? '■' : '↑')
+                .width(40)
+                .height(40)
+                .fontSize(18)
+                .fontWeight(FontWeight.Bold)
+                .fontColor('#FFFFFF')
+                .backgroundColor($r('app.color.accent'))
+                .borderRadius(20)
+                .padding(0)
+                .onClick(() => {
+                  if (this.loading) { this.cancelLoading(); } else { this.send(); }
+                })
             }
             .width('100%')
-            .padding({ bottom: 8 })
-            .borderRadius({ bottomLeft: 20, bottomRight: 20 })
-            .backgroundColor($r('app.color.glass_bg_strong'))
-            .backdropBlur(ThemeTokens.BLUR_CARD)
-            .transition(TransitionEffect.translate({ y: 200 })
-              .combine(TransitionEffect.OPACITY)
-              .animation({ curve: Curve.FastOutSlowIn, duration: 220 }))
-          }
+            .padding({ left: 6, right: 6, top: 6, bottom: 6 })
+            .alignItems(VerticalAlign.Center)
 
+            // 附件选项：与输入行同一块玻璃
+            if (this.showAttach) {
+              Column({ space: 2 }) {
+                this.attachRow('相册', (): void => { this.showAttach = false; this.pickImages(); })
+                this.attachRow('文件', (): void => { this.showAttach = false; this.pickFile(); })
+              }
+              .width('100%')
+              .padding({ left: 6, right: 6, bottom: 6 })
+              .transition(TransitionEffect.OPACITY
+                .animation({ curve: Curve.FastOutSlowIn, duration: 220 }))
+            }
+          }
+          .width('100%')
+          .backgroundColor($r('app.color.glass_bg_strong'))
+          .backdropBlur(ThemeTokens.BLUR_DOCK)
+          .borderRadius(this.showAttach ? 26 : 999)
+          .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+          .shadow({ radius: 30, color: '#44000000', offsetY: 10 })
+          .animation({ duration: 220, curve: Curve.FastOutSlowIn })
           // 面板展开时隐藏免责声明（否则夹在输入栏与面板之间）
           if (!this.showAttach) {
             Text('内容由 AI 生成，请甄别')
@@ -739,11 +731,11 @@ struct Chat {
 
       // ===== 侧抽屉：上半会话列表 + 下半历史轮次 =====
       if (this.showHistory) {
-        // 遮罩：点抽屉面板外任意位置即收起（#01 近全透明底色保证可命中触摸）
+        // 遮罩：35% 压暗底层，抽屉轮廓立起来；点外部即收起
         Column()
           .width('100%')
           .height('100%')
-          .backgroundColor('#01000000')
+          .backgroundColor('#59000000')
           .onClick(() => { this.showHistory = false; })
 
         HistoryDrawer({
@@ -758,6 +750,22 @@ struct Chat {
           onDeleteConversation: (c: Conv): void => { this.confirmDelete(c); },
         })
       }
+
+      // 悬浮 ☰：盖在抽屉之上，原地变开关（抽屉开着时点它收起）
+      Button('☰')
+        .width(34)
+        .height(34)
+        .fontSize(15)
+        .fontColor($r('app.color.text_hi'))
+        .backgroundColor($r('app.color.glass_bg'))
+        .backdropBlur(20)
+        .borderRadius(17)
+        .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+        .padding(0)
+        .position({ x: 14, y: this.statusBarH + 12 })
+        .onClick(() => {
+          if (this.showHistory) { this.showHistory = false; } else { this.showAttach = false; this.openHistory(); }
+        })
     }
     .width('100%')
     .height('100%')
