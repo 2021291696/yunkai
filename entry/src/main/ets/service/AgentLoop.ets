@@ -14,7 +14,7 @@
 //   可能撑爆上下文，需按预算截断/摘要（单条上限 + 本轮总预算）。
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { AppConfig, AgentSkill, ChatMsg, JsonSchema, ToolCall, ToolDef } from '../model/Types';
+import { AppConfig, AgentSkill, ChatMsg, ContentPart, JsonSchema, ToolCall, ToolDef } from '../model/Types';
 import { LlmClient, OpenAiMessage } from './LlmClient';
 import { SkillRepo } from '../store/SkillRepo';
 import { AgentTool } from './tools/AgentTool';
@@ -62,7 +62,9 @@ export class AgentLoop {
     forcedSkill: AgentSkill | null, onEvent: (e: LoopEvent) => void,
     fakeChat?: (messages: ChatMsg[], tools: ToolDef[] | null) => Promise<OpenAiMessage>,
     isCancelled?: () => boolean,
-    onDelta?: (partial: string) => void): Promise<LoopResult> {
+    onDelta?: (partial: string) => void,
+    // 一期图片链路：带图提问时用户消息的 contentParts（文字仍走 question）
+    extraUserParts?: ContentPart[]): Promise<LoopResult> {
     const checkCancel = (): void => {
       if (isCancelled !== undefined && isCancelled()) {
         throw new Error(AgentLoop.CANCELLED_MSG);
@@ -85,7 +87,7 @@ export class AgentLoop {
     // skillBlock 注入条件化：autoRoute=false 且无 @指定时不注入技能清单（仅 @名字 手动触发；
     // forcedSkill 不受 autoRoute 影响——用户显式点名必须生效）
     const sysMsg: ChatMsg = { role: 'system', content: AGENT_SYSTEM + await AgentLoop.skillBlock(ctx, cfg.autoRoute, forcedSkill) };
-    const userMsg: ChatMsg = { role: 'user', content: question };
+    const userMsg: ChatMsg = { role: 'user', content: question, content_parts: extraUserParts };
     const messages: ChatMsg[] = [sysMsg];
     for (const h of history) { messages.push(h); }
     messages.push(userMsg);

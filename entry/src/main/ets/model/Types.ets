@@ -4,6 +4,26 @@ export interface ChatMsg {
   content: string;
   tool_calls?: ToolCall[];   // assistant 发起工具调用时携带
   tool_call_id?: string;     // role=tool 回传结果时对应调用 id
+  content_parts?: ContentPart[];  // 多模态：非空时请求体 content 输出数组（内部字段，序列化前转 wire）
+}
+
+// 多模态 content 数组元素：type=text 带 text；type=image_url 带 image_url.url（data:base64）
+export interface ContentPart {
+  type: string;
+  text?: string;
+  image_url?: ContentImage;
+}
+
+export interface ContentImage {
+  url: string;
+}
+
+// 出网消息：content 允许字符串或数组（与 ChatMsg 分开，ArkTS 静态类型不做隐式联合推断）
+export interface WireMessage {
+  role: string;
+  content: string | ContentPart[];
+  tool_calls?: ToolCall[];
+  tool_call_id?: string;
 }
 
 // OpenAI 兼容 function calling 协议

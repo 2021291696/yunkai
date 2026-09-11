@@ -2,7 +2,7 @@
 // 请求体显式 max_tokens（16384，长 HTML 讲解不截断）；tools 走 OpenAI function calling 协议
 import { http } from '@kit.NetworkKit';
 import { util } from '@kit.ArkTS';
-import { AppConfig, ChatMsg, ToolCall, ToolDef } from '../model/Types';
+import { AppConfig, ChatMsg, ContentPart, WireMessage, ToolCall, ToolDef } from '../model/Types';
 
 // 完整 message（含 tool_calls / tool_call_id），供 agent 循环按调用分派；导出供测试 fake 构造脚本
 export interface OpenAiMessage {
@@ -28,7 +28,7 @@ interface SseChunk { choices?: DeltaChoice[] }
 // ponytail: 显式类型，ArkTS 对象字面量必须对应接口
 interface ChatRequestBody {
   model: string;
-  messages: ChatMsg[];
+  messages: WireMessage[];
   stream: boolean;
   temperature: number;
   max_tokens: number;
@@ -49,11 +49,32 @@ export class LlmClient {
     return this.cfg.baseUrl.replace(/\/+$/, '');
   }
 
+  // 内部消息 → 出网消息：content_parts 非空时 content 输出多模态数组（parts 为唯一权威，
+  // 不再由 content 字段补 text，否则调用方已放 text part 时会重复）；纯文本消息保持字符串原样
+  static toWireMessages(messages: ChatMsg[]): WireMessage[] {
+    const out: WireMessage[] = [];
+    for (const m of messages) {
+      const parts: ContentPart[] | undefined = m.content_parts;
+      if (parts !== undefined && parts.length > 0) {
+        const w: WireMessage = { role: m.role, content: parts };
+        if (m.tool_calls !== undefined) { w.tool_calls = m.tool_calls; }
+        if (m.tool_call_id !== undefined) { w.tool_call_id = m.tool_call_id; }
+        out.push(w);
+      } else {
+        const w: WireMessage = { role: m.role, content: m.content };
+        if (m.tool_calls !== undefined) { w.tool_calls = m.tool_calls; }
+        if (m.tool_call_id !== undefined) { w.tool_call_id = m.tool_call_id; }
+        out.push(w);
+      }
+    }
+    return out;
+  }
+
   // 构造请求体：stream 默认 false（chatStream 显式传 true）；max_tokens 恒写；tools 非 null 才写
   static buildRequestBody(model: string, messages: ChatMsg[], tools: ToolDef[] | null, stream: boolean = false): string {
     const body: ChatRequestBody = {
       model: model,
-      messages: messages,
+      messages: LlmClient.toWireMessages(messages),
       stream: stream,
       temperature: 0.6,
       max_tokens: LlmClient.MAX_TOKENS

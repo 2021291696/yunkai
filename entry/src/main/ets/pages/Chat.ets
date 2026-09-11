@@ -3,6 +3,12 @@
 import { router, promptAction } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+// 一期图片链路：相册/拍照/文件选择 + 图片压缩 + base64
+import { photoAccessHelper } from '@kit.MediaLibraryKit';
+import { cameraPicker, camera } from '@kit.CameraKit';
+import { picker } from '@kit.CoreFileKit';
+import { ContentImage, ContentPart } from '../model/Types';
+import { AttachUtil } from '../service/AttachUtil';
 import { AppConfig, AgentSkill, ChatMsg, Conv, Msg } from '../model/Types';
 import { ConfigStore } from '../store/ConfigStore';
 import { ConversationRepo } from '../store/ConversationRepo';
@@ -26,6 +32,21 @@ class RenderMsg {
   role: string = '';
   content: string = '';
   kind: string = ReplyKind.TEXT;
+}
+
+// 一期附件：图片（多图≤5，压缩后走多模态 contentParts）或 txt（单文件≤5MB/正文3万字截断）
+class PickedItem {
+  uri: string = '';
+  name: string = '';
+  isImage: boolean = false;
+  constructor(uri: string, name: string, isImage: boolean) {
+    this.uri = uri;
+    this.name = name;
+    this.isImage = isImage;
+  }
+  label(): string {
+    return this.isImage ? `🖼 ${this.name}` : `📄 ${this.name}`;
+  }
 }
 
 // 时间线事件 → 展示文案（tool_done 的 detail 由引擎截到 80 字，这里再截 40 字防换行刷屏）
@@ -56,6 +77,8 @@ struct Chat {
   @State showHistory: boolean = false;
   @State streamText: string = '';
   @State genId: number = 0;
+  @State picked: PickedItem[] = [];
+  @State showAttach: boolean = false;
   private nextId: number = 1;
   private listScroller: Scroller = new Scroller();
 
@@ -132,19 +155,28 @@ struct Chat {
 
   // 发送管线：@提及解析 → 构建历史 → AgentLoop.run（onEvent 实时推时间线）→ 画布卡/气泡入库渲染
   private async send(): Promise<void> {
+    const items: PickedItem[] = this.picked;   // 附件快照：发送期间增删不影响本轮
     const q0: string = this.input.trim();
-    if (q0 === '' || this.loading) { return; }
+    if ((q0 === '' && items.length === 0) || this.loading) { return; }
     this.input = '';
     const gen: number = this.genId + 1;
     this.genId = gen;
     this.loading = true;
     this.timeline = [];
 
-    // 用户气泡先上屏（草稿会话此时尚未落库）
+    // 用户气泡先上屏（草稿会话此时尚未落库）；带附件时正文追加摘要行
+    let attachSummary: string = '';
+    if (items.length > 0) {
+      let imgs: number = 0;
+      for (const it of items) { if (it.isImage) { imgs++; } }
+      if (imgs > 0) { attachSummary += `\n\n[图片×${imgs}]`; }
+      for (const f of items) { if (!f.isImage) { attachSummary += `\n[附件 ${f.name}]`; } }
+    }
+    const userText: string = q0 + attachSummary;
     const um = new RenderMsg();
     um.id = this.allocId();
     um.role = 'user';
-    um.content = q0;
+    um.content = userText;
     this.msgs.push(um);
     this.scrollToBottom();
 
@@ -196,8 +228,29 @@ struct Chat {
         this.streamText = partial;
         this.scrollToBottom();
       };
+      // 一期附件→contentParts：文字（问题+txt正文）+ 图片（压缩 base64）；语义与 Android 对齐
+      let parts: ContentPart[] | undefined = undefined;
+      if (items.length > 0) {
+        parts = [];
+        const txts: string[] = [];
+        for (const it of items) {
+          if (!it.isImage) { txts.push(AttachUtil.readTextFile(it.uri)); }
+        }
+        const textAll: string = [q].concat(txts).filter((s: string): boolean => s.trim() !== '').join('\n\n');
+        if (textAll.trim() !== '') {
+          const tp: ContentPart = { type: 'text', text: textAll };
+          parts.push(tp);
+        }
+        for (const it of items) {
+          if (it.isImage) {
+            const b64: string = await AttachUtil.compressToB64(it.uri);
+            const ip: ContentPart = { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + b64 } as ContentImage };
+            parts.push(ip);
+          }
+        }
+      }
       const r: LoopResult = await AgentLoop.run(cfg, this.ctx(), history, q, forcedSkill, onEvent,
-        undefined, (): boolean => { return gen !== this.genId; }, onDelta);
+        undefined, (): boolean => { return gen !== this.genId; }, onDelta, parts);
       if (gen !== this.genId) { return; }
 
       // 输出形态（全 app 唯一口径）：sanitize 通过且 sanitize 后内容仍以 <!DOCTYPE/<html 开头
@@ -215,9 +268,9 @@ struct Chat {
       if (this.convId <= 0) {
         this.convId = await ConversationRepo.create(this.ctx(), '新对话');
       }
-      await MessageRepo.add(this.ctx(), this.convId, 'user', q0, ReplyKind.TEXT);
+      await MessageRepo.add(this.ctx(), this.convId, 'user', userText, ReplyKind.TEXT);
       await MessageRepo.add(this.ctx(), this.convId, 'assistant', content, kind);
-      await ConversationRepo.setTitleIfPlaceholder(this.ctx(), this.convId, q0);
+      await ConversationRepo.setTitleIfPlaceholder(this.ctx(), this.convId, q0 !== '' ? q0 : '图片提问');
       await ConversationRepo.touch(this.ctx(), this.convId);
       const convs: Conv[] = await ConversationRepo.list(this.ctx());
       for (let i = 0; i < convs.length; i++) {
@@ -229,6 +282,7 @@ struct Chat {
       am.content = content;
       am.kind = kind;
       this.msgs.push(am);
+      this.picked = [];             // 发送成功即清空（失败保留可重试）
       this.scrollToBottom();
       await this.refreshTurns();
       await this.refreshConvs();
@@ -242,6 +296,87 @@ struct Chat {
       if (gen === this.genId) { this.loading = false; this.streamText = ''; }
     }
   }
+
+  // 附件面板按钮：胶囊样式，点击后收起面板并拉起对应选择器
+  @Builder
+  attachBtn(label: string, cb: () => void) {
+    Text(label)
+      .fontSize(13)
+      .fontColor($r('app.color.text_hi'))
+      .padding({ left: 14, right: 14, top: 9, bottom: 9 })
+      .borderRadius(999)
+      .backgroundColor($r('app.color.glass_bg_strong'))
+      .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+      .onClick(cb)
+  }
+
+  // ===== 一期附件：选择/压缩/读取 =====
+  private addPicked(item: PickedItem): void {
+    if (this.picked.length >= 5) { this.toast('最多 5 个附件'); return; }
+    for (const p of this.picked) { if (p.uri === item.uri) { return; } }
+    this.picked = this.picked.concat([item]);
+  }
+
+  private removePicked(uri: string): void {
+    this.picked = this.picked.filter((p: PickedItem): boolean => p.uri !== uri);
+  }
+
+  // 相册多选（≤5）
+  private async pickImages(): Promise<void> {
+    try {
+      const opt = new photoAccessHelper.PhotoSelectOptions();
+      opt.MIMEType = photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE;
+      opt.maxSelectNumber = 5;
+      const res = await new photoAccessHelper.PhotoViewPicker().select(opt);
+      for (let i = 0; i < res.photoUris.length; i++) {
+        this.addPicked(new PickedItem(res.photoUris[i], `图片${i + 1}`, true));
+      }
+    } catch (e) {
+      // 用户取消或选择器异常：静默
+    }
+  }
+
+  // 拍照（系统相机，免相机权限）
+  private async pickCamera(): Promise<void> {
+    try {
+      const profile: cameraPicker.PickerProfile = {
+        cameraPosition: camera.CameraPosition.CAMERA_POSITION_BACK
+      };
+      const r = await cameraPicker.pick(this.ctx(), [cameraPicker.PickerMediaType.PHOTO], profile);
+      if (r.resultCode === 0 && r.resultUri !== '') {
+        this.addPicked(new PickedItem(r.resultUri, '照片', true));
+      }
+    } catch (e) {
+      // 取消或异常：静默
+    }
+  }
+
+  // 文件选择（一期只收文本类）
+  private async pickFile(): Promise<void> {
+    try {
+      const opt = new picker.DocumentSelectOptions();
+      opt.maxSelectNumber = 1;
+      opt.fileSuffixFilters = ['.txt', '.md', '.log', '.csv'];
+      const uris: string[] = await new picker.DocumentViewPicker(this.ctx()).select(opt);
+      if (uris.length > 0) {
+        this.addPicked(new PickedItem(uris[0], this.fileName(uris[0]), false));
+      }
+    } catch (e) {
+      // 取消或异常：静默
+    }
+  }
+
+  private fileName(uri: string): string {
+    const i: number = uri.lastIndexOf('/');
+    const seg: string = i >= 0 ? uri.substring(i + 1) : uri;
+    try {
+      return decodeURIComponent(seg);
+    } catch (e) {
+      return seg;
+    }
+  }
+
+  // 图片压缩与文本读取实现在 service/AttachUtil（便于设备单测直接覆盖）
 
   // 点画布卡 → 全屏画布页；html 可能 15-60KB，经 AppStorage 暂存（router params 走
   // JSON 序列化对大字符串不可靠），Canvas 页 aboutToAppear 取走
@@ -488,7 +623,65 @@ struct Chat {
 
         // ===== 底部输入区 =====
         Column() {
+          // 附件 chips：缩略图（图片）或图标（txt），点 ✕ 移除
+          if (this.picked.length > 0) {
+            Row({ space: 8 }) {
+              ForEach(this.picked, (it: PickedItem) => {
+                Stack() {
+                  if (it.isImage) {
+                    Image(it.uri)
+                      .width(52)
+                      .height(52)
+                      .borderRadius(10)
+                      .objectFit(ImageFit.Cover)
+                  } else {
+                    Text('📄')
+                      .fontSize(20)
+                  }
+                  Text('✕')
+                    .fontSize(10)
+                    .fontColor(Color.White)
+                    .width(16)
+                    .height(16)
+                    .textAlign(TextAlign.Center)
+                    .borderRadius(8)
+                    .backgroundColor('#AA000000')
+                    .position({ x: 34, y: 0 })
+                }
+                .width(52)
+                .height(52)
+                .borderRadius(10)
+                .backgroundColor($r('app.color.glass_bg_strong'))
+                .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+                .onClick(() => { this.removePicked(it.uri); })
+              }, (it: PickedItem) => it.uri)
+            }
+            .width('100%')
+            .padding({ bottom: 8 })
+          }
+          // 附件面板：拍照 / 相册 / 文件（顶在输入坞上方，轻量行内面板）
+          if (this.showAttach) {
+            Row({ space: 10 }) {
+              this.attachBtn('📷 拍照', (): void => { this.showAttach = false; this.pickCamera(); })
+              this.attachBtn('🖼 相册', (): void => { this.showAttach = false; this.pickImages(); })
+              this.attachBtn('📄 文件', (): void => { this.showAttach = false; this.pickFile(); })
+            }
+            .width('100%')
+            .padding({ bottom: 8 })
+          }
           Row({ space: 10 }) {
+            // 附件入口：＋ → 面板（拍照/相册/文件）
+            Text('＋')
+              .fontSize(17)
+              .fontColor($r('app.color.text_hi'))
+              .width(40)
+              .height(40)
+              .textAlign(TextAlign.Center)
+              .borderRadius(20)
+              .backgroundColor($r('app.color.glass_bg'))
+              .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+              .enabled(!this.loading)
+              .onClick(() => { this.showAttach = !this.showAttach; })
             TextInput({ text: this.input, placeholder: '问我任何问题…' })
               .type(InputType.Normal)
               .layoutWeight(1)

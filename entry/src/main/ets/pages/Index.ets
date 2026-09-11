@@ -1,4 +1,5 @@
-// 打开即对话：Index 仅作跳板，aboutToAppear 直接 replaceUrl 到对话页（草稿会话）。
+// 打开即对话：Index 仅作跳板，aboutToAppDevice Manager
+// ear 直接 replaceUrl 到对话页（草稿会话）。
 // 保留页面文件与路由注册，避免 main_pages.json 删页风险；历史列表功能已迁入 Chat 侧抽屉。
 import { router } from '@kit.ArkUI';
 

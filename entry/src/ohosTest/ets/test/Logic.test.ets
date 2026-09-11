@@ -5,7 +5,9 @@ import { common } from '@kit.AbilityKit';
 import { HtmlGuard, ReplyKind } from '../../../main/ets/service/HtmlGuard';
 import { HtmlExtractor } from '../../../main/ets/service/HtmlExtractor';
 import { SearchRouter } from '../../../main/ets/service/SearchRouter';
-import { AppConfig, AgentSkill, ChatMsg, ToolCall, ToolDef } from '../../../main/ets/model/Types';
+import { fileIo as fs, fileUri } from '@kit.CoreFileKit';
+import { AppConfig, AgentSkill, ChatMsg, ContentPart, ToolCall, ToolDef } from '../../../main/ets/model/Types';
+import { AttachUtil } from '../../../main/ets/service/AttachUtil';
 import { LlmClient, OpenAiMessage } from '../../../main/ets/service/LlmClient';
 import { AgentLoop, LoopEvent } from '../../../main/ets/service/AgentLoop';
 import { SearchClient } from '../../../main/ets/service/SearchClient';
@@ -460,6 +462,61 @@ export default function logicTest() {
       expect(r.answer === '讲解').assertTrue();
       expect(sysPrompt.includes('[用户已指定技能]')).assertTrue();
       expect(sysPrompt.includes('eli5')).assertTrue();
+    });
+
+    // ===== 一期图片链路（原 Attach.test 并入本 suite：aa test -s class logicTest 只跑同名 describe）=====
+    it('attach_wire_messages_multimodal_content_array', 0, () => {
+      const parts: ContentPart[] = [
+        { type: 'text', text: '这是什么' },
+        { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,AAAA' } },
+      ];
+      const msg: ChatMsg = { role: 'user', content: '这是什么', content_parts: parts };
+      const wire = LlmClient.toWireMessages([msg]);
+      const body: string = JSON.stringify({ model: 'm', messages: wire });
+      const parsed = JSON.parse(body) as Record<string, Object>;
+      const msgs = parsed['messages'] as Object[];
+      const content = (msgs[0] as Record<string, Object>)['content'];
+      expect(Array.isArray(content)).assertTrue();
+      const arr = content as Object[];
+      expect(arr.length).assertEqual(2);
+      expect((arr[0] as Record<string, Object>)['type']).assertEqual('text');
+      expect((arr[1] as Record<string, Object>)['type']).assertEqual('image_url');
+      expect(body.indexOf('content_parts') === -1).assertTrue();
+    });
+
+    it('attach_wire_messages_plain_text_stays_string', 0, () => {
+      const msg: ChatMsg = { role: 'user', content: '你好' };
+      const body: string = JSON.stringify({ messages: LlmClient.toWireMessages([msg]) });
+      const parsed = JSON.parse(body) as Record<string, Object>;
+      const content = ((parsed['messages'] as Object[])[0] as Record<string, Object>)['content'];
+      expect(typeof content === 'string').assertTrue();
+      expect(content as string).assertEqual('你好');
+    });
+
+    it('attach_compress_image_to_jpeg_base64', 0, async () => {
+      const ctx = AbilityDelegatorRegistry.getAbilityDelegator().getAppContext();
+      const raw = await ctx.resourceManager.getRawFileContent('vis_test.png');
+      const path: string = ctx.filesDir + '/attach_test.png';
+      const f = fs.openSync(path, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
+      fs.writeSync(f.fd, raw.buffer as ArrayBuffer);
+      fs.closeSync(f);
+      const b64: string = await AttachUtil.compressToB64(fileUri.getUriFromPath(path));
+      expect(b64.length > 100).assertTrue();
+      expect(b64.substring(0, 4)).assertEqual('/9j/');
+      fs.unlinkSync(path);
+    });
+
+    it('attach_read_text_file_truncates_over_30k', 0, () => {
+      const ctx = AbilityDelegatorRegistry.getAbilityDelegator().getAppContext();
+      const path: string = ctx.filesDir + '/attach_test.txt';
+      const big: string = 'a'.repeat(31000);
+      const f = fs.openSync(path, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
+      fs.writeSync(f.fd, big);
+      fs.closeSync(f);
+      const text: string = AttachUtil.readTextFile(fileUri.getUriFromPath(path));
+      expect(text.length < big.length).assertTrue();
+      expect(text.indexOf('已截断') >= 0).assertTrue();
+      fs.unlinkSync(path);
     });
   });
 }
