@@ -8,6 +8,8 @@ import { SearchRouter } from '../../../main/ets/service/SearchRouter';
 import { fileIo as fs, fileUri } from '@kit.CoreFileKit';
 import { AppConfig, AgentSkill, ChatMsg, ContentPart, ToolCall, ToolDef } from '../../../main/ets/model/Types';
 import { AttachUtil } from '../../../main/ets/service/AttachUtil';
+import { DocTextExtractor } from '../../../main/ets/service/DocTextExtractor';
+import { zlib } from '@kit.BasicServicesKit';
 import { LlmClient, OpenAiMessage } from '../../../main/ets/service/LlmClient';
 import { AgentLoop, LoopEvent } from '../../../main/ets/service/AgentLoop';
 import { SearchClient } from '../../../main/ets/service/SearchClient';
@@ -517,6 +519,58 @@ export default function logicTest() {
       expect(text.length < big.length).assertTrue();
       expect(text.indexOf('已截断') >= 0).assertTrue();
       fs.unlinkSync(path);
+    });
+
+    // ===== 二期文档抽取（自造 zip：zlib.compressFile 打目录，与真实 docx/xlsx 结构同构）=====
+    it('attach_extract_docx_paragraphs', 0, async () => {
+      const ctx = AbilityDelegatorRegistry.getAbilityDelegator().getAppContext();
+      const dir: string = ctx.filesDir + '/t_docx';
+      if (fs.accessSync(dir)) { fs.rmdirSync(dir); }   // 上轮失败可能残留
+      if (fs.accessSync(dir + '.zip')) { fs.unlinkSync(dir + '.zip'); }
+      fs.mkdirSync(dir + '/word', true);
+      const xml: string = '<?xml version="1.0"?><w:document><w:body>'
+        + '<w:p><w:r><w:t>第一段：黑洞</w:t></w:r></w:p>'
+        + '<w:p><w:r><w:t>第二段 &amp; 事件视界 &lt;测试&gt;</w:t></w:r></w:p>'
+        + '</w:body></w:document>';
+      const f = fs.openSync(dir + '/word/document.xml', fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
+      fs.writeSync(f.fd, xml);
+      fs.closeSync(f);
+      const zip: string = ctx.filesDir + '/t_docx.zip';
+      const copt: zlib.Options = { level: zlib.CompressLevel.COMPRESS_LEVEL_DEFAULT_COMPRESSION };
+      await zlib.compressFile(dir, zip, copt);
+      const text: string = await DocTextExtractor.extract(ctx, '测试.docx', fileUri.getUriFromPath(zip));
+      expect(text.includes('第一段：黑洞')).assertTrue();
+      expect(text.includes('第二段 & 事件视界 <测试>')).assertTrue();
+      expect(text.split('\n').length).assertEqual(2);
+      fs.unlinkSync(zip);
+      fs.rmdirSync(dir);
+    });
+
+    it('attach_extract_xlsx_shared_strings', 0, async () => {
+      const ctx = AbilityDelegatorRegistry.getAbilityDelegator().getAppContext();
+      const dir: string = ctx.filesDir + '/t_xlsx';
+      if (fs.accessSync(dir)) { fs.rmdirSync(dir); }
+      if (fs.accessSync(dir + '.zip')) { fs.unlinkSync(dir + '.zip'); }
+      fs.mkdirSync(dir + '/xl/worksheets', true);
+      const ss: string = '<?xml version="1.0"?><sst>'
+        + '<si><t>姓名</t></si><si><t>张三</t></si><si><t>城市</t></si><si><t>成都</t></si></sst>';
+      const sheet: string = '<?xml version="1.0"?><worksheet><sheetData>'
+        + '<row><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c></row>'
+        + '<row><c r="A2" t="s"><v>2</v></c><c r="B2" t="s"><v>3</v></c></row>'
+        + '</sheetData></worksheet>';
+      let f = fs.openSync(dir + '/xl/sharedStrings.xml', fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
+      fs.writeSync(f.fd, ss); fs.closeSync(f);
+      f = fs.openSync(dir + '/xl/worksheets/sheet1.xml', fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
+      fs.writeSync(f.fd, sheet); fs.closeSync(f);
+      const zip: string = ctx.filesDir + '/t_xlsx.zip';
+      const copt: zlib.Options = { level: zlib.CompressLevel.COMPRESS_LEVEL_DEFAULT_COMPRESSION };
+      await zlib.compressFile(dir, zip, copt);
+      const text: string = await DocTextExtractor.extract(ctx, '表格.xlsx', fileUri.getUriFromPath(zip));
+      expect(text.includes('姓名	张三')).assertTrue();
+      expect(text.includes('城市	成都')).assertTrue();
+      expect(text.includes('工作表1')).assertTrue();
+      fs.unlinkSync(zip);
+      fs.rmdirSync(dir);
     });
   });
 }

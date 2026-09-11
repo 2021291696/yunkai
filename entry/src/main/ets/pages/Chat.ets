@@ -9,6 +9,7 @@ import { cameraPicker, camera } from '@kit.CameraKit';
 import { picker } from '@kit.CoreFileKit';
 import { ContentImage, ContentPart } from '../model/Types';
 import { AttachUtil } from '../service/AttachUtil';
+import { DocTextExtractor } from '../service/DocTextExtractor';
 import { AppConfig, AgentSkill, ChatMsg, Conv, Msg } from '../model/Types';
 import { ConfigStore } from '../store/ConfigStore';
 import { ConversationRepo } from '../store/ConversationRepo';
@@ -234,7 +235,7 @@ struct Chat {
         parts = [];
         const txts: string[] = [];
         for (const it of items) {
-          if (!it.isImage) { txts.push(AttachUtil.readTextFile(it.uri)); }
+          if (!it.isImage) { txts.push(await DocTextExtractor.extract(this.ctx(), it.name, it.uri)); }
         }
         const textAll: string = [q].concat(txts).filter((s: string): boolean => s.trim() !== '').join('\n\n');
         if (textAll.trim() !== '') {
@@ -356,7 +357,8 @@ struct Chat {
     try {
       const opt = new picker.DocumentSelectOptions();
       opt.maxSelectNumber = 1;
-      opt.fileSuffixFilters = ['.txt', '.md', '.log', '.csv'];
+      // 二期：docx/xlsx（PDF 为 Android 专属，鸿蒙挂 backlog）
+      opt.fileSuffixFilters = ['.txt', '.md', '.log', '.csv', '.docx', '.xlsx'];
       const uris: string[] = await new picker.DocumentViewPicker(this.ctx()).select(opt);
       if (uris.length > 0) {
         this.addPicked(new PickedItem(uris[0], this.fileName(uris[0]), false));
