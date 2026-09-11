@@ -5,7 +5,6 @@ import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 // 一期图片链路：相册/拍照/文件选择 + 图片压缩 + base64
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
-import { cameraPicker, camera } from '@kit.CameraKit';
 import { picker } from '@kit.CoreFileKit';
 import { ContentImage, ContentPart } from '../model/Types';
 import { AttachUtil } from '../service/AttachUtil';
@@ -298,17 +297,18 @@ struct Chat {
     }
   }
 
-  // 附件面板按钮：胶囊样式，点击后收起面板并拉起对应选择器
+  // 附件面板行：图标+文字左对齐、54 高（玻璃面板内的行，对齐 Android AttachRow）
   @Builder
-  attachBtn(label: string, cb: () => void) {
-    Text(label)
-      .fontSize(13)
-      .fontColor($r('app.color.text_hi'))
-      .padding({ left: 14, right: 14, top: 9, bottom: 9 })
-      .borderRadius(999)
-      .backgroundColor($r('app.color.glass_bg_strong'))
-      .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
-      .onClick(cb)
+  attachRow(label: string, cb: () => void) {
+    Row() {
+      Text(label)
+        .fontSize(15)
+        .fontColor($r('app.color.text_hi'))
+    }
+    .width('100%')
+    .height(54)
+    .padding({ left: 22, right: 22 })
+    .onClick(cb)
   }
 
   // ===== 一期附件：选择/压缩/读取 =====
@@ -337,20 +337,6 @@ struct Chat {
     }
   }
 
-  // 拍照（系统相机，免相机权限）
-  private async pickCamera(): Promise<void> {
-    try {
-      const profile: cameraPicker.PickerProfile = {
-        cameraPosition: camera.CameraPosition.CAMERA_POSITION_BACK
-      };
-      const r = await cameraPicker.pick(this.ctx(), [cameraPicker.PickerMediaType.PHOTO], profile);
-      if (r.resultCode === 0 && r.resultUri !== '') {
-        this.addPicked(new PickedItem(r.resultUri, '照片', true));
-      }
-    } catch (e) {
-      // 取消或异常：静默
-    }
-  }
 
   // 文件选择（一期只收文本类）
   private async pickFile(): Promise<void> {
@@ -661,16 +647,7 @@ struct Chat {
             .width('100%')
             .padding({ bottom: 8 })
           }
-          // 附件面板：拍照 / 相册 / 文件（顶在输入坞上方，轻量行内面板）
-          if (this.showAttach) {
-            Row({ space: 10 }) {
-              this.attachBtn('📷 拍照', (): void => { this.showAttach = false; this.pickCamera(); })
-              this.attachBtn('🖼 相册', (): void => { this.showAttach = false; this.pickImages(); })
-              this.attachBtn('📄 文件', (): void => { this.showAttach = false; this.pickFile(); })
-            }
-            .width('100%')
-            .padding({ bottom: 8 })
-          }
+          // 附件面板已改自绘玻璃底部浮层（见 build 末尾，与 Android 对齐）
           Row({ space: 10 }) {
             // 附件入口：＋ → 面板（拍照/相册/文件）
             Text('＋')
@@ -751,6 +728,44 @@ struct Chat {
           onOpenConversation: (id: number): void => { this.openConversation(id); },
           onDeleteConversation: (c: Conv): void => { this.confirmDelete(c); },
         })
+      }
+
+      // ===== 附件面板：自绘玻璃底部浮层（遮罩淡入 + 底部滑入，点遮罩关闭）=====
+      // 来源=相册/文件（拍照并入相册选择器自带的拍照入口）；与 Android 同款形态
+      if (this.showAttach) {
+        Column() {
+          // 遮罩：点空白处收起
+          Column()
+            .width('100%')
+            .layoutWeight(1)
+            .backgroundColor('#73000000')
+            .transition(TransitionEffect.OPACITY.animation({ curve: Curve.FastOutSlowIn, duration: 220 }))
+            .onClick(() => { this.showAttach = false; })
+
+          // 玻璃卡面板：拖拽条 + 两行来源
+          Column({ space: 2 }) {
+            Column()
+              .width(36)
+              .height(4)
+              .borderRadius(2)
+              .backgroundColor($r('app.color.text_low'))
+              .opacity(0.45)
+              .margin({ top: 10, bottom: 6 })
+            this.attachRow('🖼  相册', (): void => { this.showAttach = false; this.pickImages(); })
+            this.attachRow('📄  文件', (): void => { this.showAttach = false; this.pickFile(); })
+          }
+          .width('100%')
+          .padding({ bottom: this.navBarH > 0 ? this.navBarH + 6 : 16 })
+          .borderRadius({ topLeft: 20, topRight: 20 })
+          .backgroundColor($r('app.color.glass_bg_strong'))
+          .backdropBlur(ThemeTokens.BLUR_CARD)
+          .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+          .transition(TransitionEffect.translate({ y: 360 })
+            .combine(TransitionEffect.OPACITY)
+            .animation({ curve: Curve.FastOutSlowIn, duration: 220 }))
+        }
+        .width('100%')
+        .height('100%')
       }
     }
     .width('100%')
