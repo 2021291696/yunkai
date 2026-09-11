@@ -691,17 +691,46 @@ struct Chat {
           .padding({ left: 6, right: 6, top: 6, bottom: 6 })
           .backgroundColor($r('app.color.glass_bg_strong'))
           .backdropBlur(ThemeTokens.BLUR_DOCK)
-          .borderRadius(999)
+          .borderRadius(this.showAttach
+            ? { topLeft: 26, topRight: 26, bottomLeft: 0, bottomRight: 0 }
+            : 999)
           .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
           .shadow({ radius: 30, color: '#44000000', offsetY: 10 })
           .alignItems(VerticalAlign.Center)
 
-          Text('内容由 AI 生成，请甄别')
-            .fontSize(10)
-            .fontColor($r('app.color.text_low'))
-            .textAlign(TextAlign.Center)
+          // ===== 附件面板：挂在输入栏下方（把输入栏顶上去，与输入坞连成一块）=====
+          // 无遮罩覆盖；关闭 = 再点 ＋ 或选完自动关（与 Android 同款形态）
+          if (this.showAttach) {
+            Column({ space: 2 }) {
+              Column()
+                .width(36)
+                .height(4)
+                .borderRadius(2)
+                .backgroundColor($r('app.color.text_low'))
+                .opacity(0.45)
+                .margin({ top: 8 })
+              this.attachRow('🖼  相册', (): void => { this.showAttach = false; this.pickImages(); })
+              this.attachRow('📄  文件', (): void => { this.showAttach = false; this.pickFile(); })
+            }
             .width('100%')
-            .margin({ top: 8 })
+            .padding({ bottom: 8 })
+            .borderRadius({ bottomLeft: 20, bottomRight: 20 })
+            .backgroundColor($r('app.color.glass_bg_strong'))
+            .backdropBlur(ThemeTokens.BLUR_CARD)
+            .transition(TransitionEffect.translate({ y: 200 })
+              .combine(TransitionEffect.OPACITY)
+              .animation({ curve: Curve.FastOutSlowIn, duration: 220 }))
+          }
+
+          // 面板展开时隐藏免责声明（否则夹在输入栏与面板之间）
+          if (!this.showAttach) {
+            Text('内容由 AI 生成，请甄别')
+              .fontSize(10)
+              .fontColor($r('app.color.text_low'))
+              .textAlign(TextAlign.Center)
+              .width('100%')
+              .margin({ top: 8 })
+          }
         }
         .margin({ left: 14, right: 14, bottom: this.navBarH + 22 })
       }
@@ -728,44 +757,6 @@ struct Chat {
           onOpenConversation: (id: number): void => { this.openConversation(id); },
           onDeleteConversation: (c: Conv): void => { this.confirmDelete(c); },
         })
-      }
-
-      // ===== 附件面板：自绘玻璃底部浮层（遮罩淡入 + 底部滑入，点遮罩关闭）=====
-      // 来源=相册/文件（拍照并入相册选择器自带的拍照入口）；与 Android 同款形态
-      if (this.showAttach) {
-        Column() {
-          // 遮罩：点空白处收起
-          Column()
-            .width('100%')
-            .layoutWeight(1)
-            .backgroundColor('#73000000')
-            .transition(TransitionEffect.OPACITY.animation({ curve: Curve.FastOutSlowIn, duration: 220 }))
-            .onClick(() => { this.showAttach = false; })
-
-          // 玻璃卡面板：拖拽条 + 两行来源
-          Column({ space: 2 }) {
-            Column()
-              .width(36)
-              .height(4)
-              .borderRadius(2)
-              .backgroundColor($r('app.color.text_low'))
-              .opacity(0.45)
-              .margin({ top: 10, bottom: 6 })
-            this.attachRow('🖼  相册', (): void => { this.showAttach = false; this.pickImages(); })
-            this.attachRow('📄  文件', (): void => { this.showAttach = false; this.pickFile(); })
-          }
-          .width('100%')
-          .padding({ bottom: this.navBarH > 0 ? this.navBarH + 6 : 16 })
-          .borderRadius({ topLeft: 20, topRight: 20 })
-          .backgroundColor($r('app.color.glass_bg_strong'))
-          .backdropBlur(ThemeTokens.BLUR_CARD)
-          .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
-          .transition(TransitionEffect.translate({ y: 360 })
-            .combine(TransitionEffect.OPACITY)
-            .animation({ curve: Curve.FastOutSlowIn, duration: 220 }))
-        }
-        .width('100%')
-        .height('100%')
       }
     }
     .width('100%')
