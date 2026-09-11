@@ -1,5 +1,11 @@
 package com.zhuolin.yunkai.ui.chat
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -58,22 +64,33 @@ fun HistoryDrawer(
     onOpenConversation: (Long) -> Unit,
     onDeleteConversation: (Conv) -> Unit,
 ) {
-    if (!visible) return
     val glass = LocalGlassScheme.current
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // 遮罩：35% 压暗底层，抽屉轮廓立起来；点外部即收起
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(androidx.compose.ui.graphics.Color(0x59000000))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onClose,
-                ),
-        )
+        // 遮罩：35% 压暗底层，抽屉轮廓立起来；淡入淡出；点外部即收起
+        AnimatedVisibility(
+            visible = visible,
+            enter = fadeIn(tween(200)),
+            exit = fadeOut(tween(200)),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(androidx.compose.ui.graphics.Color(0x59000000))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onClose,
+                    ),
+            )
+        }
 
+        // 面板：从左侧滑出/滑回
+        AnimatedVisibility(
+            visible = visible,
+            enter = slideInHorizontally(tween(260)) { -it },
+            exit = slideOutHorizontally(tween(240)) { -it },
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxHeight()
@@ -151,6 +168,7 @@ fun HistoryDrawer(
             }
 
             Spacer(Modifier.height(16.dp))
+        }
         }
     }
 }
