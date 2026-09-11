@@ -27,7 +27,20 @@ export struct HistoryDrawer {
     Column() {
       // 双层同色叠加：玻璃提实（遮罩+玻璃组合），保留一点透感
       Column() {
-      // 左侧让位悬浮 ☰（14 + 34 + 10）；⚙ 设置钮挪顶栏与 ✕ 并排；删常驻「长按可删除」提示
+      // ☰ 随面板滑入滑出（与主页面 ☰ 同位，视觉上跟着抽屉动）
+      Stack({ alignContent: Alignment.TopStart }) {
+        Button('☰')
+          .width(34)
+          .height(34)
+          .fontSize(15)
+          .fontColor($r('app.color.text_hi'))
+          .backgroundColor($r('app.color.glass_bg'))
+          .backdropBlur(20)
+          .borderRadius(17)
+          .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+          .padding(0)
+          .position({ x: 14, y: this.statusBarH + 12 })
+          .onClick(() => { this.onClose(); })
       Row({ space: 10 }) {
         Text('会话')
           .fontSize(18)
@@ -60,7 +73,10 @@ export struct HistoryDrawer {
       }
       .width('100%')
       .alignItems(VerticalAlign.Center)
+      .hitTestBehavior(HitTestMode.Transparent)
       .padding({ left: 58, right: 16, top: this.statusBarH + 16, bottom: 16 })
+      }
+      .width('100%')
 
       Row({ space: 10 }) {
         Button('＋ 新对话')
