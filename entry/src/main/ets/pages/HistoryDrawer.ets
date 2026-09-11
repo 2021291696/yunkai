@@ -27,20 +27,8 @@ export struct HistoryDrawer {
     Column() {
       // 双层同色叠加：玻璃提实（遮罩+玻璃组合），保留一点透感
       Column() {
-      // ☰ 随面板滑入滑出（与主页面 ☰ 同位，视觉上跟着抽屉动）
+      // 标题行让位 58 给常驻 ☰（☰ 不属于抽屉，全 app 只此一颗）
       Stack({ alignContent: Alignment.TopStart }) {
-        Button('☰')
-          .width(34)
-          .height(34)
-          .fontSize(15)
-          .fontColor($r('app.color.text_hi'))
-          .backgroundColor($r('app.color.glass_bg'))
-          .backdropBlur(20)
-          .borderRadius(17)
-          .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
-          .padding(0)
-          .position({ x: 14, y: this.statusBarH + 12 })
-          .onClick(() => { this.onClose(); })
       Row({ space: 10 }) {
         Text('会话')
           .fontSize(18)

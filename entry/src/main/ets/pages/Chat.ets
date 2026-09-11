@@ -441,20 +441,10 @@ struct Chat {
       Column() {
         // ===== 顶栏：左上角侧边栏钮 + 居中标题（对齐 Android 版）=====
         Row({ space: 10 }) {
-          Button('☰')
+          // 左侧占位：标题保持视觉居中（☰ 常驻最上层）
+          Row()
             .width(34)
             .height(34)
-            .fontSize(15)
-            .fontColor($r('app.color.text_hi'))
-            .backgroundColor($r('app.color.glass_bg'))
-            .backdropBlur(20)
-            .borderRadius(17)
-            .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
-            .padding(0)
-            .onClick(() => {
-              this.showAttach = false;
-              this.openHistory();
-            })
           Text(this.title)
             .fontSize(15)
             .fontWeight(FontWeight.Medium)
@@ -765,6 +755,21 @@ struct Chat {
           .animation({ duration: 260, curve: Curve.FastOutSlowIn }))
       }
 
+      // 常驻 ☰：全 app 只此一颗，盖在抽屉之上，原地开/关
+      Button('☰')
+        .width(34)
+        .height(34)
+        .fontSize(15)
+        .fontColor($r('app.color.text_hi'))
+        .backgroundColor($r('app.color.glass_bg'))
+        .backdropBlur(20)
+        .borderRadius(17)
+        .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+        .padding(0)
+        .position({ x: 14, y: this.statusBarH + 12 })
+        .onClick(() => {
+          if (this.showHistory) { this.showHistory = false; } else { this.showAttach = false; this.openHistory(); }
+        })
     }
     .width('100%')
     .height('100%')
