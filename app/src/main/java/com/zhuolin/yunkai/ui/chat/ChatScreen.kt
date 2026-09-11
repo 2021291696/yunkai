@@ -7,8 +7,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -272,6 +272,10 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
                         }
                     }
                 }
+                // 输入坞形状：附件面板展开时去掉下圆角，与下方面板连成一块玻璃
+                val dockShape = if (showAttach) {
+                    RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp, bottomEnd = 0.dp, bottomStart = 0.dp)
+                } else CircleShape
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -326,6 +330,37 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
                         )
                     }
                 }
+                // ===== 附件面板：挂在输入栏下方（把输入栏顶上去，与输入坞连成一块）=====
+                // 无遮罩覆盖；关闭 = 再点 ＋ 或选完自动关
+                AnimatedVisibility(
+                    visible = showAttach,
+                    enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(),
+                    exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut(),
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp))
+                            .background(glass.glassBgStrong),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Box(
+                            Modifier
+                                .align(Alignment.CenterHorizontally)
+                                .padding(top = 8.dp)
+                                .width(36.dp)
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(glass.textLow.copy(alpha = 0.45f))
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        AttachRow("🖼  相册") { showAttach = false; pickImages.launch("image/*") }
+                        AttachRow("📄  文件") { showAttach = false; pickFile.launch(arrayOf("*/*")) }
+                        Spacer(Modifier.height(8.dp))
+                    }
+                }
+                // 面板展开时隐藏免责声明（否则夹在输入栏与面板之间）
+                if (!showAttach) {
                 Text(
                     "内容由 AI 生成，请甄别",
                     fontSize = 10.sp,
@@ -333,54 +368,10 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 )
+                }
             }
         }
 
-        // ===== 附件面板：自绘玻璃底部面板（遮罩淡入 + 底部滑入，点遮罩关闭）=====
-        // 来源=相册/文件（拍照已并入相册选择器自带的拍照入口）
-        AnimatedVisibility(
-            visible = showAttach,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(Color(0x73000000))
-                    .clickable { showAttach = false }
-            )
-        }
-        AnimatedVisibility(
-            visible = showAttach,
-            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
-            modifier = Modifier.align(Alignment.BottomCenter),
-        ) {
-            val sheetShape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(sheetShape)
-                    .background(glass.glassBgStrong)
-                    .border(GlassTokens.BORDER_W.dp, glass.glassBorder, sheetShape)
-                    .navigationBarsPadding()
-                    .padding(top = 10.dp, bottom = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                Box(
-                    Modifier
-                        .align(Alignment.CenterHorizontally)
-                        .width(36.dp)
-                        .height(4.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(glass.textLow.copy(alpha = 0.45f))
-                )
-                Spacer(Modifier.height(6.dp))
-                AttachRow("🖼  相册") { showAttach = false; pickImages.launch("image/*") }
-                AttachRow("📄  文件") { showAttach = false; pickFile.launch(arrayOf("*/*")) }
-            }
-        }
     }
     HistoryDrawer(
         visible = vm.showHistory.value,
