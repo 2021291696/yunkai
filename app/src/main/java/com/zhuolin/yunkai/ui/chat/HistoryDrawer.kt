@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -101,12 +102,24 @@ fun HistoryDrawer(
                 .navigationBarsPadding()
                 .padding(top = 16.dp),
         ) {
-            // 左侧让位悬浮 ☰（14 + 34 + 10）；⚙ 挪顶栏与 ✕ 并排；删常驻「长按可删除」提示
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(start = 58.dp, end = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
+            // ☰ 随面板滑入滑出（与主页面 ☰ 同位，视觉上跟着抽屉动）
+            Box(modifier = Modifier.fillMaxWidth()) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .offset(x = 14.dp, y = (-4).dp)
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(glass.glassBg)
+                        .border(GlassTokens.BORDER_W.dp, glass.glassBorder, CircleShape)
+                        .clickable(onClick = onClose),
+                    contentAlignment = Alignment.Center,
+                ) { Text("☰", fontSize = 15.sp, color = glass.textHi) }
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(start = 58.dp, end = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
                 Text("会话", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextDark, modifier = Modifier.weight(1f))
                 // 设置入口：只留齿轮符号（无「设置」二字）
                 Box(
@@ -129,6 +142,7 @@ fun HistoryDrawer(
                     contentAlignment = Alignment.Center,
                 ) { Text("✕", fontSize = 14.sp, color = glass.textHi) }
             }
+        }
 
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
