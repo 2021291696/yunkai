@@ -121,7 +121,8 @@ export struct HistoryDrawer {
     .height('100%')
     .backgroundColor($r('app.color.glass_bg_strong'))
     .backdropBlur(ThemeTokens.BLUR_DOCK)
-    .border({ width: { left: ThemeTokens.BORDER_W }, color: $r('app.color.glass_border') })
+    .border({ width: { right: ThemeTokens.BORDER_W }, color: $r('app.color.glass_border') })
+    .shadow({ radius: 40, color: '#33000000', offsetX: 8, offsetY: 0 })
     .alignItems(HorizontalAlign.Start)
   }
 }

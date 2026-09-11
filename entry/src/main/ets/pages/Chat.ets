@@ -731,12 +731,13 @@ struct Chat {
 
       // ===== 侧抽屉：上半会话列表 + 下半历史轮次 =====
       if (this.showHistory) {
-        // 遮罩：35% 压暗底层，抽屉轮廓立起来；点外部即收起
+        // 遮罩：35% 压暗底层，抽屉轮廓立起来；淡入淡出；点外部即收起
         Column()
           .width('100%')
           .height('100%')
           .backgroundColor('#59000000')
           .onClick(() => { this.showHistory = false; })
+          .transition(TransitionEffect.OPACITY.animation({ duration: 200 }))
 
         HistoryDrawer({
           convs: this.convs,
@@ -749,6 +750,9 @@ struct Chat {
           onOpenConversation: (id: number): void => { this.openConversation(id); },
           onDeleteConversation: (c: Conv): void => { this.confirmDelete(c); },
         })
+        .transition(TransitionEffect.translate({ x: -500 })
+          .combine(TransitionEffect.OPACITY)
+          .animation({ duration: 260, curve: Curve.FastOutSlowIn }))
       }
 
       // 悬浮 ☰：盖在抽屉之上，原地变开关（抽屉开着时点它收起）
