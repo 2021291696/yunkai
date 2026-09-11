@@ -17,7 +17,7 @@
 #  4) `uiautomator dump` **会漏长文本节点**（长回答整段不出现）、Toast 也不在树里 → 内容级断言看截图，机制证据看 logcat
 #  5) 屏幕操作前先 keyevent 224 唤醒；打字后 IME 遮挡底部按钮时先 keyevent 4 收键盘（脚本内 hide_ime 已判 mInputShown）
 export MSYS_NO_PATHCONV=1
-ADB="/d/Android/Sdk/platform-tools/adb.exe -s emulator-5556"
+ADB="/d/Android/Sdk/platform-tools/adb.exe -s ${ANDROID_SERIAL:-emulator-5554}"   # 串号随模拟器实例变（本机重开为 5554）；可用 ANDROID_SERIAL 覆盖
 PKG="com.zhuolin.yunkai"
 
 EV_WIN="${1:?用法: bash drive_android.sh <证据目录> <步骤...>}"
@@ -113,9 +113,31 @@ s15_switch_loading() { wake; launch; type_chat '用一句话回答：1+1等于�
   tap_text '＋ 新对话'; sleep 2; dump; echo "⑮ 新会话："; texts; expect '问我任何问题'; shot 15a_new_conv.png
   sleep 25; dump; echo "⑮ 等 25s（废轮后台跑完）后："; texts; expect '问我任何问题'; shot 15b_stale_check.png; }
 
-usage() { echo "可用步骤：1 2 3 4 4b 5 6 7 8 9 10 15（对应 manifest 的 ui 步骤）"; }
+s16_image_question() { wake; launch
+  # 一期图片链路：＋ → 相册 → 首图 → Add → chip → 发送（纯图，无文字）
+  tap_text '＋'; sleep 2
+  tap_text '相册'; sleep 5
+  # 系统 Photo Picker：取第一张"Photo taken on"缩略图
+  dump; XY=$(DUMP_PATH="$DUMP_WIN" python -c "
+import re, os
+s = open(os.environ['DUMP_PATH'], encoding='utf-8', errors='replace').read()
+best = None
+for m in re.finditer(r'<node[^>]*>', s):
+    seg = m.group(0)
+    d = re.search(r'content-desc=\"([^\"]*)\"', seg)
+    b = re.search(r'bounds=\"\[(\d+),(\d+)\]\[(\d+),(\d+)\]\"', seg)
+    if d and b and 'Photo taken' in d.group(1):
+        best = ((int(b.group(1))+int(b.group(3)))//2, (int(b.group(2))+int(b.group(4)))//2); break
+if best: print(best[0], best[1])
+"); if [ -n "$XY" ]; then tap $XY; sleep 3; else echo "  FAIL 相册无照片"; return 1; fi
+  tap_text 'Add'; sleep 4; dump; echo "⑯ chip 检查："; expect '✕'
+  shot 16a_chip.png
+  tap_text '↑'; sleep 3; shot 16b_asking.png
+  sleep 40; dump; echo "⑯ 回答（应含图形/颜色描述，无失败自述）："; texts; shot 16c_answer.png; }
+
+usage() { echo "可用步骤：1 2 3 4 4b 5 6 7 8 9 10 15 16（对应 manifest 的 ui 步骤）"; }
 [ $# -eq 0 ] && { usage; exit 0; }
 for st in "$@"; do case "$st" in
   1) s1_launch_guide;; 2) s2_guard;; 3) s3_config;; 4) s4_skill_create;; 4b) s4b_skill_import;;
-  5) s5_bare_llm;; 6) s6_search;; 7) s7_cancel;; 8) s8_eli5;; 9) s9_history;; 10) s10_dismiss;; 15) s15_switch_loading;;
+  5) s5_bare_llm;; 6) s6_search;; 7) s7_cancel;; 8) s8_eli5;; 9) s9_history;; 10) s10_dismiss;; 15) s15_switch_loading;; 16) s16_image_question;;
   *) echo "未知步骤 $st"; usage;; esac; done

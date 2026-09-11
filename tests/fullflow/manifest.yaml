@@ -177,5 +177,18 @@ flow:
       # 出现 AI 气泡 = 跨会话写入（FAIL）；app 不得崩（旧行为：nextId 归 1
       # 与 loadTurns 写回的 id 撞车 → LazyColumn 重复 key 崩）。
       # wait = AI 驱动层 sleep（非 run.py 动作）：等足够时间让废轮在后台跑完。
+    - id: chat_image_question      # ⑯ 一期图片链路：＋→相册→选图→chip→发送（纯图）→视觉回答
+      ui:
+        - { action: click, target: "输入坞左侧 ＋ 附件钮" }
+        - { action: expect_visible, target: "text=🖼 相册" }
+        - { action: click, target: "text=🖼 相册" }
+        - { action: click, target: "系统相册首张图片" }
+        - { action: click, target: "text=Add" }
+        - { action: expect_visible, target: "text=✕" }          # chip 就绪（缩略图+删除钮）
+        - { action: click, target: "发送钮 ↑" }
+        - { action: expect_visible, target: "text=图片提问" }     # 纯图发送的标题兜底
+      # 内容级断言（AI 驱动层读屏）：回答须真实描述图片内容（图形/颜色）；出现
+      # 「请先在设置页配置」= 设备未配视觉端点（智谱 glm-5.3-flash），FAIL；出现自述失败文案 FAIL。
+      # 前置：设备需配智谱端点（glm-5.3-flash 支持图片输入，已实测）；相册需有测试图。
       # 收起判据（内容级，AI 驱动层读屏复核）：点 ✕ 与点面板外后抽屉面板均须消失；
       # 面板未消失时输入框仍被遮罩/面板覆盖，fill 打不进去 → 文案不可见 → 本步 RED
