@@ -608,25 +608,6 @@ struct Chat {
               }
             }, (m: RenderMsg) => `msg_${m.id}`)
 
-            // B1 流式气泡：增量文本非空时渲染生长中的回答（打字机体验）；落库仍走唯一成功路径
-            if (this.loading && this.streamText !== '') {
-              ListItem() {
-                // B1 流式 + B2 markdown：增量文本同样走 MarkdownText（与落库后的回答气泡同渲染口径）
-                MarkdownText({ text: this.streamText })
-                  .backgroundColor($r('app.color.glass_bg'))
-                  .backdropBlur(ThemeTokens.BLUR_CARD)
-                  .borderRadius({
-                    topLeft: ThemeTokens.R_BUBBLE,
-                    topRight: ThemeTokens.R_BUBBLE,
-                    bottomRight: ThemeTokens.R_TIGHT,
-                    bottomLeft: ThemeTokens.R_BUBBLE
-                  })
-                  .padding({ left: 17, right: 17, top: 13, bottom: 13 })
-                  .constraintSize({ maxWidth: '82%' })
-                  .width('82%')
-              }
-              .transition(TransitionEffect.OPACITY)
-            }
             // 过程卡：loading 实时看；失败/取消保持展开（三态规则）
             if (this.loading || this.failed) {
               ListItem() {
@@ -674,6 +655,25 @@ struct Chat {
                 .shadow({ radius: 28, color: '#66000000', offsetY: 8 })
                 .width('100%')
               }
+            }
+            // B1 流式气泡：增量文本非空时渲染生长中的回答（打字机体验）；落库仍走唯一成功路径
+            if (this.loading && this.streamText !== '') {
+              ListItem() {
+                // B1 流式 + B2 markdown：增量文本同样走 MarkdownText（与落库后的回答气泡同渲染口径）
+                MarkdownText({ text: this.streamText })
+                  .backgroundColor($r('app.color.glass_bg'))
+                  .backdropBlur(ThemeTokens.BLUR_CARD)
+                  .borderRadius({
+                    topLeft: ThemeTokens.R_BUBBLE,
+                    topRight: ThemeTokens.R_BUBBLE,
+                    bottomRight: ThemeTokens.R_TIGHT,
+                    bottomLeft: ThemeTokens.R_BUBBLE
+                  })
+                  .padding({ left: 17, right: 17, top: 13, bottom: 13 })
+                  .constraintSize({ maxWidth: '82%' })
+                  .width('82%')
+              }
+              .transition(TransitionEffect.OPACITY)
             }
           }
           .layoutWeight(1)
