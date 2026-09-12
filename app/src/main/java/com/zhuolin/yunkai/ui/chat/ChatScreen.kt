@@ -409,11 +409,14 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
                                 .size(40.dp)
                                 .clip(CircleShape)
                                 .background(glass.accent)
-                                .clickable { vm.send(context) },
+                                .clickable {
+                                    // 生成中且无输入 = ■ 暂停；有输入 = ↑ 排队发送
+                                    if (vm.loading.value && vm.input.value.isEmpty()) vm.cancelLoading() else vm.send(context)
+                                },
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
-                                "↑",
+                                if (vm.loading.value && vm.input.value.isEmpty()) "■" else "↑",
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White,
