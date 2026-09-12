@@ -188,6 +188,19 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
         send(context)
     }
 
+    // 编辑已发送消息：截断删除该条及其之后，内容回填输入框（改完重发即重新生成）
+    fun startEdit(index: Int) {
+        if (loading.value || index < 0 || index >= turns.size) return
+        viewModelScope.launch {
+            val fromId = turns[index].id
+            val text = msgs.getOrNull(index)?.content ?: return@launch
+            app.messageRepo.deleteFromPosition(convId, fromId)
+            for (k in turns.size - 1 downTo index) turns.removeAt(k)
+            for (k in msgs.size - 1 downTo index) msgs.removeAt(k)
+            input.value = text
+        }
+    }
+
     // 发送管线：@提及解析 → 构建 history → AgentLoop.run（onEvent 实时推时间线）→ 画布卡/气泡入库渲染。
     // 净空语义：唯一落库点=真实回答成功之后（取消/抛错/写库失败都不留记录）；
     // 草稿会话此刻才 create，user 行先于 assistant 行写入

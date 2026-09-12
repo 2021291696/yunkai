@@ -5,6 +5,9 @@ import com.zhuolin.yunkai.service.HtmlExtractor
 
 // 消息仓库：messages 表增查（语义对齐鸿蒙版 MessageRepo.ets）
 class MessageRepo(private val dao: MsgDao) {
+    // 编辑重发：截断删除——删掉 fromId 这条及其之后的所有消息
+    suspend fun deleteFromPosition(convId: Long, fromId: Long) = dao.deleteFrom(convId, fromId)
+
     // 统一入库入口：
     // role='user'：turn_no=0、plain=''、kind=TEXT；role='assistant'：turnNo=现有 assistant 最大 turn_no+1，
     // plain=剥标签纯文本（历史 prompt 与侧栏要点用）；kind='html'|'text' 渲染形态持久化（由调用方按

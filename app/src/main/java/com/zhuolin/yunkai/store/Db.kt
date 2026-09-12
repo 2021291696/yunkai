@@ -77,6 +77,9 @@ interface MsgDao {
     @Query("SELECT * FROM messages WHERE conversation_id = :convId ORDER BY id ASC")
     suspend fun listByConv(convId: Long): List<MsgEntity>
 
+    @Query("DELETE FROM messages WHERE conversation_id = :convId AND id >= :fromId")
+    suspend fun deleteFrom(convId: Long, fromId: Long)
+
     @Query("SELECT content FROM messages WHERE conversation_id = :convId AND turn_no = :turnNo AND role = 'assistant' LIMIT 1")
     suspend fun getHtmlByTurn(convId: Long, turnNo: Int): String?
 }

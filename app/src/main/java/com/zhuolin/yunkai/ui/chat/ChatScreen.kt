@@ -180,6 +180,8 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
                             MessageItem(m, onOpenCanvas = {
                                 com.zhuolin.yunkai.ui.canvas.CanvasHolder.html = m.content
                                 onOpenCanvas()
+                            }, onEdit = {
+                                vm.startEdit(vm.msgs.indexOfFirst { it.id == m.id })
                             })
                         }
                     }
@@ -498,7 +500,7 @@ private val BubbleShadow = Color(0x66000000)
 
 // 消息渲染分发：user 气泡 / html 画布卡 / text 气泡
 @Composable
-private fun MessageItem(m: RenderMsg, onOpenCanvas: () -> Unit) {
+private fun MessageItem(m: RenderMsg, onOpenCanvas: () -> Unit, onEdit: () -> Unit = {}) {
     val glass = LocalGlassScheme.current
     val maxBubble = (LocalConfiguration.current.screenWidthDp * 0.82f).dp
     Box(modifier = Modifier.fillMaxWidth()) {
@@ -519,6 +521,7 @@ private fun MessageItem(m: RenderMsg, onOpenCanvas: () -> Unit) {
                             topStart = GlassTokens.R_BUBBLE.dp, topEnd = GlassTokens.R_BUBBLE.dp,
                             bottomEnd = GlassTokens.R_TIGHT.dp, bottomStart = GlassTokens.R_BUBBLE.dp,
                         ))
+                        .clickable { onEdit() }
                         .padding(horizontal = 17.dp, vertical = 13.dp),
                 )
             }
