@@ -116,8 +116,9 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
 
     LaunchedEffect(Unit) { vm.initIfNeed(-1L) }
     // 新消息/时间线上屏自动滚底
-    LaunchedEffect(vm.msgs.size, vm.timeline.size, vm.loading.value) {
-        if (vm.msgs.isNotEmpty()) listState.animateScrollToItem(vm.msgs.size - 1)
+    LaunchedEffect(vm.msgs.size, vm.timeline.size, vm.loading.value, vm.streamText.value, vm.thinking.value) {
+        val last = listState.layoutInfo.totalItemsCount
+        if (last > 0) listState.animateScrollToItem(last - 1)
     }
 
     // 删除会话确认弹窗（抽屉长按触发）
@@ -189,6 +190,15 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
                     if (vm.loading.value || vm.failed.value) {
                         // B1 流式气泡：增量文本非空时渲染生长中的回答（打字机体验）；
                         // 净空语义不变——流式渲染仅为预览，落库仍走唯一成功路径
+                        item(key = "timeline") {
+                            TimelineCard(
+                                timeline = vm.timeline.toList(),
+                                thinking = vm.thinking.value,
+                                steps = vm.steps.value,
+                                failed = vm.failed.value,
+                                onCancel = { vm.cancelLoading() },
+                            )
+                        }
                         if (vm.streamText.value.isNotEmpty()) {
                             item(key = "stream") {
                                 val maxBubble = (LocalConfiguration.current.screenWidthDp * 0.82f).dp
@@ -210,15 +220,7 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
                                 )
                             }
                         }
-                        item(key = "timeline") {
-                            TimelineCard(
-                                timeline = vm.timeline.toList(),
-                                thinking = vm.thinking.value,
-                                steps = vm.steps.value,
-                                failed = vm.failed.value,
-                                onCancel = { vm.cancelLoading() },
-                            )
-                        }
+
                     }
                 }
                 // 引导态：无任何消息时
