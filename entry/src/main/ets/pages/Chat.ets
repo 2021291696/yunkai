@@ -45,18 +45,18 @@ class PickedItem {
     this.isImage = isImage;
   }
   label(): string {
-    return this.isImage ? `🖼 ${this.name}` : `📄 ${this.name}`;
+    return this.name;
   }
 }
 
 // 时间线事件 → 展示文案（tool_done 的 detail 由引擎截到 80 字，这里再截 40 字防换行刷屏）
 function timelineLabel(e: LoopEvent): string {
-  if (e.kind === 'tool_start') { return `🔍 调用 ${e.toolName}…`; }
+  if (e.kind === 'tool_start') { return `调用 ${e.toolName}…`; }
   if (e.kind === 'tool_done') {
     const d: string = e.detail !== '' ? ' ' + e.detail.substring(0, 40) : '';
     return `✓ 完成${d}`;
   }
-  if (e.kind === 'answer') { return '✍️ 整理回答…'; }
+  if (e.kind === 'answer') { return '整理回答…'; }
   if (e.kind === 'limit') { return '已达步数上限'; }
   return e.kind;
 }
@@ -186,6 +186,7 @@ struct Chat {
     try {
       const cfg: AppConfig = await ConfigStore.load(this.ctx());
       if (cfg.baseUrl === '' || cfg.apiKey === '' || cfg.model === '') {
+        this.input = q0;   // 失败还原输入，用户不必重打
         this.toast('请先在设置页配置 API 地址/密钥/模型');
         this.msgs.pop();
         return;
@@ -292,6 +293,7 @@ struct Chat {
     } catch (e) {
       const em: string = (e as Error).message;
       if (em !== 'AGENT_LOOP_CANCELLED') {
+        this.input = q0;   // 失败还原输入，与附件保留策略一致
         hilog.error(0x0000, 'yunkai', 'send failed: %{public}s', em);
         this.toast('出错了：' + em);
       }
@@ -628,8 +630,10 @@ struct Chat {
                       .borderRadius(10)
                       .objectFit(ImageFit.Cover)
                   } else {
-                    Text('📄')
-                      .fontSize(20)
+                    Text(it.name.substring(it.name.lastIndexOf('.') + 1).substring(0, 4).toUpperCase())
+                      .fontSize(10)
+                      .fontWeight(FontWeight.Bold)
+                      .fontColor($r('app.color.text_hi'))
                   }
                   Text('✕')
                     .fontSize(10)
