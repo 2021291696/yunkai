@@ -136,6 +136,9 @@ data class AppConfig(
     var searchMode: String = "auto",
     var searchProvider: String = "bing", // bing(免key爬取) | bocha | tavily
     var searchApiKey: String = "",
+    // 忆枢隐私挡位（协议 §2/§5，wire 字符串 strict|standard|free）：
+    // 默认 strict，未匹配回退 strict（PrivacyGate.Gear.fromWire）；M1c 进设置 UI，本期只加存储字段
+    var memoryGear: String = "strict",
 )
 
 // Agent 技能配方：skills 表一行（内置 eli5 与用户自建技能共用）

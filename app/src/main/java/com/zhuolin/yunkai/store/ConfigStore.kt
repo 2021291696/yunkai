@@ -26,6 +26,9 @@ class ConfigStore(private val ctx: Context) {
             autoRoute = p[K_AUTO_ROUTE] ?: true,
             searchProvider = p[K_SEARCH_PROVIDER] ?: "bing",
             searchApiKey = p[K_SEARCH_KEY] ?: "",
+            // 忆枢隐私挡位（协议 §2 PRIVACY_GEAR_DEFAULT）：默认 strict，未匹配值由
+            // PrivacyGate.Gear.fromWire 在使用点回退 strict，这里原样存取（M1c 进设置 UI）
+            memoryGear = p[K_MEMORY_GEAR] ?: "strict",
         )
     }
 
@@ -38,6 +41,7 @@ class ConfigStore(private val ctx: Context) {
             p[K_AUTO_ROUTE] = cfg.autoRoute
             p[K_SEARCH_PROVIDER] = cfg.searchProvider
             p[K_SEARCH_KEY] = cfg.searchApiKey
+            p[K_MEMORY_GEAR] = cfg.memoryGear
         }
     }
 
@@ -76,5 +80,6 @@ class ConfigStore(private val ctx: Context) {
         private val K_SEARCH_KEY = stringPreferencesKey("searchApiKey")
         private val K_WALLPAPER = stringPreferencesKey("wallpaper")
         private val K_THEME_MODE = stringPreferencesKey("themeMode")
+        private val K_MEMORY_GEAR = stringPreferencesKey("memoryGear")
     }
 }

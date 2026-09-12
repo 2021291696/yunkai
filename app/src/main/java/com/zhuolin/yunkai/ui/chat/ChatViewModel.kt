@@ -305,7 +305,11 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
                             thinking.value = acc
                         }
                     },
-                    extraTools = com.zhuolin.yunkai.service.tools.createM2Tools(app),
+                    extraTools = com.zhuolin.yunkai.service.tools.createM2Tools(app) +
+                        com.zhuolin.yunkai.memory.createMemoryTools(app.memoryStore) {
+                            app.configStore.load().memoryGear
+                        },
+                    memory = app.memoryStore,
                 )
                 if (gen != genId) return@launch
 

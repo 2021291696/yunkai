@@ -7,9 +7,11 @@ import com.zhuolin.yunkai.model.ChatMsg
 import com.zhuolin.yunkai.model.JsonSchema
 import com.zhuolin.yunkai.model.ToolCall
 import com.zhuolin.yunkai.model.ToolDef
+import com.zhuolin.yunkai.memory.MemoryInjection
+import com.zhuolin.yunkai.memory.MemoryStore
+import com.zhuolin.yunkai.memory.MemoryTools
 import com.zhuolin.yunkai.service.tools.AgentTool
 import com.zhuolin.yunkai.service.tools.BuiltinTools
-import com.zhuolin.yunkai.service.tools.createM2Tools
 import com.zhuolin.yunkai.store.SkillSource
 import kotlinx.serialization.json.Json
 import android.util.Log
@@ -47,8 +49,8 @@ object AgentLoop {
     // 取消专用错误消息：调用方按此静默吞（引擎层中断，结果直接丢弃）
     const val CANCELLED_MSG: String = "AGENT_LOOP_CANCELLED"
 
-    // M2 文件/记忆工具名（长文形态下撤出工具表并拒绝执行）
-    private val M2_TOOL_NAMES = setOf("read_file", "write_file", "memory_save", "memory_search")
+    // 长文形态（eli5）撤出工具表并拒绝执行：M2 文件两件 + 忆枢记忆五件（协议 §4.3）
+    private val M2_TOOL_NAMES = setOf("read_file", "write_file") + MemoryTools.ALL_NAMES
 
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -82,6 +84,8 @@ object AgentLoop {
         extraTools: List<AgentTool> = emptyList(),
         // 一期图片链路：带图提问时用户消息的 contentParts 由调用方传入（文字仍走 question）
         extraUserParts: List<ContentPart>? = null,
+        // 忆枢 M1b：记忆存储（null=不接线，维持旧注入行为；生产由 ChatViewModel 传 RoomMemoryStore）
+        memory: MemoryStore? = null,
     ): LoopResult {
         val tools: List<AgentTool> = BuiltinTools.createAll(cfg, forcedSkill, skillRepo) + extraTools
         val toolDefs: MutableList<ToolDef> = mutableListOf()
@@ -95,9 +99,25 @@ object AgentLoop {
             ))
         }
 
+        // 忆枢注入（协议 §4.1/4.2）：首次运行播种 persona=AGENT_SYSTEM 原文、human=空串；
+        // system = persona 块 + "\n\n" + human 块 + "\n\n" + 记忆说明块 + skillBlock。
+        // 两块皆空 → 记忆段整段省略（MemoryInjection.coreSection 返回 null，避免裸标题）。
+        // memory == null（旧测试/未接线）时保持 AGENT_SYSTEM 原样。
+        var baseSystem = AGENT_SYSTEM
+        var memorySection = ""
+        if (memory != null) {
+            seedCoreBlocks(memory)
+            val persona = memory.getCoreBlock(MemoryStore.BLOCK_PERSONA)?.content ?: ""
+            val human = memory.getCoreBlock(MemoryStore.BLOCK_HUMAN)?.content ?: ""
+            baseSystem = persona.ifBlank { AGENT_SYSTEM }
+            memorySection = MemoryInjection.coreSection(persona, human)?.let { "\n\n$it" } ?: ""
+        }
+
         // skillBlock 注入条件化：autoRoute=false 且无 @指定时不注入技能清单（仅 @名字 手动触发；
         // forcedSkill 不受 autoRoute 影响——用户显式点名必须生效）
-        val sysMsg = ChatMsg(role = "system", content = AGENT_SYSTEM + skillBlock(skillRepo, cfg.autoRoute, forcedSkill))
+        // 记下来供 eli5 撤记忆段时重建 system（skillRepo 内容一轮内不变，直接复用）
+        val skillBlk = skillBlock(skillRepo, cfg.autoRoute, forcedSkill)
+        val sysMsg = ChatMsg(role = "system", content = baseSystem + memorySection + skillBlk)
         val userMsg = ChatMsg(role = "user", content = question, contentParts = extraUserParts)
         val messages: MutableList<ChatMsg> = mutableListOf(sysMsg)
         messages.addAll(history)
@@ -140,10 +160,16 @@ object AgentLoop {
                     // 失败/error 回传不切换，模型仍用主模型自行调整策略
                     if (tc.function.name == "use_skill" && !out.startsWith("{\"error\"")) {
                         longFormActive = true
-                        // M2 文件/记忆工具在长文形态下移出工具表：eli5 的产出契约是「整页 HTML 直接写在
-                        // 回答正文」，write_file 会把页面吸进沙箱文件让画布判定失效（门2 实测回归）
-                        val m2 = setOf("read_file", "write_file", "memory_save", "memory_search")
-                        toolDefs.removeAll { it.function?.name in m2 }
+                        // M2 文件工具 + 忆枢记忆五件在长文形态下移出工具表：eli5 的产出契约是「整页
+                        // HTML 直接写在回答正文」，write_file 会把页面吸进沙箱让画布判定失效
+                        // （门2 实测回归）；记忆工具随 §4.3 一并撤下（技能契约纯净优先）
+                        toolDefs.removeAll { it.function?.name in M2_TOOL_NAMES }
+                        // §4.3：长文形态本轮 system 撤下两块与记忆说明块（就地重建 system 消息，
+                        // 已发出的第 1 步请求不受影响，长文步起生效）
+                        if (memorySection.isNotEmpty()) {
+                            memorySection = ""
+                            messages[0] = messages[0].copy(content = baseSystem + skillBlk)
+                        }
                     }
                     onEvent(LoopEvent("tool_done", tc.function.name, out.substring(0, minOf(80, out.length))))
                     messages.add(ChatMsg(role = "tool", content = out, toolCallId = tc.id))
@@ -192,6 +218,18 @@ object AgentLoop {
             tool.execute(tc.function.arguments)
         } catch (err: Exception) {
             BuiltinTools.err(err.message ?: err.toString())
+        }
+    }
+
+    // 核心记忆种子（协议 §4.1「种子=AGENT_SYSTEM 原文」）：幂等——以「行缺失」为首次运行判据，
+    // 每轮请求前调用；persona 缺行补 AGENT_SYSTEM 原文，human 缺行补空串。用户后续用
+    // core_memory_replace 清空 persona 不会被重新覆盖（行仍在，仅内容空）。
+    private suspend fun seedCoreBlocks(memory: MemoryStore) {
+        if (memory.getCoreBlock(MemoryStore.BLOCK_PERSONA) == null) {
+            memory.putCoreBlock(MemoryStore.BLOCK_PERSONA, AGENT_SYSTEM)
+        }
+        if (memory.getCoreBlock(MemoryStore.BLOCK_HUMAN) == null) {
+            memory.putCoreBlock(MemoryStore.BLOCK_HUMAN, "")
         }
     }
 
