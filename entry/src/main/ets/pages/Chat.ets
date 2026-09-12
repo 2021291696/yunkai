@@ -746,15 +746,6 @@ struct Chat {
           .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
           .shadow({ radius: 30, color: '#44000000', offsetY: 10 })
           .animation({ duration: 220, curve: Curve.FastOutSlowIn })
-          // 面板展开时隐藏免责声明（否则夹在输入栏与面板之间）
-          if (!this.showAttach) {
-            Text('内容由 AI 生成，请甄别')
-              .fontSize(10)
-              .fontColor($r('app.color.text_low'))
-              .textAlign(TextAlign.Center)
-              .width('100%')
-              .margin({ top: 8 })
-          }
         }
         .margin({ left: 14, right: 14, bottom: this.navBarH + 22 })
       }
