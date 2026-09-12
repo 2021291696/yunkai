@@ -172,6 +172,17 @@ struct Chat {
     this.send();
   }
 
+  // 编辑已发送消息：截断删除该条及其之后，内容回填输入框（改完重发即重新生成）
+  async startEdit(index: number): Promise<void> {
+    if (this.loading || index < 0 || index >= this.turns.length) { return; }
+    const fromId: number = this.turns[index].id;
+    const text: string = this.msgs[index].content;
+    await MessageRepo.deleteFromPosition(this.ctx(), this.convId, fromId);
+    this.turns = this.turns.slice(0, index);
+    this.msgs = this.msgs.slice(0, index);
+    this.input = text;
+  }
+
   // 发送管线：@提及解析 → 构建历史 → AgentLoop.run（onEvent 实时推时间线）→ 画布卡/气泡入库渲染
   private async send(): Promise<void> {
     const items: PickedItem[] = this.picked;   // 附件快照：发送期间增删不影响本轮
@@ -515,7 +526,7 @@ struct Chat {
         // ===== 消息流 =====
         Stack() {
           List({ space: 12, scroller: this.listScroller }) {
-            ForEach(this.msgs, (m: RenderMsg) => {
+              ForEach(this.msgs, (m: RenderMsg, idx: number) => {
               ListItem() {
                 Column() {
                   if (m.role === 'assistant' && m.thinking !== '') {
@@ -559,6 +570,7 @@ struct Chat {
                         .padding({ left: 17, right: 17, top: 13, bottom: 13 })
                         .constraintSize({ maxWidth: '82%' })
                         .shadow({ radius: 28, color: '#66000000', offsetY: 8 })
+                        .onClick(() => { this.startEdit(idx); })
                     } else if (m.kind === ReplyKind.HTML) {
                       Column() {
                         CanvasCard({

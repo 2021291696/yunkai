@@ -6,6 +6,15 @@ import { Msg } from '../model/Types';
 import { HtmlExtractor } from '../service/HtmlExtractor';
 
 export class MessageRepo {
+  // 编辑重发：截断删除——删掉 fromId 这条及其之后的所有消息
+  static async deleteFromPosition(ctx: common.UIAbilityContext, convId: number, fromId: number): Promise<void> {
+    const store = await Db.get(ctx);
+    const pred = new relationalStore.RdbPredicates('messages');
+    pred.equalTo('conversation_id', convId);
+    pred.greaterThanOrEqualTo('id', fromId);
+    await store.delete(pred);
+  }
+
   // 统一入库入口（取代 addUser/addAssistant）：
   // role='user'：turn_no=0、plain=''；role='assistant'：turnNo=现有 assistant 最大 turn_no+1，
   // plain=剥标签纯文本（历史 prompt 与侧栏要点用）；kind='html'|'text' 渲染形态持久化
