@@ -101,6 +101,9 @@ interface ConvDao {
     @Query("SELECT * FROM conversations ORDER BY updated_at DESC")
     suspend fun list(): List<ConvEntity>
 
+    @Query("SELECT * FROM conversations WHERE id = :id LIMIT 1")
+    suspend fun getById(id: Long): ConvEntity?
+
     @Insert
     suspend fun insert(e: ConvEntity): Long
 
@@ -109,6 +112,10 @@ interface ConvDao {
 
     @Query("UPDATE conversations SET title = :title WHERE id = :id AND title = '新对话'")
     suspend fun setTitleIfPlaceholder(id: Long, title: String)
+
+    // 忆枢 M2 会话摘要（协议 §4.4）：写摘要文本并前移换出边界
+    @Query("UPDATE conversations SET summary = :summary, summarized_until_turn = :untilTurn WHERE id = :id")
+    suspend fun updateSummary(id: Long, summary: String, untilTurn: Int)
 
     @Query("DELETE FROM conversations WHERE id = :id")
     suspend fun delete(id: Long) // messages 由 CASCADE 级联删除

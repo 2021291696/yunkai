@@ -194,10 +194,47 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
         viewModelScope.launch {
             val fromId = turns[index].id
             val text = msgs.getOrNull(index)?.content ?: return@launch
+            // 忆枢 M2 编辑重发防护（协议 §4.4）：截断点落入已摘要跨度（被删首行 id ≤ 边界 assistant 行 id）
+            // → 摘要已涵盖将被改写的内容，清空摘要状态防陈旧
+            val state = app.conversationRepo.summaryState(convId)
+            if (state != null && state.untilTurn > 0) {
+                val rows = app.messageRepo.listByConv(convId)
+                val boundary = rows.lastOrNull { it.role == "assistant" && it.turnNo <= state.untilTurn }
+                if (boundary != null && fromId <= boundary.id) {
+                    app.conversationRepo.clearSummary(convId)
+                }
+            }
             app.messageRepo.deleteFromPosition(convId, fromId)
             for (k in turns.size - 1 downTo index) turns.removeAt(k)
             for (k in msgs.size - 1 downTo index) msgs.removeAt(k)
             input.value = text
+        }
+    }
+
+    // 忆枢 M2 会话摘要编排（协议 §4.4）：窗口超阈值 → 最旧一半轮次交给主模型压缩 ≤300 字，
+    // 追加进 conversations.summary 并前移换出边界。任何异常静默跳过（摘要属增益）。
+    private suspend fun maybeSummarize(cfg: com.zhuolin.yunkai.model.AppConfig) {
+        try {
+            if (convId <= 0) return
+            val state = app.conversationRepo.summaryState(convId) ?: return
+            val rows = app.messageRepo.listByConv(convId)
+            val window = com.zhuolin.yunkai.memory.Summarizer.windowRows(rows, state.untilTurn)
+            if (!com.zhuolin.yunkai.memory.Summarizer.shouldTrigger(window)) return
+            val span = com.zhuolin.yunkai.memory.Summarizer.spanToSummarize(window) ?: return
+            val llm = com.zhuolin.yunkai.service.LlmClient(cfg)
+            val resp = llm.chatMessage(
+                listOf(ChatMsg(role = "user", content = com.zhuolin.yunkai.memory.Summarizer.buildPrompt(span.rows))),
+                null,
+            )
+            val text = resp.content.trim()
+            if (text.isEmpty()) return
+            app.conversationRepo.appendSummary(
+                convId,
+                text.take(com.zhuolin.yunkai.memory.Summarizer.SUMMARY_MAX_CHARS),
+                span.endTurnNo,
+            )
+        } catch (e: Exception) {
+            Log.w("yunkai", "summarize skipped: ${e.message}")
         }
     }
 
@@ -259,10 +296,16 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
                     }
                 }
 
-                // 历史 turns → ChatMsg[]（assistant 用 plain 防大 HTML 撑上下文）
+                // 历史 turns → ChatMsg[]：忆枢 M2 换出边界之前的前文以「[早期对话摘要]」system 消息
+                // 前置（协议 §4.1），窗口=边界之后的行；assistant 用 plain 防大 HTML 撑上下文
                 val history = mutableListOf<ChatMsg>()
                 if (convId > 0) {
-                    for (t in app.messageRepo.listByConv(convId)) {
+                    val rows = app.messageRepo.listByConv(convId)
+                    val state = app.conversationRepo.summaryState(convId)
+                    if (!state?.summary.isNullOrBlank()) {
+                        history.add(ChatMsg(role = "system", content = "[早期对话摘要]\n${state!!.summary}"))
+                    }
+                    for (t in com.zhuolin.yunkai.memory.Summarizer.windowRows(rows, state?.untilTurn ?: 0)) {
                         if (t.role == "user") {
                             history.add(ChatMsg(role = "user", content = t.content))
                         } else if (t.role == "assistant") {
@@ -341,6 +384,9 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
                 msgs.add(RenderMsg(nextId++, "assistant", content, kind, thinking = thinking.value, steps = steps.value))
                 picked.value = emptyList()    // 发送成功即清空（失败保留可重试）
                 loadTurns()
+                // 忆枢 M2 会话摘要（协议 §4.4）：落库成功后检查窗口阈值，超限则摘要换出最旧一半轮次。
+                // 失败静默跳过（摘要属增益，绝不让已成功的回答报错）；在 finally 之前，避免排队补发抢先
+                maybeSummarize(cfg)
             } catch (e: Exception) {
                 if (gen == genId) {
                     failed.value = true
