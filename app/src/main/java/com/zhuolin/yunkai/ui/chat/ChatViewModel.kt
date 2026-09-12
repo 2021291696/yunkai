@@ -20,7 +20,7 @@ import com.zhuolin.yunkai.service.ReplyKind
 import kotlinx.coroutines.launch
 
 // 消息流渲染单元：role='user'|'assistant'；kind='html'|'text'（画布卡/文本气泡）
-data class RenderMsg(val id: Long, val role: String, val content: String, val kind: String)
+data class RenderMsg(val id: Long, val role: String, val content: String, val kind: String, val thinking: String = "", val steps: Int = 0, val thinkingCollapsed: Boolean = true)
 
 // 对话页状态：发送管线走 AgentLoop（onEvent 实时推时间线；取消旗标 genId 失配即停）
 // 一期附件：图片（多图≤5，压缩后走多模态 contentParts）或 txt（单文件≤5MB/正文3万字截断）
@@ -45,6 +45,10 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
     var showHistory = mutableStateOf(false)
     // B1 流式：非空=正在流式生成（值=当前累计文本）；完成/取消/失败后清空
     var streamText = mutableStateOf("")
+    var thinking = mutableStateOf("")   // 本轮 reasoning_content 累计（思考流）
+    var steps = mutableStateOf(0)       // 工具步数
+    var queued = mutableStateOf("")     // 生成中排队的下一问
+    var failed = mutableStateOf(false)  // 本轮失败/取消：过程卡保持展开
     var picked = mutableStateOf(listOf<PickedItem>())
     var convId: Long = -1L
     private var nextId: Long = 1L
@@ -169,19 +173,43 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
         loading.value = false
     }
 
+    // ✕ 撤回排队：文字退回输入框
+    fun clearQueued() {
+        input.value = queued.value
+        queued.value = ""
+    }
+
+    // 立即：打断当前回答，马上发排队那句
+    fun sendQueuedNow(context: Context) {
+        if (queued.value.isEmpty()) return
+        input.value = queued.value
+        queued.value = ""
+        cancelLoading()
+        send(context)
+    }
+
     // 发送管线：@提及解析 → 构建 history → AgentLoop.run（onEvent 实时推时间线）→ 画布卡/气泡入库渲染。
     // 净空语义：唯一落库点=真实回答成功之后（取消/抛错/写库失败都不留记录）；
     // 草稿会话此刻才 create，user 行先于 assistant 行写入
     fun send(context: Context) {
         val items = picked.value           // 附件快照：发送期间增删不影响本轮
         val q0 = input.value.trim()
-        if (q0.isEmpty() && items.isEmpty() || loading.value) return
+        if (q0.isEmpty() && items.isEmpty()) return
+        if (loading.value) {
+            // 生成中：排队不打断，答完自动发出
+            if (q0.isNotEmpty()) queued.value = if (queued.value.isEmpty()) q0 else queued.value + "\n" + q0
+            input.value = ""
+            return
+        }
         input.value = ""
+        failed.value = false
         val gen = genId + 1
         genId = gen
         loading.value = true
         timeline.clear()
         streamText.value = ""
+        thinking.value = ""
+        steps.value = 0
 
         // 用户气泡先上屏（草稿会话此时尚未落库）；带附件时正文追加摘要行
         val attachSummary = if (items.isEmpty()) "" else buildString {
@@ -197,6 +225,7 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
             try {
                 val cfg = app.configStore.load()
                 if (cfg.baseUrl.isEmpty() || cfg.apiKey.isEmpty() || cfg.model.isEmpty()) {
+                    failed.value = true
                     input.value = q0   // 失败还原输入，用户不必重打
                     toast(context, "请先在设置页配置 API 地址/密钥/模型")
                     msgs.removeAt(msgs.size - 1)
@@ -249,12 +278,18 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
                     onEvent = { e ->
                         if (gen == genId) {
                             timeline.add(e)
+                            if (e.kind == "tool_start") steps.value += 1
                         }
                     },
                     isCancelled = { gen != genId },
                     onDelta = { partial ->
                         if (gen == genId) {
                             streamText.value = partial
+                        }
+                    },
+                    onThinking = { acc ->
+                        if (gen == genId) {
+                            thinking.value = acc
                         }
                     },
                     extraTools = com.zhuolin.yunkai.service.tools.createM2Tools(app),
@@ -286,20 +321,29 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
                         break
                     }
                 }
-                msgs.add(RenderMsg(nextId++, "assistant", content, kind))
+                msgs.add(RenderMsg(nextId++, "assistant", content, kind, thinking = thinking.value, steps = steps.value))
                 picked.value = emptyList()    // 发送成功即清空（失败保留可重试）
                 loadTurns()
             } catch (e: Exception) {
-                val em = e.message ?: ""
-                if (em != AgentLoop.CANCELLED_MSG) {
-                    input.value = q0   // 失败还原输入，与附件保留策略一致
-                    Log.e("yunkai", "send failed: $em")
-                    toast(context, "出错了：$em")
+                if (gen == genId) {
+                    failed.value = true
+                    val em = e.message ?: ""
+                    if (em != AgentLoop.CANCELLED_MSG) {
+                        input.value = q0   // 失败还原输入，与附件保留策略一致
+                        Log.e("yunkai", "send failed: $em")
+                        toast(context, "出错了：$em")
+                    }
                 }
             } finally {
                 if (gen == genId) {
                     loading.value = false
                     streamText.value = ""
+                    val q = queued.value
+                    if (q.isNotEmpty()) {
+                        queued.value = ""
+                        input.value = q
+                        send(context)
+                    }
                 }
             }
         }

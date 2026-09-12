@@ -78,6 +78,7 @@ object AgentLoop {
         fakeChat: (suspend (List<ChatMsg>, List<ToolDef>?, model: String) -> OpenAiMessage)? = null,
         isCancelled: (() -> Boolean)? = null,
         onDelta: ((String) -> Unit)? = null,
+        onThinking: ((String) -> Unit)? = null,
         extraTools: List<AgentTool> = emptyList(),
         // 一期图片链路：带图提问时用户消息的 contentParts 由调用方传入（文字仍走 question）
         extraUserParts: List<ContentPart>? = null,
@@ -115,10 +116,10 @@ object AgentLoop {
             }
             // B1 SSE：非流式保持兜底；流式增量经 onDelta 上抛（UI 流式气泡）。
             // 取消：轮询旗标在 onDelta 里检查，命中即抛（中断读流、断连省 token）。
-            return llm.chatStream(ms, ts, model) { partial ->
+            return llm.chatStream(ms, ts, model, onDelta = { partial ->
                 checkCancel(isCancelled)
                 onDelta?.invoke(partial)
-            }
+            }, onThinking = onThinking)
         }
 
         for (step in 1..MAX_STEPS) {

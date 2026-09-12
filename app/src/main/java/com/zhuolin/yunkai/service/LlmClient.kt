@@ -142,6 +142,7 @@ class LlmClient(private val cfg: AppConfig) {
         tools: List<ToolDef>?,
         model: String?,
         onDelta: (String) -> Unit,
+        onThinking: ((String) -> Unit)? = null,
     ): OpenAiMessage = withContext(Dispatchers.IO) {
         val useModel = if (!model.isNullOrEmpty()) model else cfg.model
         val req = Request.Builder()
@@ -157,6 +158,7 @@ class LlmClient(private val cfg: AppConfig) {
             }
             val source = resp.body?.source() ?: throw Exception("LLM 响应无 body")
             var content = StringBuilder()
+            var think = StringBuilder()   // reasoning_content 累计（思考流）
             // tool_calls 分片组装：index → (id, name, arguments)，arguments 顺序拼接
             val tcIds = mutableMapOf<Int, String>()
             val tcNames = mutableMapOf<Int, String>()
@@ -166,6 +168,11 @@ class LlmClient(private val cfg: AppConfig) {
 
             fun applyDelta(delta: JsonObject?) {
                 if (delta == null) return
+                val r = delta["reasoning_content"] ?: delta["reasoning"]
+                if (r is JsonPrimitive && r.isString && r.content.isNotEmpty()) {
+                    think.append(r.content)
+                    onThinking?.invoke(think.toString())
+                }
                 val c = delta["content"]
                 if (c is JsonPrimitive && c.isString && c.content.isNotEmpty()) {
                     content.append(c.content)

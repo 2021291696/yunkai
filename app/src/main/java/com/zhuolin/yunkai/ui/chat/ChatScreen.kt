@@ -173,13 +173,18 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     items(vm.msgs, key = { it.id }) { m ->
-                        MessageItem(m, onOpenCanvas = {
-                            com.zhuolin.yunkai.ui.canvas.CanvasHolder.html = m.content
-                            onOpenCanvas()
-                        })
+                        Column {
+                            if (m.role != "user" && m.thinking.isNotEmpty()) {
+                                ThinkingRow(m)
+                            }
+                            MessageItem(m, onOpenCanvas = {
+                                com.zhuolin.yunkai.ui.canvas.CanvasHolder.html = m.content
+                                onOpenCanvas()
+                            })
+                        }
                     }
-                    // 时间线卡：只在 loading 时渲染于流末尾
-                    if (vm.loading.value) {
+                    // 过程卡：loading 实时看；失败/取消保持展开（三态规则）
+                    if (vm.loading.value || vm.failed.value) {
                         // B1 流式气泡：增量文本非空时渲染生长中的回答（打字机体验）；
                         // 净空语义不变——流式渲染仅为预览，落库仍走唯一成功路径
                         if (vm.streamText.value.isNotEmpty()) {
@@ -206,6 +211,9 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
                         item(key = "timeline") {
                             TimelineCard(
                                 timeline = vm.timeline.toList(),
+                                thinking = vm.thinking.value,
+                                steps = vm.steps.value,
+                                failed = vm.failed.value,
                                 onCancel = { vm.cancelLoading() },
                             )
                         }
@@ -316,6 +324,42 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
                         }
                     }
                 }
+                // 排队条：生成中点 ↑ 的下一问挂这里；立即=打断当前，✕=退回输入框
+                if (vm.queued.value.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "已排队：${vm.queued.value}",
+                            fontSize = 12.sp,
+                            color = glass.textMid,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            "立即",
+                            fontSize = 13.sp,
+                            color = glass.accent,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(14.dp))
+                                .clickable { vm.sendQueuedNow(context) }
+                                .padding(horizontal = 10.dp, vertical = 4.dp),
+                        )
+                        Text(
+                            "✕",
+                            fontSize = 13.sp,
+                            color = glass.textLow,
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable { vm.clearQueued() }
+                                .padding(4.dp),
+                        )
+                    }
+                }
                 // ===== 输入坞合体：输入行与附件选项同属一块玻璃（四角全圆角、无内部线条）=====
                 val dockCorner by animateDpAsState(if (showAttach) 26.dp else 100.dp, label = "dockCorner")
                 val dockShape = RoundedCornerShape(dockCorner)
@@ -347,9 +391,8 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
                             value = vm.input.value,
                             onValueChange = { vm.input.value = it },
                             placeholder = { Text("问我任何问题…", color = glass.textLow, fontSize = 14.sp) },
-                            modifier = Modifier.weight(1f),
-                            enabled = !vm.loading.value,
-                            maxLines = 4,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 4,
                             textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = glass.textHi),
                             colors = TextFieldDefaults.colors(
                                 focusedContainerColor = Color.Transparent,
@@ -366,11 +409,11 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
                                 .size(40.dp)
                                 .clip(CircleShape)
                                 .background(glass.accent)
-                                .clickable { if (vm.loading.value) vm.cancelLoading() else vm.send(context) },
+                                .clickable { vm.send(context) },
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
-                                if (vm.loading.value) "■" else "↑",
+                                "↑",
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White,
@@ -499,6 +542,40 @@ private fun MessageItem(m: RenderMsg, onOpenCanvas: () -> Unit) {
     }
 }
 
+// 思考过程折叠行：默认收起，点按展开回看（三态规则的成功态）
+@Composable
+private fun ThinkingRow(m: RenderMsg) {
+    val glass = LocalGlassScheme.current
+    var expanded by remember { mutableStateOf(!m.thinkingCollapsed) }
+    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(10.dp))
+                .background(glass.glassBg)
+                .clickable { expanded = !expanded }
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "✦ 思考过程 · ${m.steps} 步",
+                fontSize = 12.sp,
+                color = glass.textMid,
+                modifier = Modifier.weight(1f),
+            )
+            Text(if (expanded) "▾" else "▸", fontSize = 11.sp, color = glass.textLow)
+        }
+        if (expanded) {
+            Text(
+                m.thinking,
+                fontSize = 12.sp,
+                lineHeight = 18.sp,
+                color = glass.textMid,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+        }
+    }
+}
+
 // 时间线事件 → 展示文案（tool_done 的 detail 由引擎截到 80 字，这里再截 40 字防换行刷屏）
 private fun timelineLabel(e: com.zhuolin.yunkai.service.LoopEvent): String {
     if (e.kind == "tool_start") return "调用 ${e.toolName}…"
@@ -514,6 +591,9 @@ private fun timelineLabel(e: com.zhuolin.yunkai.service.LoopEvent): String {
 @Composable
 private fun TimelineCard(
     timeline: List<com.zhuolin.yunkai.service.LoopEvent>,
+    thinking: String,
+    steps: Int,
+    failed: Boolean,
     onCancel: () -> Unit,
 ) {
     val glass = LocalGlassScheme.current
@@ -526,7 +606,7 @@ private fun TimelineCard(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("正在处理…", fontSize = 13.sp, color = glass.textMid, modifier = Modifier.weight(1f))
+            Text(if (failed) "已停止（过程保留）" else "正在处理…", fontSize = 13.sp, color = glass.textMid, modifier = Modifier.weight(1f))
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(14.dp))
@@ -541,6 +621,14 @@ private fun TimelineCard(
                 fontSize = 13.sp,
                 color = if (e.kind == "tool_done") glass.textHi else glass.textMid,
                 maxLines = 1,
+            )
+        }
+        if (thinking.isNotEmpty()) {
+            Text(
+                if (thinking.length > 600) "…" + thinking.takeLast(600) else thinking,
+                fontSize = 12.sp,
+                lineHeight = 18.sp,
+                color = glass.textMid.copy(alpha = 0.75f),
             )
         }
     }
