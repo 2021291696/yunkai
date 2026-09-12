@@ -215,6 +215,10 @@ internal class ArchivalMemorySearchTool(private val store: MemoryStore) : AgentT
             .coerceIn(1, MemoryTools.ARCHIVAL_TOP_K_MAX)
         val corpus = store.allArchival().map { Bm25.Doc(it.id, it.content, it.createdAt) }
         val hits = Bm25.search(corpus, query, topK, System.currentTimeMillis())
+        // §3.4 边界：命中条目 hit_count 各 +1，随检索同批写回；写失败不阻塞返回
+        if (hits.isNotEmpty()) {
+            runCatching { store.incrementHitCounts(hits.map { it.id }) }
+        }
         val rows = store.archivalByIds(hits.map { it.id }).associateBy { it.id }
         val results = hits.mapNotNull { hit ->
             rows[hit.id]?.let {

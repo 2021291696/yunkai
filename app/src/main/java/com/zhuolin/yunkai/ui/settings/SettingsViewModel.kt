@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.zhuolin.yunkai.YunkaiApp
 import com.zhuolin.yunkai.model.AppConfig
 import com.zhuolin.yunkai.service.LlmClient
+import com.zhuolin.yunkai.store.ConfigStore
 import kotlinx.coroutines.launch
 
 // 设置页状态：OpenAI 兼容三项配置 + 获取模型列表 + 技能自动路由开关 + 独立搜索配置。
@@ -18,6 +19,9 @@ class SettingsViewModel(private val app: YunkaiApp) : ViewModel() {
     var autoRoute: MutableState<Boolean> = mutableStateOf(true)
     var searchProvider: MutableState<String> = mutableStateOf("bing")
     var searchApiKey: MutableState<String> = mutableStateOf("")
+    // 忆枢隐私挡位（M1c）：wire 字符串 strict/standard/free；选中即写 ConfigStore（见 Screen），
+    // 这里随 collect() 一并带上——防止「保存」按钮按默认 strict 悄悄覆盖已选挡位
+    var memoryGear: MutableState<String> = mutableStateOf(ConfigStore.PRIVACY_GEAR_DEFAULT)
     var modelOptions: MutableState<List<String>> = mutableStateOf(emptyList())
     var fetchingModels: MutableState<Boolean> = mutableStateOf(false)
 
@@ -30,6 +34,7 @@ class SettingsViewModel(private val app: YunkaiApp) : ViewModel() {
             autoRoute.value = cfg.autoRoute
             searchProvider.value = cfg.searchProvider
             searchApiKey.value = cfg.searchApiKey
+            memoryGear.value = cfg.memoryGear
         }
     }
 
@@ -41,6 +46,7 @@ class SettingsViewModel(private val app: YunkaiApp) : ViewModel() {
         c.autoRoute = autoRoute.value
         c.searchProvider = searchProvider.value
         c.searchApiKey = searchApiKey.value.trim()
+        c.memoryGear = memoryGear.value
         return c
     }
 

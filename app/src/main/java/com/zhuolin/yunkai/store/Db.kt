@@ -175,6 +175,20 @@ interface ArchivalDao {
 
     @Query("SELECT * FROM archival WHERE id IN (:ids)")
     suspend fun getByIds(ids: List<Long>): List<ArchivalEntity>
+
+    // M1c 管理页 + §3.4 hit_count 写回
+    @Query("DELETE FROM archival WHERE id = :id")
+    suspend fun deleteById(id: Long): Int
+
+    @Query("DELETE FROM archival")
+    suspend fun clearAll(): Int
+
+    @Query("SELECT COUNT(*) FROM archival")
+    suspend fun count(): Int
+
+    // hit_count 批量 +1（不动 updated_at：命中统计不是内容变更）
+    @Query("UPDATE archival SET hit_count = hit_count + 1 WHERE id IN (:ids)")
+    suspend fun incrementHits(ids: List<Long>)
 }
 
 // schema version 3：忆枢 M1b（core_blocks/archival/task_state 建表 + conversations 加摘要两列）。

@@ -6,10 +6,11 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.zhuolin.yunkai.ui.canvas.CanvasScreen
 import com.zhuolin.yunkai.ui.chat.ChatScreen
+import com.zhuolin.yunkai.ui.memory.MemoryManageScreen
 import com.zhuolin.yunkai.ui.settings.SettingsScreen
 import com.zhuolin.yunkai.ui.skills.SkillManageScreen
 
-// 单 Activity + NavHost：chat 为家（打开即对话），settings/skills/canvas 为二级页
+// 单 Activity + NavHost：chat 为家（打开即对话），settings/skills/canvas/memory 为二级页
 @Composable
 fun NavRoot() {
     val navController = rememberNavController()
@@ -23,6 +24,7 @@ fun NavRoot() {
         composable("settings") {
             SettingsScreen(
                 onOpenSkills = { navController.navigate("skills") },
+                onOpenMemory = { navController.navigate("memory") },
                 onBack = { navController.popBackStack() },
             )
         }
@@ -31,6 +33,9 @@ fun NavRoot() {
         }
         composable("canvas") {
             CanvasScreen(onBack = { navController.popBackStack() })
+        }
+        composable("memory") {
+            MemoryManageScreen(onBack = { navController.popBackStack() })
         }
     }
 }

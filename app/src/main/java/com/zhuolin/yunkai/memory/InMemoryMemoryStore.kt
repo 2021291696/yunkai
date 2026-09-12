@@ -38,6 +38,29 @@ class InMemoryMemoryStore : MemoryStore {
         return ids.mapNotNull { byId[it] }
     }
 
+    // ===== archival 管理（M1c 管理页）=====
+
+    override suspend fun deleteArchival(id: Long) {
+        archivalRows.removeAll { it.id == id }
+    }
+
+    override suspend fun clearArchival(): Int {
+        val n = archivalRows.size
+        archivalRows.clear()
+        return n
+    }
+
+    override suspend fun archivalCount(): Int = archivalRows.size
+
+    override suspend fun incrementHitCounts(ids: List<Long>) {
+        if (ids.isEmpty()) return
+        val set = ids.toHashSet()
+        for (i in archivalRows.indices) {
+            val r = archivalRows[i]
+            if (r.id in set) archivalRows[i] = r.copy(hitCount = r.hitCount + 1)
+        }
+    }
+
     override suspend fun conversationSearch(query: String, limit: Int): List<ConversationHit> {
         val terms = MemoryStore.searchTerms(query)
         return messages.asSequence()

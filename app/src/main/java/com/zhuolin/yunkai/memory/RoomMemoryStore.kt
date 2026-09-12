@@ -38,6 +38,21 @@ class RoomMemoryStore(private val db: YunkaiDb) : MemoryStore {
         return ids.mapNotNull { byId[it]?.toRow() }   // 保持 Bm25 排序的入参顺序
     }
 
+    // ===== archival 管理（M1c 管理页）=====
+
+    override suspend fun deleteArchival(id: Long) {
+        db.archivalDao().deleteById(id)
+    }
+
+    override suspend fun clearArchival(): Int = db.archivalDao().clearAll()
+
+    override suspend fun archivalCount(): Int = db.archivalDao().count()
+
+    override suspend fun incrementHitCounts(ids: List<Long>) {
+        if (ids.isEmpty()) return
+        db.archivalDao().incrementHits(ids)
+    }
+
     override suspend fun conversationSearch(query: String, limit: Int): List<ConversationHit> {
         val terms = MemoryStore.searchTerms(query)
         val sql = StringBuilder("SELECT * FROM messages WHERE role IN ('user','assistant')")
@@ -46,8 +61,9 @@ class RoomMemoryStore(private val db: YunkaiDb) : MemoryStore {
             sql.append(" AND (")
             terms.forEachIndexed { i, t ->
                 if (i > 0) sql.append(" OR ")
-                sql.append("content LIKE ?")
-                args.add("%$t%")
+                // §3.5：`%`/`_` 按字面匹配——likePattern 内做转义，SQL 配 ESCAPE '\' 子句
+                sql.append("content LIKE ? ESCAPE '\\'")
+                args.add(MemoryStore.likePattern(t))
             }
             sql.append(")")
         }

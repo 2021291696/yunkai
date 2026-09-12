@@ -31,6 +31,20 @@ interface MemoryStore {
     /** 按 id 批量取，保持入参顺序（Bm25 检索命中后取行拼装结果）。 */
     suspend fun archivalByIds(ids: List<Long>): List<ArchivalRow>
 
+    // ===== archival 管理（M1c 管理页）=====
+
+    /** 删除单条归档（管理页单条删除）。 */
+    suspend fun deleteArchival(id: Long)
+
+    /** 清空全部归档，返回删除条数（管理页「清空归档」，确认对话框后调用）。 */
+    suspend fun clearArchival(): Int
+
+    /** 归档总条数（管理页 1 万条软告警判据，协议 §2 ARCHIVAL_WARN_COUNT）。 */
+    suspend fun archivalCount(): Int
+
+    /** 命中条目 hit_count 批量 +1（协议 §3.4，随检索同批写回；调用方自行吞写失败）。 */
+    suspend fun incrementHitCounts(ids: List<Long>)
+
     // ===== conversation_search =====
 
     /** 多词 OR LIKE 检索 user/assistant 原文，created_at 倒序，至多 limit 条。 */
@@ -49,6 +63,9 @@ interface MemoryStore {
         const val CORE_HUMAN_LIMIT = 800
         const val CORE_PERSONA_LIMIT = 600
 
+        /** 归档软上限告警（协议 §2）：管理页页顶提示条判据，只提示不淘汰。 */
+        const val ARCHIVAL_WARN_COUNT = 10000
+
         fun coreLimitOf(block: String): Int? = when (block) {
             BLOCK_HUMAN -> CORE_HUMAN_LIMIT
             BLOCK_PERSONA -> CORE_PERSONA_LIMIT
@@ -58,6 +75,17 @@ interface MemoryStore {
         /** 查询切词：按空白拆多词（空串/纯空白 → 空列表）。双实现共用，保证语义一致。 */
         fun searchTerms(query: String): List<String> =
             query.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
+
+        /**
+         * LIKE 字面转义（协议 §3.5）：查询关键词中的 `%` 与 `_` 按字面匹配，不作通配符语义。
+         * 先转义转义符 `\` 本身，再转义 `%`/`_`；SQL 侧须配 `ESCAPE '\'` 子句使用。
+         * 纯函数，JVM 可测（RoomMemoryStore.conversationSearch 与管理页共用）。
+         */
+        fun escapeLike(term: String): String =
+            term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+        /** LIKE 绑定参数：前后通配 + 字面转义（conversationSearch 的 `%词%` 统一出口）。 */
+        fun likePattern(term: String): String = "%${escapeLike(term)}%"
     }
 }
 

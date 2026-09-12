@@ -55,7 +55,8 @@ object AgentLoop {
     private val json = Json { ignoreUnknownKeys = true }
 
     // system prompt 常量：桌面 agent 人格 + 无合适 skill 直接回答 + 工具守则（等工具结果再答）
-    private const val AGENT_SYSTEM: String =
+    // public（M1c）：管理页 persona「重置种子」写回同一常量，保证种子文案单源（协议 §4.1）
+    const val AGENT_SYSTEM: String =
         "你是运行在用户桌面上的智能助手，擅长把复杂概念讲到普通人能听懂，回答用中文、简洁友好。\n" +
         "工作守则：\n" +
         "1. 涉及时效性信息（今天/最新/最近/新闻/热点等）、外部事实或你不确定的内容时，必须先调用 web_search 工具搜索再回答；搜索工具已配置且可用，不要声称无法搜索或未配置，拿到结果前不要编造。\n" +

@@ -66,8 +66,9 @@ import kotlinx.coroutines.withContext
 
 // 设置页：OpenAI 兼容三项配置 + 获取模型列表 + 技能自动路由开关 + 独立搜索配置。
 // （联网方式三选已下线：agent 自主决定何时搜索，searchMode 字段保留不迁移）
+// M1c：记忆隐私三选（strict/standard/free，选中即写 ConfigStore）+ 记忆管理页入口。
 @Composable
-fun SettingsScreen(onOpenSkills: () -> Unit = {}, onBack: () -> Unit = {}) {
+fun SettingsScreen(onOpenSkills: () -> Unit = {}, onOpenMemory: () -> Unit = {}, onBack: () -> Unit = {}) {
     val app = LocalContext.current.applicationContext as YunkaiApp
     val vm: SettingsViewModel = viewModel(factory = viewModelFactory { initializer { SettingsViewModel(app) } })
     val context = LocalContext.current
@@ -257,6 +258,32 @@ fun SettingsScreen(onOpenSkills: () -> Unit = {}, onBack: () -> Unit = {}) {
             Text("壁纸铺在全局背景层，玻璃卡片会透出它", fontSize = 12.sp, color = TextFaint)
         }
 
+        // ===== 记忆隐私卡片（M1c）：三挡写入即生效，不随「保存」；说明文案按协议 §5.2 挡位矩阵 =====
+        GlassCard {
+            Text("记忆隐私", fontSize = 16.sp, color = TextMuted)
+            GearOption("strict", "严格", "拒存密码、证件号、卡号", vm) { gear ->
+                scope.launch(Dispatchers.IO) { app.configStore.setMemoryGear(gear) }
+            }
+            GearOption("standard", "标准", "拒存证件号、卡号", vm) { gear ->
+                scope.launch(Dispatchers.IO) { app.configStore.setMemoryGear(gear) }
+            }
+            GearOption("free", "自由", "不拦截", vm) { gear ->
+                scope.launch(Dispatchers.IO) { app.configStore.setMemoryGear(gear) }
+            }
+        }
+
+        // ===== 记忆管理页入口 =====
+        GlassCard {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenMemory),
+            ) {
+                Text("记忆", fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurface)
+                Spacer(Modifier.weight(1f))
+                Text("›", fontSize = 20.sp, color = MaterialTheme.colorScheme.secondary)
+            }
+        }
+
         // ===== 技能库入口 =====
         GlassCard {
             Row(
@@ -309,6 +336,26 @@ private fun ThemeOption(value: String, label: String, mode: String, onPick: (Str
     Row(verticalAlignment = Alignment.CenterVertically) {
         RadioButton(selected = mode == value, onClick = { onPick(value) })
         Text(label, fontSize = 15.sp)
+    }
+}
+
+// 隐私挡位三选（M1c）：沿用主题三选的 RadioButton 样式，每项带一行小字说明；
+// 选中即更新 VM 状态并立即写 ConfigStore（onWire 回调），不依赖「保存」按钮
+@Composable
+private fun GearOption(value: String, label: String, desc: String, vm: SettingsViewModel, onWire: (String) -> Unit) {
+    val pick = {
+        vm.memoryGear.value = value
+        onWire(value)
+        Unit
+    }
+    Column(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = pick),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            RadioButton(selected = vm.memoryGear.value == value, onClick = pick)
+            Text(label, fontSize = 15.sp)
+        }
+        Text(desc, fontSize = 12.sp, color = TextFaint, modifier = Modifier.padding(start = 48.dp))
     }
 }
 

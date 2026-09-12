@@ -28,7 +28,7 @@ class ConfigStore(private val ctx: Context) {
             searchApiKey = p[K_SEARCH_KEY] ?: "",
             // 忆枢隐私挡位（协议 §2 PRIVACY_GEAR_DEFAULT）：默认 strict，未匹配值由
             // PrivacyGate.Gear.fromWire 在使用点回退 strict，这里原样存取（M1c 进设置 UI）
-            memoryGear = p[K_MEMORY_GEAR] ?: "strict",
+            memoryGear = p[K_MEMORY_GEAR] ?: PRIVACY_GEAR_DEFAULT,
         )
     }
 
@@ -66,10 +66,22 @@ class ConfigStore(private val ctx: Context) {
         }
     }
 
+    // 忆枢隐私挡位（M1c 设置页三选）：与 themeMode 同理独立于「保存」按钮，选中即生效
+    // （AgentLoop 每轮工具执行时经 load()/getMemoryGear() 读取，写入立即影响下一轮闸门判定）
+    suspend fun getMemoryGear(): String =
+        ctx.dataStore.data.first()[K_MEMORY_GEAR] ?: PRIVACY_GEAR_DEFAULT
+
+    suspend fun setMemoryGear(gear: String) {
+        ctx.dataStore.edit { p -> p[K_MEMORY_GEAR] = gear }
+    }
+
     companion object {
         const val THEME_SYSTEM = "system"
         const val THEME_LIGHT = "light"
         const val THEME_DARK = "dark"
+
+        /** 忆枢隐私挡位默认值（协议 §2 PRIVACY_GEAR_DEFAULT）。 */
+        const val PRIVACY_GEAR_DEFAULT = "strict"
 
         private val K_BASE_URL = stringPreferencesKey("baseUrl")
         private val K_API_KEY = stringPreferencesKey("apiKey")
