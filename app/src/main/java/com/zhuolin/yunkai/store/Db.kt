@@ -97,6 +97,18 @@ data class TaskStateEntity(
 )
 
 @Dao
+interface TaskStateDao {
+    @Upsert
+    suspend fun upsert(e: TaskStateEntity)
+
+    @Query("SELECT * FROM task_state WHERE conversation_id = :convId LIMIT 1")
+    suspend fun get(convId: Long): TaskStateEntity?
+
+    @Query("DELETE FROM task_state WHERE conversation_id = :convId")
+    suspend fun delete(convId: Long)
+}
+
+@Dao
 interface ConvDao {
     @Query("SELECT * FROM conversations ORDER BY updated_at DESC")
     suspend fun list(): List<ConvEntity>
@@ -245,6 +257,7 @@ abstract class YunkaiDb : RoomDatabase() {
     abstract fun skillDao(): SkillDao
     abstract fun coreBlockDao(): CoreBlockDao
     abstract fun archivalDao(): ArchivalDao
+    abstract fun taskStateDao(): TaskStateDao
 
     companion object {
         @Volatile

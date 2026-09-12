@@ -151,7 +151,7 @@ class AgentLoopTest {
                 if (tools == null) OpenAiMessage("")
                 else OpenAiMessage("", listOf(toolCall("read_web", "{\"url\":\"http://127.0.0.1:1/x\"}")))
             })
-        assertEquals("已达到本轮工具步数上限，请稍后重试或换个问法", r.answer)
+        assertEquals("已达到本轮工具步数上限，可点「继续」接着跑，或稍后换个问法", r.answer)
     }
 
     @Test

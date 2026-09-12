@@ -24,6 +24,7 @@ class YunkaiApp : Application() {
     val conversationRepo: ConversationRepo by lazy { ConversationRepo(db.convDao()) }
     val messageRepo: MessageRepo by lazy { MessageRepo(db.msgDao()) }
     val memoryStore: MemoryStore by lazy { RoomMemoryStore(db) }
+    val taskStateDao by lazy { db.taskStateDao() }   // M3 继续任务：到顶轨迹存取
 
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 

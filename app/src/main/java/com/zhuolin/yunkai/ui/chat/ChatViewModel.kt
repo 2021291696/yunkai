@@ -50,6 +50,8 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
     var queued = mutableStateOf("")     // 生成中排队的下一问
     var failed = mutableStateOf(false)  // 本轮失败/取消：过程卡保持展开
     var picked = mutableStateOf(listOf<PickedItem>())
+    // M3 继续任务：上一轮到顶（hitLimit）后为真，UI 出「▶ 继续」；换会话时按 task_state 恢复
+    var canContinue = mutableStateOf(false)
     var convId: Long = -1L
     private var nextId: Long = 1L
     private var genId: Long = 0L
@@ -87,6 +89,8 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
                 }
             }
             loadTurns()
+            // M3：换会话时按 task_state 恢复「继续」可用态
+            canContinue.value = convId > 0 && app.taskStateDao.get(convId) != null
         }
     }
 
@@ -177,6 +181,95 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
     fun clearQueued() {
         input.value = queued.value
         queued.value = ""
+    }
+
+    // M3 轨迹序列化器：ChatMsg 含 @SerialName，编解码对称；与请求体 wire transform 无关（内部态）
+    private val traceJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+
+    // M3 继续任务：取到顶轨迹续跑——system 就地重建（AgentLoop.seedMessages）、步数与软预算重置。
+    // 完成后照常落库；若再次到顶则更新轨迹（canContinue 保持），否则清掉 task_state
+    fun resumeTask(context: Context) {
+        if (loading.value || convId <= 0) return
+        val gen = genId + 1
+        genId = gen
+        loading.value = true
+        timeline.clear()
+        streamText.value = ""
+        thinking.value = ""
+        steps.value = 0
+        canContinue.value = false
+        viewModelScope.launch {
+            try {
+                val cfg = app.configStore.load()
+                if (cfg.baseUrl.isEmpty() || cfg.apiKey.isEmpty() || cfg.model.isEmpty()) {
+                    failed.value = true
+                    canContinue.value = true
+                    toast(context, "请先在设置页配置 API 地址/密钥/模型")
+                    return@launch
+                }
+                val ent = app.taskStateDao.get(convId) ?: return@launch
+                val trace = traceJson.decodeFromString(
+                    kotlinx.serialization.builtins.ListSerializer(com.zhuolin.yunkai.model.ChatMsg.serializer()),
+                    ent.trace_json,
+                )
+                val r = AgentLoop.run(
+                    cfg, app.skillRepo, emptyList(), "", null,
+                    onEvent = { e ->
+                        if (gen == genId) {
+                            timeline.add(e)
+                            if (e.kind == "tool_start") steps.value += 1
+                        }
+                    },
+                    isCancelled = { gen != genId },
+                    extraTools = com.zhuolin.yunkai.service.tools.createM2Tools(app) +
+                        com.zhuolin.yunkai.memory.createMemoryTools(app.memoryStore) {
+                            app.configStore.load().memoryGear
+                        },
+                    memory = app.memoryStore,
+                    maxSteps = cfg.maxSteps,
+                    seedMessages = trace,
+                )
+                if (gen != genId) return@launch
+                var content = r.answer
+                var kind = ReplyKind.TEXT
+                val safe = HtmlGuard.sanitize(content)
+                if (safe != null && ReplyKind.detect(safe) == ReplyKind.HTML) {
+                    content = safe
+                    kind = ReplyKind.HTML
+                }
+                app.messageRepo.add(convId, "assistant", content, kind)
+                app.conversationRepo.touch(convId)
+                refreshConvs()
+                if (r.hitLimit && r.trace != null) {
+                    app.taskStateDao.upsert(com.zhuolin.yunkai.store.TaskStateEntity(
+                        conversation_id = convId,
+                        trace_json = traceJson.encodeToString(
+                            kotlinx.serialization.builtins.ListSerializer(com.zhuolin.yunkai.model.ChatMsg.serializer()),
+                            r.trace,
+                        ),
+                        step_used = r.steps,
+                        updated_at = System.currentTimeMillis(),
+                    ))
+                    canContinue.value = true
+                } else {
+                    app.taskStateDao.delete(convId)
+                    canContinue.value = false
+                }
+                msgs.add(RenderMsg(nextId++, "assistant", content, kind, thinking = thinking.value, steps = steps.value))
+                loadTurns()
+            } catch (e: Exception) {
+                if (gen == genId) {
+                    failed.value = true
+                    Log.e("yunkai", "resume failed: ${e.message}")
+                    toast(context, "出错了：${e.message}")
+                }
+            } finally {
+                if (gen == genId) {
+                    loading.value = false
+                    streamText.value = ""
+                }
+            }
+        }
     }
 
     // 立即：打断当前回答，马上发排队那句
@@ -353,6 +446,7 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
                             app.configStore.load().memoryGear
                         },
                     memory = app.memoryStore,
+                    maxSteps = cfg.maxSteps,
                 )
                 if (gen != genId) return@launch
 
@@ -384,6 +478,22 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
                 msgs.add(RenderMsg(nextId++, "assistant", content, kind, thinking = thinking.value, steps = steps.value))
                 picked.value = emptyList()    // 发送成功即清空（失败保留可重试）
                 loadTurns()
+                // M3 到顶处理：轨迹持久化供「继续」续跑；正常作答清掉旧轨迹
+                if (r.hitLimit && r.trace != null) {
+                    app.taskStateDao.upsert(com.zhuolin.yunkai.store.TaskStateEntity(
+                        conversation_id = convId,
+                        trace_json = traceJson.encodeToString(
+                            kotlinx.serialization.builtins.ListSerializer(com.zhuolin.yunkai.model.ChatMsg.serializer()),
+                            r.trace,
+                        ),
+                        step_used = r.steps,
+                        updated_at = System.currentTimeMillis(),
+                    ))
+                    canContinue.value = true
+                } else {
+                    app.taskStateDao.delete(convId)
+                    canContinue.value = false
+                }
                 // 忆枢 M2 会话摘要（协议 §4.4）：落库成功后检查窗口阈值，超限则摘要换出最旧一半轮次。
                 // 失败静默跳过（摘要属增益，绝不让已成功的回答报错）；在 finally 之前，避免排队补发抢先
                 maybeSummarize(cfg)

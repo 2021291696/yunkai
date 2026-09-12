@@ -83,6 +83,14 @@ fun SettingsScreen(onOpenSkills: () -> Unit = {}, onOpenMemory: () -> Unit = {},
     }
     LaunchedEffect(Unit) { themeMode = app.configStore.getThemeMode() }
 
+    // M3 任务步数三档：写入即生效（下一轮 send 走 cfg.maxSteps），不随「保存」
+    var maxSteps by remember { mutableStateOf(ConfigStore.MAX_STEPS_DEFAULT) }
+    val pickSteps: (Int) -> Unit = { v ->
+        maxSteps = v
+        scope.launch(Dispatchers.IO) { app.configStore.setMaxSteps(v) }
+    }
+    LaunchedEffect(Unit) { maxSteps = app.configStore.getMaxSteps() }
+
     // 壁纸选择：系统相册选图 → 拷入沙箱 filesDir → 写 ConfigStore（WallpaperLayer 订阅即时生效）
     val pickWallpaper = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia(),
@@ -133,6 +141,17 @@ fun SettingsScreen(onOpenSkills: () -> Unit = {}, onOpenMemory: () -> Unit = {},
                 ThemeOption("system", "跟随系统", themeMode, pickTheme)
                 ThemeOption("light", "浅色", themeMode, pickTheme)
                 ThemeOption("dark", "深色", themeMode, pickTheme)
+            }
+        }
+
+        // ===== 任务卡片：步数三档（M3，忆枢协议 §2 MAX_STEPS_OPTIONS） =====
+        GlassCard {
+            Text("任务", fontSize = 16.sp, color = TextMuted)
+            FieldLabel("任务步数")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ThemeOption("10", "省流 10", maxSteps.toString()) { v -> pickSteps(v.toInt()) }
+                ThemeOption("25", "标准 25", maxSteps.toString()) { v -> pickSteps(v.toInt()) }
+                ThemeOption("50", "深度 50", maxSteps.toString()) { v -> pickSteps(v.toInt()) }
             }
         }
 

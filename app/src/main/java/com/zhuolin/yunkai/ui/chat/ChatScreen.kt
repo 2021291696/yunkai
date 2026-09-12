@@ -186,6 +186,12 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
                             })
                         }
                     }
+                    // M3 继续任务：上一轮到顶时出现（符号优先），点击以轨迹续跑
+                    if (vm.canContinue.value && !vm.loading.value) {
+                        item(key = "continue") {
+                            ContinueChip(onContinue = { vm.resumeTask(context) })
+                        }
+                    }
                     // 过程卡：loading 实时看；失败/取消保持展开（三态规则）
                     if (vm.loading.value || vm.failed.value) {
                         // B1 流式气泡：增量文本非空时渲染生长中的回答（打字机体验）；
@@ -529,6 +535,33 @@ private fun MessageItem(m: RenderMsg, onOpenCanvas: () -> Unit, onEdit: () -> Un
                 modifier = Modifier.padding(vertical = 4.dp),
             )
         }
+    }
+}
+
+// M3 继续任务 chip：上一轮到顶后出现；符号优先（用户偏好），玻璃系描边弱化不抢正文
+@Composable
+private fun ContinueChip(onContinue: () -> Unit) {
+    val glass = LocalGlassScheme.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(glass.glassBg.copy(alpha = 0.5f), RoundedCornerShape(GlassTokens.R_TIGHT.dp))
+            .border(1.dp, glass.glassBorder, RoundedCornerShape(GlassTokens.R_TIGHT.dp))
+            .clickable { onContinue() }
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+    ) {
+        Text(
+            "▶",
+            fontSize = 13.sp,
+            color = glass.textHi,
+        )
+        Spacer(Modifier.size(8.dp))
+        Text(
+            "继续未完成任务",
+            fontSize = 13.sp,
+            color = glass.textHi,
+        )
     }
 }
 

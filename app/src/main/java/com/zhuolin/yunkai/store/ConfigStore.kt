@@ -3,6 +3,7 @@ package com.zhuolin.yunkai.store
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.zhuolin.yunkai.model.AppConfig
@@ -29,6 +30,8 @@ class ConfigStore(private val ctx: Context) {
             // 忆枢隐私挡位（协议 §2 PRIVACY_GEAR_DEFAULT）：默认 strict，未匹配值由
             // PrivacyGate.Gear.fromWire 在使用点回退 strict，这里原样存取（M1c 进设置 UI）
             memoryGear = p[K_MEMORY_GEAR] ?: PRIVACY_GEAR_DEFAULT,
+            // 忆枢任务步数（M3 设置页三选）：非法值收敛回默认 25
+            maxSteps = sanitizeMaxSteps(p[K_MAX_STEPS]),
         )
     }
 
@@ -42,6 +45,7 @@ class ConfigStore(private val ctx: Context) {
             p[K_SEARCH_PROVIDER] = cfg.searchProvider
             p[K_SEARCH_KEY] = cfg.searchApiKey
             p[K_MEMORY_GEAR] = cfg.memoryGear
+            p[K_MAX_STEPS] = cfg.maxSteps
         }
     }
 
@@ -75,6 +79,15 @@ class ConfigStore(private val ctx: Context) {
         ctx.dataStore.edit { p -> p[K_MEMORY_GEAR] = gear }
     }
 
+    // 忆枢任务步数三选（M3 设置页）：10 省流 / 25 标准（默认）/ 50 深度。与隐私挡位同理
+    // 独立于「保存」按钮选中即写（下一轮 send 生效）
+    suspend fun getMaxSteps(): Int =
+        sanitizeMaxSteps(ctx.dataStore.data.first()[K_MAX_STEPS])
+
+    suspend fun setMaxSteps(steps: Int) {
+        ctx.dataStore.edit { p -> p[K_MAX_STEPS] = sanitizeMaxSteps(steps) }
+    }
+
     companion object {
         const val THEME_SYSTEM = "system"
         const val THEME_LIGHT = "light"
@@ -82,6 +95,14 @@ class ConfigStore(private val ctx: Context) {
 
         /** 忆枢隐私挡位默认值（协议 §2 PRIVACY_GEAR_DEFAULT）。 */
         const val PRIVACY_GEAR_DEFAULT = "strict"
+
+        /** 忆枢任务步数默认档与合法档位（协议 §2 MAX_STEPS_OPTIONS）。 */
+        const val MAX_STEPS_DEFAULT = 25
+        val MAX_STEPS_OPTIONS = intArrayOf(10, 25, 50)
+
+        fun sanitizeMaxSteps(raw: Int?): Int {
+            return if (raw != null && MAX_STEPS_OPTIONS.contains(raw)) raw else MAX_STEPS_DEFAULT
+        }
 
         private val K_BASE_URL = stringPreferencesKey("baseUrl")
         private val K_API_KEY = stringPreferencesKey("apiKey")
@@ -93,5 +114,6 @@ class ConfigStore(private val ctx: Context) {
         private val K_WALLPAPER = stringPreferencesKey("wallpaper")
         private val K_THEME_MODE = stringPreferencesKey("themeMode")
         private val K_MEMORY_GEAR = stringPreferencesKey("memoryGear")
+        private val K_MAX_STEPS = intPreferencesKey("maxSteps")
     }
 }

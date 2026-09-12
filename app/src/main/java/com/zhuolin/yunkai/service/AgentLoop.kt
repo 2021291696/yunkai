@@ -37,17 +37,29 @@ import android.util.Log
 // 循环事件：tool_start/tool_done 携带工具名与「参数 / 结果前80字」摘要；answer/limit 无工具名
 data class LoopEvent(val kind: String, val toolName: String = "", val detail: String = "")
 
-// 循环结果：最终回答文本 + 实际步数。
+// 循环结果：最终回答文本 + 实际步数。M3：hitLimit=步数到顶收尾（true 时 trace 携带到顶前
+// 完整消息轨迹，调用方持久化 task_state 供「继续」续跑）；正常作答两字段为默认值。
 // 输出形态（画布/气泡）不在引擎层判定：Chat 消费方用 HtmlGuard.sanitize+ReplyKind.detect
 // 做唯一口径判定（防散文夹 <html 子串被 sanitize 的 includes 语义误判），引擎只给纯文本。
-data class LoopResult(val answer: String, val steps: Int)
+data class LoopResult(val answer: String, val steps: Int, val hitLimit: Boolean = false, val trace: List<ChatMsg>? = null)
 
 object AgentLoop {
-    // 步数上限：防模型无限调用工具打转；到顶后强制一次无 tools 收尾
+    // 步数上限：防模型无限调用工具打转；到顶后强制一次无 tools 收尾。
+    // M3：生产走 cfg.maxSteps 三档（10/25/50，默认 25），本常量保留为缺省参数值（测试兼容）
     const val MAX_STEPS: Int = 10
+
+    // M3 工具输出软预算（协议 §2 TOOL_OUTPUT_BUDGET）：单轮累计工具结果超限即截断，
+    // 防巨型网页/文件结果撑爆上下文；截断带标记让模型知情
+    const val TOOL_OUTPUT_BUDGET: Int = 30000
 
     // 取消专用错误消息：调用方按此静默吞（引擎层中断，结果直接丢弃）
     const val CANCELLED_MSG: String = "AGENT_LOOP_CANCELLED"
+
+    // M3 到顶收尾指令：从「直接给最终回答」升级为「交代进度」——已完成/未完成两部分，
+    // 这是「继续」按钮的语义基础（继续=以轨迹续跑，模型从交接说明接着干）
+    private const val LIMIT_FINAL_PROMPT: String =
+        "已达步数上限。请基于已有工具结果输出收尾说明：1) 已完成/已知的部分；" +
+        "2) 未完成的部分与建议的继续方式。不要再调用工具。"
 
     // 长文形态（eli5）撤出工具表并拒绝执行：M2 文件两件 + 忆枢记忆五件（协议 §4.3）
     private val M2_TOOL_NAMES = setOf("read_file", "write_file") + MemoryTools.ALL_NAMES
@@ -87,6 +99,11 @@ object AgentLoop {
         extraUserParts: List<ContentPart>? = null,
         // 忆枢 M1b：记忆存储（null=不接线，维持旧注入行为；生产由 ChatViewModel 传 RoomMemoryStore）
         memory: MemoryStore? = null,
+        // M3：任务步数三档（生产传 cfg.maxSteps；缺省保持旧 10 步语义，既有测试零改动）
+        maxSteps: Int = MAX_STEPS,
+        // M3 继续任务：到顶轨迹续跑——非 null 时以其为消息基底下沉 history/question 组装
+        // （trace[0] 若为 system 则就地重建为当前人格+记忆段，防陈旧）
+        seedMessages: List<ChatMsg>? = null,
     ): LoopResult {
         val tools: List<AgentTool> = BuiltinTools.createAll(cfg, forcedSkill, skillRepo) + extraTools
         val toolDefs: MutableList<ToolDef> = mutableListOf()
@@ -121,8 +138,14 @@ object AgentLoop {
         val sysMsg = ChatMsg(role = "system", content = baseSystem + memorySection + skillBlk)
         val userMsg = ChatMsg(role = "user", content = question, contentParts = extraUserParts)
         val messages: MutableList<ChatMsg> = mutableListOf(sysMsg)
-        messages.addAll(history)
-        messages.add(userMsg)
+        if (seedMessages != null) {
+            val seed = seedMessages.toMutableList()
+            if (seed.isNotEmpty() && seed[0].role == "system") seed[0] = sysMsg
+            messages.addAll(seed)
+        } else {
+            messages.addAll(history)
+            messages.add(userMsg)
+        }
 
         // 可测性注入：fakeChat 存在时完全替代真实 LLM 请求。
         // 双模型分工：longFormActive 置真（use_skill 成功拿到说明书）后，本轮余下的 LLM 调用
@@ -130,6 +153,7 @@ object AgentLoop {
         // （pickModel 在 fakeChat 之前调用：fakeChat 第三参接收本轮实际选用的模型名，测试据此断言切换行为）
         val llm = LlmClient(cfg)
         var longFormActive = false
+        var toolBudgetUsed = 0   // M3 软预算：单轮累计工具输出字符数
         suspend fun doChat(ms: List<ChatMsg>, ts: List<ToolDef>?): OpenAiMessage {
             val model = pickModel(cfg, longFormActive)
             if (fakeChat != null) {
@@ -143,7 +167,7 @@ object AgentLoop {
             }, onThinking = onThinking)
         }
 
-        for (step in 1..MAX_STEPS) {
+        for (step in 1..maxSteps) {
             checkCancel(isCancelled)
             val t0 = System.currentTimeMillis()
             Log.i("yunkai", "llm call step=$step model=${pickModel(cfg, longFormActive)} msgs=${messages.size}")
@@ -155,8 +179,15 @@ object AgentLoop {
                     checkCancel(isCancelled)
                     onEvent(LoopEvent("tool_start", tc.function.name, tc.function.arguments))
                     val ts = System.currentTimeMillis()
-                    val out = execTool(tools, tc, longFormActive)
+                    var out = execTool(tools, tc, longFormActive)
                     Log.i("yunkai", "tool ${tc.function.name} ${System.currentTimeMillis() - ts}ms outLen=${out.length}")
+                    // M3 软预算（协议 §2 TOOL_OUTPUT_BUDGET=30000）：累计超限即截断本条并标记，
+                    // 模型据此改用更小粒度的工具调用；预算逐轮重置（每轮 send 重新计）
+                    if (toolBudgetUsed + out.length > TOOL_OUTPUT_BUDGET) {
+                        val keep = (TOOL_OUTPUT_BUDGET - toolBudgetUsed).coerceAtLeast(0)
+                        out = out.take(keep) + "\n…[已截断：本轮工具输出累计超 ${TOOL_OUTPUT_BUDGET} 字软预算]"
+                    }
+                    toolBudgetUsed += out.length
                     // use_skill 成功返回说明书（非 '{"error"' 开头）→ 本轮余下调用切长文模型；
                     // 失败/error 回传不切换，模型仍用主模型自行调整策略
                     if (tc.function.name == "use_skill" && !out.startsWith("{\"error\"")) {
@@ -180,18 +211,22 @@ object AgentLoop {
             onEvent(LoopEvent("answer"))
             return LoopResult(msg.content, step)
         }
-        // 步数到顶：kind='limit' 后追加收束指令并做一次无 tools 收尾，强制模型直接作答。
+        // 步数到顶：kind='limit' 后追加收束指令并做一次无 tools 收尾——M3 语义升级为「交代进度」：
+        // 模型输出已完成/未完成两部分（UI 据此出「继续」按钮，轨迹已随 LoopResult.trace 回传）。
         // 取消准绳：收尾也是一次网络调用——最后一步 execTool await 期间取消旗标命中时，
         // 此处 checkCancel 先抛，保证取消后不再发起任何 LLM 请求（不烧 token）
         checkCancel(isCancelled)
         onEvent(LoopEvent("limit"))
-        messages.add(ChatMsg(role = "user", content = "已达步数上限，请基于已有工具结果直接给出最终回答。"))
+        // M3：轨迹在收尾指令入列**之前**截取——收尾指令写着「不要再调用工具」，带着它续跑会毒化模型
+        val traceForContinue = messages.toList()
+        messages.add(ChatMsg(role = "user", content = LIMIT_FINAL_PROMPT))
         val final = doChat(messages, null)
         var finalContent = final.content
         if (finalContent.isEmpty()) {
-            finalContent = "已达到本轮工具步数上限，请稍后重试或换个问法"
+            finalContent = "已达到本轮工具步数上限，可点「继续」接着跑，或稍后换个问法"
         }
-        return LoopResult(finalContent, MAX_STEPS + 1)
+        // M3：到顶轨迹全量回传，调用方持久化 task_state 供「继续」续跑
+        return LoopResult(finalContent, maxSteps + 1, hitLimit = true, trace = traceForContinue)
     }
 
     // 双模型分工的模型选择单点（纯函数）：本轮是否已由 use_skill 激活长文形态。
