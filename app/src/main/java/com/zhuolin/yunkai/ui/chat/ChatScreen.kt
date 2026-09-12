@@ -64,6 +64,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -245,16 +246,17 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         for (item in vm.picked.value) {
-                            Box(
-                                modifier = Modifier
-                                    .size(52.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(glass.glassBgStrong)
-                                    .border(GlassTokens.BORDER_W.dp, glass.glassBorder, RoundedCornerShape(10.dp))
-                                    .clickable { vm.removePicked(item.uri) },
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                if (item.isImage) {
+                            if (item.isImage) {
+                                // 图片 chip：缩略图方块 + 角标 ✕
+                                Box(
+                                    modifier = Modifier
+                                        .size(52.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(glass.glassBgStrong)
+                                        .border(GlassTokens.BORDER_W.dp, glass.glassBorder, RoundedCornerShape(10.dp))
+                                        .clickable { vm.removePicked(item.uri) },
+                                    contentAlignment = Alignment.Center,
+                                ) {
                                     val bmp = remember(item.uri) { loadThumb(context, item.uri) }
                                     if (bmp != null) {
                                         Image(
@@ -264,22 +266,52 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
                                             contentScale = ContentScale.Crop,
                                         )
                                     } else { Text("图", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = glass.textHi) }
-                                } else {
-                                    Text(
-                                        item.name.substringAfterLast('.', "件").take(4).uppercase(),
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = glass.textHi,
-                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .size(16.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(0xAA000000)),
+                                        contentAlignment = Alignment.Center,
+                                    ) { Text("✕", fontSize = 9.sp, color = Color.White) }
                                 }
-                                Box(
+                            } else {
+                                // 文件 chip：类型徽标 + 文件名（自解释），✕ 内联
+                                Row(
                                     modifier = Modifier
-                                        .align(Alignment.TopEnd)
-                                        .size(16.dp)
-                                        .clip(CircleShape)
-                                        .background(Color(0xAA000000)),
-                                    contentAlignment = Alignment.Center,
-                                ) { Text("✕", fontSize = 9.sp, color = Color.White) }
+                                        .height(52.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(glass.glassBgStrong)
+                                        .border(GlassTokens.BORDER_W.dp, glass.glassBorder, RoundedCornerShape(10.dp))
+                                        .clickable { vm.removePicked(item.uri) }
+                                        .padding(horizontal = 9.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(34.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(glass.glassBg),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Text(
+                                            item.name.substringAfterLast('.', "件").take(4).uppercase(),
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = glass.textHi,
+                                        )
+                                    }
+                                    Text(
+                                        item.name,
+                                        fontSize = 12.sp,
+                                        color = glass.textHi,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.widthIn(max = 110.dp),
+                                    )
+                                    Text("✕", fontSize = 12.sp, color = glass.textLow)
+                                }
                             }
                         }
                     }
