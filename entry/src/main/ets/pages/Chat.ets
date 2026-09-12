@@ -804,7 +804,7 @@ struct Chat {
                 .onChange((v: string) => { this.input = v; })
                 .onSubmit(() => { this.send(); })
 
-              Button('↑')
+              Button((this.loading && this.input === '') ? '■' : '↑')
                 .width(40)
                 .height(40)
                 .fontSize(18)
@@ -814,7 +814,7 @@ struct Chat {
                 .borderRadius(20)
                 .padding(0)
                 .onClick(() => {
-                  this.send();
+                  if (this.loading && this.input === '') { this.cancelLoading(); } else { this.send(); }
                 })
             }
             .width('100%')
