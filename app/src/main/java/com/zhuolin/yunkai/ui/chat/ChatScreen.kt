@@ -394,16 +394,6 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
                         }
                     }
                 }
-                // 面板展开时隐藏免责声明（否则夹在输入栏与面板之间）
-                if (!showAttach) {
-                Text(
-                    "内容由 AI 生成，请甄别",
-                    fontSize = 10.sp,
-                    color = glass.textLow,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                )
-                }
             }
         }
 
