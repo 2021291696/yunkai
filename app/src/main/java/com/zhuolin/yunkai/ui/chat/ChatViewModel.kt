@@ -31,7 +31,7 @@ data class PickedItem(
     val isImage: Boolean,
 ) {
     val label: String
-        get() = if (isImage) "🖼 $name" else "📄 $name"
+        get() = name
 }
 
 class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
@@ -197,6 +197,7 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
             try {
                 val cfg = app.configStore.load()
                 if (cfg.baseUrl.isEmpty() || cfg.apiKey.isEmpty() || cfg.model.isEmpty()) {
+                    input.value = q0   // 失败还原输入，用户不必重打
                     toast(context, "请先在设置页配置 API 地址/密钥/模型")
                     msgs.removeAt(msgs.size - 1)
                     return@launch
@@ -291,6 +292,7 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
             } catch (e: Exception) {
                 val em = e.message ?: ""
                 if (em != AgentLoop.CANCELLED_MSG) {
+                    input.value = q0   // 失败还原输入，与附件保留策略一致
                     Log.e("yunkai", "send failed: $em")
                     toast(context, "出错了：$em")
                 }

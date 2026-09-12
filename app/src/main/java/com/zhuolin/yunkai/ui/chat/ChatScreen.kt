@@ -263,9 +263,14 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
                                             modifier = Modifier.fillMaxSize(),
                                             contentScale = ContentScale.Crop,
                                         )
-                                    } else { Text("🖼", fontSize = 18.sp) }
+                                    } else { Text("图", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = glass.textHi) }
                                 } else {
-                                    Text("📄", fontSize = 18.sp)
+                                    Text(
+                                        item.name.substringAfterLast('.', "件").take(4).uppercase(),
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = glass.textHi,
+                                    )
                                 }
                                 Box(
                                     modifier = Modifier
@@ -474,12 +479,12 @@ private fun MessageItem(m: RenderMsg, onOpenCanvas: () -> Unit) {
 
 // 时间线事件 → 展示文案（tool_done 的 detail 由引擎截到 80 字，这里再截 40 字防换行刷屏）
 private fun timelineLabel(e: com.zhuolin.yunkai.service.LoopEvent): String {
-    if (e.kind == "tool_start") return "🔍 调用 ${e.toolName}…"
+    if (e.kind == "tool_start") return "调用 ${e.toolName}…"
     if (e.kind == "tool_done") {
         val d = if (e.detail.isNotEmpty()) " " + e.detail.take(40) else ""
         return "✓ 完成$d"
     }
-    if (e.kind == "answer") return "✍️ 整理回答…"
+    if (e.kind == "answer") return "整理回答…"
     if (e.kind == "limit") return "已达步数上限"
     return e.kind
 }
