@@ -201,22 +201,12 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
                         }
                         if (vm.streamText.value.isNotEmpty()) {
                             item(key = "stream") {
-                                val maxBubble = (LocalConfiguration.current.screenWidthDp * 0.82f).dp
-                                val streamShape = RoundedCornerShape(
-                                    topStart = GlassTokens.R_BUBBLE.dp, topEnd = GlassTokens.R_BUBBLE.dp,
-                                    bottomEnd = GlassTokens.R_TIGHT.dp, bottomStart = GlassTokens.R_BUBBLE.dp,
-                                )
                                 Text(
                                     renderMarkdownSingle(vm.streamText.value),
                                     fontSize = 14.sp,
                                     lineHeight = 23.sp,
                                     color = glass.textHi,
-                                    modifier = Modifier
-                                        .widthIn(max = maxBubble)
-                                        .shadow(8.dp, streamShape, clip = false, ambientColor = BubbleShadow, spotColor = BubbleShadow)
-                                        .background(glass.glassBg, streamShape)
-                                        .border(GlassTokens.BORDER_W.dp, glass.glassBorder, streamShape)
-                                        .padding(horizontal = 17.dp, vertical = 13.dp),
+                                    modifier = Modifier.padding(vertical = 4.dp),
                                 )
                             }
                         }
@@ -530,21 +520,13 @@ private fun MessageItem(m: RenderMsg, onOpenCanvas: () -> Unit, onEdit: () -> Un
         } else if (m.kind == ReplyKind.HTML) {
             CanvasCard(html = m.content, onOpen = onOpenCanvas)
         } else {
-            val shape = RoundedCornerShape(
-                topStart = GlassTokens.R_BUBBLE.dp, topEnd = GlassTokens.R_BUBBLE.dp,
-                bottomEnd = GlassTokens.R_BUBBLE.dp, bottomStart = GlassTokens.R_TIGHT.dp,
-            )
+            // AI 正文无气泡：直接排版在壁纸上
             Text(
                 renderMarkdownSingle(m.content),
                 fontSize = 14.sp,
                 lineHeight = 23.sp,
                 color = glass.textHi,
-                modifier = Modifier
-                    .widthIn(max = maxBubble)
-                    .shadow(8.dp, shape, clip = false, ambientColor = BubbleShadow, spotColor = BubbleShadow)
-                    .background(glass.glassBg, shape)
-                    .border(GlassTokens.BORDER_W.dp, glass.glassBorder, shape)
-                    .padding(horizontal = 17.dp, vertical = 13.dp),
+                modifier = Modifier.padding(vertical = 4.dp),
             )
         }
     }
