@@ -622,35 +622,60 @@ struct Chat {
           if (this.picked.length > 0) {
             Row({ space: 8 }) {
               ForEach(this.picked, (it: PickedItem) => {
-                Stack() {
-                  if (it.isImage) {
+                if (it.isImage) {
+                  // 图片 chip：缩略图方块 + 角标 ✕
+                  Stack() {
                     Image(it.uri)
                       .width(52)
                       .height(52)
                       .borderRadius(10)
                       .objectFit(ImageFit.Cover)
-                  } else {
+                    Text('✕')
+                      .fontSize(10)
+                      .fontColor(Color.White)
+                      .width(16)
+                      .height(16)
+                      .textAlign(TextAlign.Center)
+                      .borderRadius(8)
+                      .backgroundColor('#AA000000')
+                      .position({ x: 34, y: 0 })
+                  }
+                  .width(52)
+                  .height(52)
+                  .borderRadius(10)
+                  .backgroundColor($r('app.color.glass_bg_strong'))
+                  .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+                  .onClick(() => { this.removePicked(it.uri); })
+                } else {
+                  // 文件 chip：类型徽标 + 文件名（自解释），✕ 内联
+                  Row({ space: 8 }) {
                     Text(it.name.substring(it.name.lastIndexOf('.') + 1).substring(0, 4).toUpperCase())
                       .fontSize(10)
                       .fontWeight(FontWeight.Bold)
                       .fontColor($r('app.color.text_hi'))
+                      .width(34)
+                      .height(34)
+                      .textAlign(TextAlign.Center)
+                      .borderRadius(8)
+                      .backgroundColor($r('app.color.glass_bg'))
+                    Text(it.name)
+                      .fontSize(12)
+                      .fontColor($r('app.color.text_hi'))
+                      .maxLines(1)
+                      .textOverflow({ overflow: TextOverflow.Ellipsis })
+                      .constraintSize({ maxWidth: 110 })
+                    Text('✕')
+                      .fontSize(12)
+                      .fontColor($r('app.color.text_low'))
                   }
-                  Text('✕')
-                    .fontSize(10)
-                    .fontColor(Color.White)
-                    .width(16)
-                    .height(16)
-                    .textAlign(TextAlign.Center)
-                    .borderRadius(8)
-                    .backgroundColor('#AA000000')
-                    .position({ x: 34, y: 0 })
+                  .height(52)
+                  .padding({ left: 9, right: 9 })
+                  .alignItems(VerticalAlign.Center)
+                  .borderRadius(10)
+                  .backgroundColor($r('app.color.glass_bg_strong'))
+                  .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+                  .onClick(() => { this.removePicked(it.uri); })
                 }
-                .width(52)
-                .height(52)
-                .borderRadius(10)
-                .backgroundColor($r('app.color.glass_bg_strong'))
-                .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
-                .onClick(() => { this.removePicked(it.uri); })
               }, (it: PickedItem) => it.uri)
             }
             .width('100%')
