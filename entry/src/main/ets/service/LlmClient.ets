@@ -21,6 +21,8 @@ interface DeltaToolCall { index?: number; id?: string; function?: DeltaFunction 
 interface DeltaChoice { delta: DeltaBody }
 interface DeltaBody {
   content?: string;
+  reasoning_content?: string;
+  reasoning?: string;
   tool_calls?: DeltaToolCall[];
 }
 interface SseChunk { choices?: DeltaChoice[] }
@@ -163,13 +165,14 @@ export class LlmClient {
   // （与 chatMessage 同构，AgentLoop 分派逻辑零改动）。
   // SSE 分片会切断行——用 TextDecoder(stream 模式) 增量解码 + 手动按 \n 切行保留残行。
   // 取消：调用方 isCancelled 在 onDelta 里检查（本类不管取消，与 Android 端对称）。
-  async chatStream(messages: ChatMsg[], tools: ToolDef[] | null, onDelta: (partial: string) => void, model?: string): Promise<OpenAiMessage> {
+  async chatStream(messages: ChatMsg[], tools: ToolDef[] | null, onDelta: (partial: string) => void, model?: string, onThinking?: (partial: string) => void): Promise<OpenAiMessage> {
     return new Promise<OpenAiMessage>((resolve: (v: OpenAiMessage) => void, reject: (e: Error) => void) => {
       const hr = http.createHttp();
       const useModel = (model !== undefined && model !== '') ? model : this.cfg.model;
       const decoder = util.TextDecoder.create('utf-8', { ignoreBOM: false });
       let pending = '';          // 跨分片的残行
       let content = '';          // 累计增量文本
+      let think = '';            // reasoning_content 累计（思考流）
       let done = false;          // dataEnd 已处理（防双 resolve）
       let httpErr = '';
       // tool_calls 分片组装：index → (id/name/arguments)
@@ -200,6 +203,14 @@ export class LlmClient {
       };
 
       const applyDelta = (deltaObj: DeltaBody): void => {
+        if (typeof deltaObj.reasoning_content === 'string' && deltaObj.reasoning_content.length > 0) {
+          think += deltaObj.reasoning_content;
+          if (onThinking !== undefined && onThinking !== null) { onThinking(think); }
+        }
+        if (typeof deltaObj.reasoning === 'string' && deltaObj.reasoning.length > 0) {
+          think += deltaObj.reasoning;
+          if (onThinking !== undefined && onThinking !== null) { onThinking(think); }
+        }
         if (typeof deltaObj.content === 'string' && deltaObj.content.length > 0) {
           content += deltaObj.content;
           onDelta(content);

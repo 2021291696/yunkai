@@ -32,6 +32,8 @@ class RenderMsg {
   role: string = '';
   content: string = '';
   kind: string = ReplyKind.TEXT;
+  thinking: string = '';
+  steps: number = 0;
 }
 
 // 一期附件：图片（多图≤5，压缩后走多模态 contentParts）或 txt（单文件≤5MB/正文3万字截断）
@@ -70,6 +72,11 @@ struct Chat {
   @State title: string = '';
   @State msgs: RenderMsg[] = [];
   @State timeline: LoopEvent[] = [];
+  @State thinking: string = '';
+  @State steps: number = 0;
+  @State queued: string = '';
+  @State failed: boolean = false;
+  @State expandedIds: number[] = [];
   @State turns: Msg[] = [];
   @State convs: Conv[] = [];
   @State input: string = '';
@@ -156,16 +163,34 @@ struct Chat {
     this.loading = false;
   }
 
+  // 立即：打断当前回答，马上发排队那句
+  sendQueuedNow(): void {
+    if (this.queued === '') { return; }
+    this.input = this.queued;
+    this.queued = '';
+    this.cancelLoading();
+    this.send();
+  }
+
   // 发送管线：@提及解析 → 构建历史 → AgentLoop.run（onEvent 实时推时间线）→ 画布卡/气泡入库渲染
   private async send(): Promise<void> {
     const items: PickedItem[] = this.picked;   // 附件快照：发送期间增删不影响本轮
     const q0: string = this.input.trim();
-    if ((q0 === '' && items.length === 0) || this.loading) { return; }
+    if (q0 === '' && items.length === 0) { return; }
+    if (this.loading) {
+      // 生成中：排队不打断，答完自动发出
+      if (q0 !== '') { this.queued = this.queued === '' ? q0 : this.queued + '\n' + q0; }
+      this.input = '';
+      return;
+    }
     this.input = '';
+    this.failed = false;
     const gen: number = this.genId + 1;
     this.genId = gen;
     this.loading = true;
     this.timeline = [];
+    this.thinking = '';
+    this.steps = 0;
 
     // 用户气泡先上屏（草稿会话此时尚未落库）；带附件时正文追加摘要行
     let attachSummary: string = '';
@@ -224,7 +249,13 @@ struct Chat {
       const onEvent = (e: LoopEvent): void => {
         if (gen !== this.genId) { return; }
         this.timeline.push(e);
+        if (e.kind === 'tool_start') { this.steps += 1; }
         this.scrollToBottom();
+      };
+
+      const onThinking = (acc: string): void => {
+        if (gen !== this.genId) { return; }
+        this.thinking = acc;
       };
 
       const onDelta = (partial: string): void => {
@@ -254,7 +285,7 @@ struct Chat {
         }
       }
       const r: LoopResult = await AgentLoop.run(cfg, this.ctx(), history, q, forcedSkill, onEvent,
-        undefined, (): boolean => { return gen !== this.genId; }, onDelta, parts);
+        undefined, (): boolean => { return gen !== this.genId; }, onDelta, parts, onThinking);
       if (gen !== this.genId) { return; }
 
       // 输出形态（全 app 唯一口径）：sanitize 通过且 sanitize 后内容仍以 <!DOCTYPE/<html 开头
@@ -285,20 +316,34 @@ struct Chat {
       am.role = 'assistant';
       am.content = content;
       am.kind = kind;
+      am.thinking = this.thinking;
+      am.steps = this.steps;
       this.msgs.push(am);
       this.picked = [];             // 发送成功即清空（失败保留可重试）
       this.scrollToBottom();
       await this.refreshTurns();
       await this.refreshConvs();
     } catch (e) {
-      const em: string = (e as Error).message;
-      if (em !== 'AGENT_LOOP_CANCELLED') {
-        this.input = q0;   // 失败还原输入，与附件保留策略一致
-        hilog.error(0x0000, 'yunkai', 'send failed: %{public}s', em);
-        this.toast('出错了：' + em);
+      if (gen === this.genId) {
+        this.failed = true;
+        const em: string = (e as Error).message;
+        if (em !== 'AGENT_LOOP_CANCELLED') {
+          this.input = q0;   // 失败还原输入，与附件保留策略一致
+          hilog.error(0x0000, 'yunkai', 'send failed: %{public}s', em);
+          this.toast('出错了：' + em);
+        }
       }
     } finally {
-      if (gen === this.genId) { this.loading = false; this.streamText = ''; }
+      if (gen === this.genId) {
+        this.loading = false;
+        this.streamText = '';
+        const q: string = this.queued;
+        if (q !== '') {
+          this.queued = '';
+          this.input = q;
+          this.send();
+        }
+      }
     }
   }
 
@@ -473,6 +518,28 @@ struct Chat {
             ForEach(this.msgs, (m: RenderMsg) => {
               ListItem() {
                 Column() {
+                  if (m.role === 'assistant' && m.thinking !== '') {
+                    Row({ space: 8 }) {
+                      Text('✦ 思考过程 · ' + m.steps + ' 步')
+                        .fontSize(12)
+                        .fontColor($r('app.color.text_mid'))
+                        .onClick((): void => {
+                          this.expandedIds = this.expandedIds.includes(m.id)
+                            ? this.expandedIds.filter((v: number): boolean => v !== m.id)
+                            : this.expandedIds.concat([m.id]);
+                        })
+                      Text(this.expandedIds.includes(m.id) ? '▾' : '▸')
+                        .fontSize(11)
+                        .fontColor($r('app.color.text_low'))
+                    }
+                    .padding({ left: 4, bottom: 6 })
+                    if (this.expandedIds.includes(m.id)) {
+                      Text(m.thinking)
+                        .fontSize(12)
+                        .fontColor($r('app.color.text_mid'))
+                        .padding({ left: 4, bottom: 8 })
+                    }
+                  }
                   Row() {
                     if (m.role === 'user') {
                       Blank()
@@ -548,13 +615,13 @@ struct Chat {
               }
               .transition(TransitionEffect.OPACITY)
             }
-            // 时间线卡：只在 loading 时渲染于流末尾（旧全屏遮罩已删）
-            if (this.loading) {
+            // 过程卡：loading 实时看；失败/取消保持展开（三态规则）
+            if (this.loading || this.failed) {
               ListItem() {
                 Column({ space: 8 }) {
                   Row({ space: 8 }) {
                     LoadingProgress().width(18).height(18).color($r('app.color.accent'))
-                    Text('思考中…')
+                    Text(this.failed ? '已停止（过程保留）' : '思考中…')
                       .fontSize(13)
                       .fontColor($r('app.color.text_mid'))
                       .layoutWeight(1)
@@ -578,6 +645,13 @@ struct Chat {
                       .textOverflow({ overflow: TextOverflow.Ellipsis })
                       .width('100%')
                   }, (e: LoopEvent, idx: number) => `tl_${idx}`)
+                  if (this.thinking !== '') {
+                    Text(this.thinking.length > 600 ? '…' + this.thinking.substring(this.thinking.length - 600) : this.thinking)
+                      .fontSize(12)
+                      .fontColor($r('app.color.text_mid'))
+                      .opacity(0.75)
+                      .width('100%')
+                  }
                 }
                 .alignItems(HorizontalAlign.Start)
                 .padding(14)
@@ -681,6 +755,27 @@ struct Chat {
             .width('100%')
             .padding({ bottom: 8 })
           }
+          // 排队条：生成中点 ↑ 的下一问挂这里；立即=打断当前，✕=退回输入框
+          if (this.queued !== '') {
+            Row({ space: 8 }) {
+              Text('已排队：' + this.queued)
+                .fontSize(12)
+                .fontColor($r('app.color.text_mid'))
+                .maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+                .layoutWeight(1)
+              Text('立即')
+                .fontSize(13)
+                .fontColor($r('app.color.accent'))
+                .onClick(() => { this.sendQueuedNow(); })
+              Text('✕')
+                .fontSize(13)
+                .fontColor($r('app.color.text_low'))
+                .onClick(() => { this.input = this.queued; this.queued = ''; })
+            }
+            .width('100%')
+            .padding({ bottom: 6 })
+          }
           // ===== 输入坞合体：输入行与附件选项同属一块玻璃（四角全圆角、无内部线条）=====
           // 关闭 = ＋ 切换 / 点面板外收起 / 返回键收起
           Column() {
@@ -706,11 +801,10 @@ struct Chat {
                 .placeholderColor($r('app.color.text_low'))
                 .fontSize(14)
                 .padding({ left: 16, right: 8 })
-                .enabled(!this.loading)
                 .onChange((v: string) => { this.input = v; })
                 .onSubmit(() => { this.send(); })
 
-              Button(this.loading ? '■' : '↑')
+              Button('↑')
                 .width(40)
                 .height(40)
                 .fontSize(18)
@@ -720,7 +814,7 @@ struct Chat {
                 .borderRadius(20)
                 .padding(0)
                 .onClick(() => {
-                  if (this.loading) { this.cancelLoading(); } else { this.send(); }
+                  this.send();
                 })
             }
             .width('100%')

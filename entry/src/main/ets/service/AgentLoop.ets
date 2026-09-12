@@ -64,7 +64,8 @@ export class AgentLoop {
     isCancelled?: () => boolean,
     onDelta?: (partial: string) => void,
     // 一期图片链路：带图提问时用户消息的 contentParts（文字仍走 question）
-    extraUserParts?: ContentPart[]): Promise<LoopResult> {
+    extraUserParts?: ContentPart[],
+    onThinking?: (partial: string) => void): Promise<LoopResult> {
     const checkCancel = (): void => {
       if (isCancelled !== undefined && isCancelled()) {
         throw new Error(AgentLoop.CANCELLED_MSG);
@@ -107,7 +108,7 @@ export class AgentLoop {
         if (onDelta !== undefined && onDelta !== null) {
           onDelta(partial);
         }
-      }, model);
+      }, model, onThinking);
     };
 
     for (let step = 1; step <= MAX_STEPS; step++) {
