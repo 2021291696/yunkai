@@ -580,21 +580,9 @@ struct Chat {
                       }
                       .width('100%')
                     } else {
-                      // B2 markdown 气泡：assistant 文本走 MarkdownText（粗体/行内码/标题/列表），
-                      // 颜色字体在组件内逐 Text 节点对齐气泡原样式
+                      // AI 正文无气泡：直接排版在壁纸上
                       MarkdownText({ text: m.content })
-                        .backgroundColor($r('app.color.glass_bg'))
-                        .backdropBlur(ThemeTokens.BLUR_CARD)
-                        .borderRadius({
-                          topLeft: ThemeTokens.R_BUBBLE,
-                          topRight: ThemeTokens.R_BUBBLE,
-                          bottomRight: ThemeTokens.R_BUBBLE,
-                          bottomLeft: ThemeTokens.R_TIGHT
-                        })
-                        .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
-                        .padding({ left: 17, right: 17, top: 13, bottom: 13 })
-                        .constraintSize({ maxWidth: '82%' })
-                        .shadow({ radius: 28, color: '#66000000', offsetY: 8 })
+                        .padding({ top: 4, bottom: 4 })
                       Blank()
                     }
                   }
@@ -659,19 +647,9 @@ struct Chat {
             // B1 流式气泡：增量文本非空时渲染生长中的回答（打字机体验）；落库仍走唯一成功路径
             if (this.loading && this.streamText !== '') {
               ListItem() {
-                // B1 流式 + B2 markdown：增量文本同样走 MarkdownText（与落库后的回答气泡同渲染口径）
                 MarkdownText({ text: this.streamText })
-                  .backgroundColor($r('app.color.glass_bg'))
-                  .backdropBlur(ThemeTokens.BLUR_CARD)
-                  .borderRadius({
-                    topLeft: ThemeTokens.R_BUBBLE,
-                    topRight: ThemeTokens.R_BUBBLE,
-                    bottomRight: ThemeTokens.R_TIGHT,
-                    bottomLeft: ThemeTokens.R_BUBBLE
-                  })
-                  .padding({ left: 17, right: 17, top: 13, bottom: 13 })
-                  .constraintSize({ maxWidth: '82%' })
-                  .width('82%')
+                  .padding({ top: 4, bottom: 4 })
+                  .width('100%')
               }
               .transition(TransitionEffect.OPACITY)
             }
