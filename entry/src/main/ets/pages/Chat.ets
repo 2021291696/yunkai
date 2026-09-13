@@ -25,7 +25,7 @@ import { SkinScheme, CLEAR_LIGHT } from '../theme/Schemes';
 import { WallpaperLayer } from '../common/WallpaperLayer';
 import { MarkdownText } from '../common/MarkdownLite';
 import { MemoryStore } from '../memory/MemoryStore';
-import { Summarizer, SummaryState } from '../memory/Summarizer';
+import { Summarizer, SummaryState, stripTraceForPersist } from '../memory/Summarizer';
 
 // 画布 HTML 的 AppStorage 暂存 key（Chat → Canvas 页传参用，避开 router params 大字符串）
 const CANVAS_HTML_KEY: string = 'canvasHtml';
@@ -378,7 +378,8 @@ struct Chat {
       await this.refreshConvs();
       // M3 到顶处理：轨迹持久化供「继续」续跑；正常作答清掉旧轨迹
       if (r.hitLimit && r.trace !== null) {
-        await (await this.mem()).saveTaskState(this.convId, JSON.stringify(r.trace), r.steps);
+        // 落库前瘦身：带图轮 content_parts 的 base64 换占位文本，防 task_state.trace_json 膨胀
+        await (await this.mem()).saveTaskState(this.convId, JSON.stringify(stripTraceForPersist(r.trace)), r.steps);
         this.canContinue = true;
       } else {
         await (await this.mem()).deleteTaskState(this.convId);
@@ -479,7 +480,8 @@ struct Chat {
       await MessageRepo.add(this.ctx(), this.convId, 'assistant', content, kind);
       await ConversationRepo.touch(this.ctx(), this.convId);
       if (r.hitLimit && r.trace !== null) {
-        await store.saveTaskState(this.convId, JSON.stringify(r.trace), r.steps);
+        // 落库前瘦身：带图轮 content_parts 的 base64 换占位文本，防 task_state.trace_json 膨胀
+        await store.saveTaskState(this.convId, JSON.stringify(stripTraceForPersist(r.trace)), r.steps);
         this.canContinue = true;
       } else {
         await store.deleteTaskState(this.convId);
@@ -495,9 +497,13 @@ struct Chat {
       this.msgs.push(am);
       this.scrollToBottom();
       await this.refreshTurns();
+      // 续跑成功同步会话列表（touch 已更新 updated_at，抽屉排序需要新数据，对齐 Android resume）
+      await this.refreshConvs();
     } catch (e) {
       if (gen === this.genId) {
         this.failed = true;
+        // 失败不清 task_state：恢复「继续」可用态，用户可重试（轨迹仍在，对齐 Android resume catch）
+        this.canContinue = await (await this.mem()).getTaskState(this.convId) !== null;
         const em: string = (e as Error).message;
         if (em !== 'AGENT_LOOP_CANCELLED') {
           hilog.error(0x0000, 'yunkai', 'resume failed: %{public}s', em);
@@ -639,6 +645,8 @@ struct Chat {
   }
 
   private async doDelete(id: number): Promise<void> {
+    // 删会话前先清 task_state：该表无外键，会话删除后到顶轨迹行会变孤儿残留（对齐 Android doDelete）
+    await (await this.mem()).deleteTaskState(id);
     await ConversationRepo.remove(this.ctx(), id);
     promptAction.showToast({ message: '已删除', duration: 1500 });
     await this.refreshConvs();

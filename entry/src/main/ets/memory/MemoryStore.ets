@@ -282,6 +282,21 @@ export class MemoryStore {
 
   // ===== 旧数据迁移落库（协议 §1.5；文件改名 .bak 由 EntryAbility 负责）=====
 
+  // 迁移幂等护栏（对齐 Android MemoryStore.hasLegacyRows / 门0 审查项）：库里已有 legacy-m2
+  // 行 = 上次迁移写入成功但文件改名失败的部分成功态，再写会产生重复行
+  async hasLegacyRows(): Promise<boolean> {
+    const rs = await this.s.querySql("SELECT COUNT(*) AS c FROM archival WHERE source = 'legacy-m2'");
+    let n = 0;
+    try {
+      while (rs.goToNextRow()) {
+        n = rs.getLong(rs.getColumnIndex('c'));
+      }
+    } finally {
+      rs.close();
+    }
+    return n > 0;
+  }
+
   async migrationWrite(rows: LegacyRow[]): Promise<void> {
     for (const r of rows) {
       const now = Date.now();

@@ -180,11 +180,9 @@ export class AgentLoop {
           const ts = Date.now();
           let out = await AgentLoop.execTool(tools, tc, longFormActive);
           hilog.info(0x0000, 'yunkai', 'tool %{public}s %{public}dms outLen=%{public}d', tc.function.name, Date.now() - ts, out.length);
-          // M3 软预算（协议 §2 TOOL_OUTPUT_BUDGET=30000）：累计超限即截断本条并标记
-          if (toolBudgetUsed + out.length > TOOL_OUTPUT_BUDGET) {
-            const keep = Math.max(0, TOOL_OUTPUT_BUDGET - toolBudgetUsed);
-            out = out.substring(0, keep) + `\n…[已截断：本轮工具输出累计超 ${TOOL_OUTPUT_BUDGET} 字软预算]`;
-          }
+          // M3 软预算（协议 §2 TOOL_OUTPUT_BUDGET=30000）：累计超限即截断本条并标记；
+          // 预算已被前序工具耗尽（keep==0）时以固定短文案替代（分支细节见 applyToolBudget）
+          out = AgentLoop.applyToolBudget(out, toolBudgetUsed);
           toolBudgetUsed += out.length;
           // use_skill 成功返回说明书（非 '{"error"' 开头）→ 本轮余下调用切长文模型；
           // 失败/error 回传不切换，模型仍用主模型自行调整策略
@@ -255,6 +253,18 @@ export class AgentLoop {
       return cfg.longModel;
     }
     return cfg.model;
+  }
+
+  // M3 软预算单条处理（纯函数，static 公开供单测直测——与 pickModel 同例）：
+  // 未超限原样返回；keep>0 截断到预算余量并追加截断标记；keep==0（预算已被前序工具耗尽，
+  // 再 substring(0,0) 只会产出空串+标记）→ 固定短文案，不再做截断拼接。
+  static applyToolBudget(out: string, toolBudgetUsed: number): string {
+    if (toolBudgetUsed + out.length <= TOOL_OUTPUT_BUDGET) { return out; }
+    const keep = Math.max(0, TOOL_OUTPUT_BUDGET - toolBudgetUsed);
+    if (keep === 0) {
+      return '本轮工具输出预算已耗尽，请基于已有结果作答';
+    }
+    return out.substring(0, keep) + `\n…[已截断：本轮工具输出累计超 ${TOOL_OUTPUT_BUDGET} 字软预算]`;
   }
 
   // 单工具执行：未知名/抛异常都收敛为 '{"error":...}' 字符串回传给模型，绝不让循环崩溃。

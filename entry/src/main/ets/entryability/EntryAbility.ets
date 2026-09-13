@@ -44,7 +44,11 @@ export default class EntryAbility extends UIAbility {
     }
     const store = await MemoryStore.create(this.context);
     const rows: LegacyRow[] = Migrator.migrate(text);
-    await store.migrationWrite(rows);
+    // 幂等护栏（对齐 Android YunkaiApp）：库里已有 legacy-m2 行 = 上次迁移写入成功但
+    // 文件改名失败的部分成功态，跳过写入防重复行，仅完成改名收尾
+    if (!(await store.hasLegacyRows())) {
+      await store.migrationWrite(rows);
+    }
     fs.renameSync(legacyPath, bakPath);
     hilog.info(DOMAIN, 'testTag', 'legacy memory migrated');
   }

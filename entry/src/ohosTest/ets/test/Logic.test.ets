@@ -11,7 +11,7 @@ import { AppConfig, AgentSkill, ChatMsg, ContentPart, Msg, ToolCall, ToolDef } f
 import { Bm25, Doc } from '../../../main/ets/memory/Bm25';
 import { PrivacyGate } from '../../../main/ets/memory/PrivacyGate';
 import { Migrator } from '../../../main/ets/memory/Migrator';
-import { Summarizer, Span } from '../../../main/ets/memory/Summarizer';
+import { Summarizer, Span, stripTraceForPersist } from '../../../main/ets/memory/Summarizer';
 import { AttachUtil } from '../../../main/ets/service/AttachUtil';
 import { DocTextExtractor } from '../../../main/ets/service/DocTextExtractor';
 import { zlib } from '@kit.BasicServicesKit';
@@ -823,6 +823,64 @@ export default function logicTest() {
       // [S5] 摘要拼接：旧空直用、非空 \n 连接
       expect(Summarizer.joinSummary('', '新摘要')).assertEqual('新摘要');
       expect(Summarizer.joinSummary('旧', '新')).assertEqual('旧\n新');
+    });
+
+    // ===== M3 续跑轨迹落库瘦身（stripTraceForPersist）+ 工具输出软预算（applyToolBudget）=====
+
+    it('strip_trace_replaces_image_parts_with_placeholder', 0, () => {
+      // 含图轮：content_parts（含 base64 大图）整体替换为单条占位文本；原 trace 不被改写（深拷贝）
+      const big: string = 'A'.repeat(1000);
+      const u: ChatMsg = {
+        role: 'user', content: '这是什么', content_parts: [
+          { type: 'text', text: '这是什么' },
+          { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + big } },
+        ]
+      };
+      const a: ChatMsg = { role: 'assistant', content: '答' };
+      const src: ChatMsg[] = [u, a];
+      const out = stripTraceForPersist(src);
+      expect(out.length).assertEqual(2);
+      expect(out[0].content_parts !== undefined && out[0].content_parts!.length === 1).assertTrue();
+      expect(out[0].content_parts !== undefined && out[0].content_parts![0].type === 'text').assertTrue();
+      expect(out[0].content_parts !== undefined &&
+        out[0].content_parts![0].text === '[图片/附件内容已于首轮消费，续跑上下文省略]').assertTrue();
+      expect(JSON.stringify(out).includes(big)).assertFalse();
+      expect(JSON.stringify(out).includes('[图片/附件内容已于首轮消费，续跑上下文省略]')).assertTrue();
+      // 深拷贝语义：入参 trace 的原 content_parts 保持不变
+      expect(u.content_parts !== undefined && u.content_parts!.length === 2).assertTrue();
+      expect(out[1] === a).assertTrue();
+    });
+
+    it('strip_trace_passthrough_when_no_parts', 0, () => {
+      // 无图轮原样：无 content_parts（含空数组）→ 同实例返回，消息身份不变
+      const u: ChatMsg = { role: 'user', content: '你好' };
+      const a: ChatMsg = { role: 'assistant', content: '答', content_parts: [] };
+      const src: ChatMsg[] = [u, a];
+      const out = stripTraceForPersist(src);
+      expect(out === src).assertTrue();
+      expect(out[0] === u && out[1] === a).assertTrue();
+    });
+
+    it('tool_budget_within_returns_untouched', 0, () => {
+      // 未超限：原样返回
+      expect(AgentLoop.applyToolBudget('abc', 0) === 'abc').assertTrue();
+      expect(AgentLoop.applyToolBudget('x'.repeat(29999), 0) === 'x'.repeat(29999)).assertTrue();
+    });
+
+    it('tool_budget_partial_truncates_with_marker', 0, () => {
+      // keep>0：截断到预算余量（30000-15000=15000）并追加截断标记
+      const out = AgentLoop.applyToolBudget('a'.repeat(20000), 15000);
+      const marker: string = '\n…[已截断：本轮工具输出累计超 30000 字软预算]';
+      expect(out.length).assertEqual(15000 + marker.length);
+      expect(out.substring(0, 15000) === 'a'.repeat(15000)).assertTrue();
+      expect(out.endsWith(marker)).assertTrue();
+    });
+
+    it('tool_budget_exhausted_returns_fixed_hint', 0, () => {
+      // keep==0：预算已被前序工具耗尽 → 固定短文案（不再 substring(0,0) 空截断+标记）
+      const out = AgentLoop.applyToolBudget('a'.repeat(100), 30000);
+      expect(out === '本轮工具输出预算已耗尽，请基于已有结果作答').assertTrue();
+      expect(out.includes('已截断')).assertFalse();
     });
   });
 }

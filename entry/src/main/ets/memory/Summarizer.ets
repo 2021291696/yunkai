@@ -7,7 +7,7 @@
 // - 触发（§2 常量）：窗口内 assistant 轮数 > 12 或窗口字符总量 > 16000；
 // - 摘要跨度 = 窗口内最旧的一半轮次（向上取整），到该半块最后一条 assistant 行（含其前导 user 行）；
 // - 追加：多次摘要以 \n 连接；单次摘要文本 ≤300 字。
-import { Msg } from '../model/Types';
+import { ChatMsg, ContentPart, Msg } from '../model/Types';
 
 // 摘要跨度（对应 Kotlin Summarizer.Span）
 export interface Span {
@@ -88,4 +88,35 @@ export class Summarizer {
     if (oldSummary.trim() === '') { return addition; }
     return `${oldSummary}\n${addition}`;
   }
+}
+
+// M3 到顶轨迹落库瘦身（对齐 Android ChatViewModel.stripTraceForPersist）：
+// 带图轮的 user 消息 content_parts 含 base64 大图，全量持久化会把 task_state.trace_json
+// 撑到 MB 级。深拷贝 trace，把每条含 content_parts 的消息替换为单条占位文本
+// （图/附件只服务当轮请求，续跑上下文不再需要原图）；无 content_parts 的消息原样保留，
+// 全 trace 均无 content_parts 时原数组同实例返回（快路径）。
+// 顶层导出纯函数（非类方法、不改传入）：单测以纯函数口径钉死此行为（同 Android 先例）。
+export function stripTraceForPersist(trace: ChatMsg[]): ChatMsg[] {
+  let hasParts = false;
+  for (const m of trace) {
+    if (m.content_parts !== undefined && m.content_parts.length > 0) { hasParts = true; break; }
+  }
+  if (!hasParts) { return trace; }
+  const out: ChatMsg[] = [];
+  for (const m of trace) {
+    if (m.content_parts === undefined || m.content_parts.length === 0) {
+      out.push(m);
+      continue;
+    }
+    const ph: ContentPart = { type: 'text', text: '[图片/附件内容已于首轮消费，续跑上下文省略]' };
+    const copy: ChatMsg = {
+      role: m.role,
+      content: m.content,
+      tool_calls: m.tool_calls,
+      tool_call_id: m.tool_call_id,
+      content_parts: [ph],
+    };
+    out.push(copy);
+  }
+  return out;
 }
