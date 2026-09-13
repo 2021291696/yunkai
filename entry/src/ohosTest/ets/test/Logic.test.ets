@@ -6,7 +6,12 @@ import { HtmlGuard, ReplyKind } from '../../../main/ets/service/HtmlGuard';
 import { HtmlExtractor } from '../../../main/ets/service/HtmlExtractor';
 import { SearchRouter } from '../../../main/ets/service/SearchRouter';
 import { fileIo as fs, fileUri } from '@kit.CoreFileKit';
-import { AppConfig, AgentSkill, ChatMsg, ContentPart, ToolCall, ToolDef } from '../../../main/ets/model/Types';
+import { util } from '@kit.ArkTS';
+import { AppConfig, AgentSkill, ChatMsg, ContentPart, Msg, ToolCall, ToolDef } from '../../../main/ets/model/Types';
+import { Bm25, Doc } from '../../../main/ets/memory/Bm25';
+import { PrivacyGate } from '../../../main/ets/memory/PrivacyGate';
+import { Migrator } from '../../../main/ets/memory/Migrator';
+import { Summarizer, Span } from '../../../main/ets/memory/Summarizer';
 import { AttachUtil } from '../../../main/ets/service/AttachUtil';
 import { DocTextExtractor } from '../../../main/ets/service/DocTextExtractor';
 import { zlib } from '@kit.BasicServicesKit';
@@ -19,6 +24,33 @@ import { SkillRepo } from '../../../main/ets/store/SkillRepo';
 import { SkillImporter } from '../../../main/ets/service/SkillImporter';
 import { AgentTool } from '../../../main/ets/service/tools/AgentTool';
 import { BuiltinTools } from '../../../main/ets/service/tools/BuiltinTools';
+
+// ===== M5a 记忆引擎测试辅助 =====
+
+// 读向量 JSON（rawfile/vectors 下三份文件与 yishu 仓 protocol/vectors md5 逐字对拍一致）
+async function readVectorJson(name: string): Promise<Record<string, Object>> {
+  const ctx = AbilityDelegatorRegistry.getAbilityDelegator().getAppContext();
+  const raw: Uint8Array = await ctx.resourceManager.getRawFileContent(`vectors/${name}`);
+  const text: string = util.TextDecoder.create('utf-8').decodeToString(raw);
+  return JSON.parse(text) as Record<string, Object>;
+}
+
+// Summarizer 用例构造（同构 Kotlin SummarizerTest.mkRows）：
+// n 轮（每轮 user+assistant，assistant turn_no=1..n 递增），行序 u1,a1,u2,a2,...
+function mkRows(n: number): Msg[] {
+  const rows: Msg[] = [];
+  for (let i = 1; i <= n; i++) {
+    const u = new Msg();
+    u.id = rows.length + 1; u.convId = 1; u.role = 'user'; u.content = `问${i}`;
+    u.plain = ''; u.turnNo = 0; u.createdAt = i * 10;
+    rows.push(u);
+    const a = new Msg();
+    a.id = rows.length + 1; a.convId = 1; a.role = 'assistant'; a.content = `答${i}`;
+    a.plain = `答${i}`; a.turnNo = i; a.createdAt = i * 10 + 1;
+    rows.push(a);
+  }
+  return rows;
+}
 
 export default function logicTest() {
   describe('logicTest', () => {
@@ -571,6 +603,226 @@ export default function logicTest() {
       expect(text.includes('工作表1')).assertTrue();
       fs.unlinkSync(zip);
       fs.rmdirSync(dir);
+    });
+
+    // ===== M5a 记忆引擎：BM25 / 隐私闸门 / 迁移 / 摘要（协议向量回放 + Kotlin 测试同构移植）=====
+
+    it('memory_bm25_vectors_replay', 0, async () => {
+      // 18 个向量用例逐 case 回放：id 序列必须完全一致，score 差 ≤1e-4（协议 §8.5）
+      const root = await readVectorJson('bm25_cases.json');
+      const corpusJson = root['corpus'] as Object[];
+      const corpus: Doc[] = [];
+      for (const d of corpusJson) {
+        const rec = d as Record<string, Object>;
+        const doc: Doc = { id: rec['id'] as number, content: rec['content'] as string, createdAt: rec['created_at'] as number };
+        corpus.push(doc);
+      }
+      const cases = root['cases'] as Object[];
+      for (const c of cases) {
+        const cc = c as Record<string, Object>;
+        const name = cc['name'] as string;
+        const hits = Bm25.search(corpus, cc['query'] as string, cc['top_k'] as number, cc['now_ms'] as number);
+        const expected = cc['expected'] as Object[];
+        expect(`${name}#${hits.length}`).assertEqual(`${name}#${expected.length}`);
+        for (let i = 0; i < expected.length; i++) {
+          const e = expected[i] as Record<string, Object>;
+          const expId = e['id'] as number;
+          const expScore = e['score'] as number;
+          expect(`${name}#${i}id=${hits[i].id}`).assertEqual(`${name}#${i}id=${expId}`);
+          expect(Math.abs(hits[i].score - expScore) <= 1e-4).assertTrue();
+        }
+      }
+    });
+
+    it('memory_bm25_tokenize_rules', 0, () => {
+      // §8.1 切词：ASCII 小写整段 / CJK 二元滑窗 / 段长1单字 / 其余分隔不产出
+      expect(Bm25.tokenize('API2024').join(',')).assertEqual('api2024');
+      expect(Bm25.tokenize('用户的猫').join('|')).assertEqual('用户|户的|的猫');
+      expect(Bm25.tokenize('猫').join('|')).assertEqual('猫');
+      expect(Bm25.tokenize('a，b!!c').join('|')).assertEqual('a|b|c');
+      expect(Bm25.tokenize('？！').length).assertEqual(0);
+      expect(Bm25.tokenize('').length).assertEqual(0);
+    });
+
+    it('memory_bm25_round4_unit', 0, () => {
+      // 4 位小数舍入（HALF_UP 口径；容差 1e-4 下不依赖 .xxxx5 边界）
+      expect(Bm25.round4(3.12058)).assertEqual(3.1206);
+      expect(Bm25.round4(1.5024)).assertEqual(1.5024);
+      expect(Bm25.round4(0.15)).assertEqual(0.15);
+      expect(Bm25.round4(0)).assertEqual(0);
+    });
+
+    it('memory_privacy_vectors_detect_replay', 0, async () => {
+      // 38 个向量用例逐 case 回放：detect 命中与顺序必须与 expected_hits 一致（secret→idnum→bankcard）
+      const root = await readVectorJson('privacy_cases.json');
+      const cases = root['cases'] as Object[];
+      for (const c of cases) {
+        const cc = c as Record<string, Object>;
+        const name = cc['name'] as string;
+        const hits = PrivacyGate.detect(cc['text'] as string);
+        const expected = cc['expected_hits'] as Object[];
+        let got = '';
+        let exp = '';
+        for (const h of hits) { got += `${h},`; }
+        for (const h of expected) { exp += `${h as string},`; }
+        expect(`${name}=${got}`).assertEqual(`${name}=${exp}`);
+      }
+    });
+
+    it('memory_privacy_gear_matrix_replay', 0, async () => {
+      // 挡位矩阵回放（§5.2）：单类样本文本 × 三挡，期望由 vectors gear_matrix 驱动
+      const root = await readVectorJson('privacy_cases.json');
+      const matrix = root['gear_matrix'] as Record<string, Object>;
+      const samples: Record<string, string> = {
+        'secret': '我的密码是abc123',
+        'idnum': '身份证号是11010119900307775X',
+        'bankcard': '还款卡号6222020000000000000，别忘了',
+      };
+      const gears: string[] = ['strict', 'standard', 'free'];
+      const cats: string[] = ['secret', 'idnum', 'bankcard'];
+      for (const gear of gears) {
+        const row = matrix[gear] as Record<string, Object>;
+        for (const cat of cats) {
+          const expectReject: boolean = (row[cat] as string) === 'reject';
+          const got = PrivacyGate.check(samples[cat], gear);
+          expect(`${gear}/${cat}=${got ?? 'allow'}`).assertEqual(`${gear}/${cat}=${expectReject ? cat : 'allow'}`);
+        }
+      }
+    });
+
+    it('memory_privacy_check_first_rejected_category', 0, () => {
+      // 多类命中时 check 上报首个被拒类别（§5.1 钉死：按 secret→idnum→bankcard 固定顺序）
+      const text = '密码：Root@2024，证件11010119900307775X，卡号6222020000000000000';
+      expect(PrivacyGate.check(text, 'strict')).assertEqual('secret');
+      expect(PrivacyGate.check(text, 'standard')).assertEqual('idnum');
+      expect(PrivacyGate.check(text, 'free') === null).assertTrue();
+    });
+
+    it('memory_privacy_gear_unknown_falls_back_strict', 0, () => {
+      // 未知挡位字符串回退 strict（协议 §2 PRIVACY_GEAR_DEFAULT）
+      expect(PrivacyGate.check('我的密码是abc123', 'weird')).assertEqual('secret');
+      expect(PrivacyGate.check('还款卡号6222020000000000000，别忘了', '')).assertEqual('bankcard');
+    });
+
+    it('memory_privacy_luhn_unit_checks', 0, () => {
+      // Luhn 单元：三张向量正例过、尾号 +1 死号不过、15 位/空/非数字不过
+      expect(PrivacyGate.luhnValid('6222020000000000000')).assertTrue();
+      expect(PrivacyGate.luhnValid('6222020000000007')).assertTrue();
+      expect(PrivacyGate.luhnValid('621700000000000006')).assertTrue();
+      expect(PrivacyGate.luhnValid('6222020000000000001')).assertFalse();
+      expect(PrivacyGate.luhnValid('123456789012345')).assertFalse();
+      expect(PrivacyGate.luhnValid('')).assertFalse();
+      expect(PrivacyGate.luhnValid('1234abc')).assertFalse();
+    });
+
+    it('memory_migrate_vectors_replay', 0, async () => {
+      // 10 个向量用例逐 case 回放：迁移行数与 content/type/source 全字段一致
+      const root = await readVectorJson('migrate_cases.json');
+      const cases = root['cases'] as Object[];
+      for (const c of cases) {
+        const cc = c as Record<string, Object>;
+        const name = cc['name'] as string;
+        const rows = Migrator.migrate(cc['input_json'] as string);
+        const expected = cc['expected_rows'] as Object[];
+        expect(`${name}#${rows.length}`).assertEqual(`${name}#${expected.length}`);
+        for (let i = 0; i < expected.length; i++) {
+          const e = expected[i] as Record<string, Object>;
+          const r = rows[i];
+          expect(`${name}#${i}=${r.content}`).assertEqual(`${name}#${i}=${e['content'] as string}`);
+          expect(`${name}#${i}t=${r.type}`).assertEqual(`${name}#${i}t=${e['type'] as string}`);
+          expect(`${name}#${i}s=${r.source}`).assertEqual(`${name}#${i}s=${e['source'] as string}`);
+        }
+      }
+    });
+
+    it('memory_constants_pinned', 0, () => {
+      // 协议 §2/§8 常量钉死（双端写死，禁"约"）
+      expect(Bm25.K1).assertEqual(1.2);
+      expect(Bm25.B).assertEqual(0.75);
+      expect(Bm25.RECENCY_WEIGHT).assertEqual(0.1);
+      expect(Summarizer.SUMMARY_TURN_THRESHOLD).assertEqual(12);
+      expect(Summarizer.SUMMARY_CHAR_THRESHOLD).assertEqual(16000);
+      expect(Summarizer.SUMMARY_MAX_CHARS).assertEqual(300);
+      expect(Migrator.TYPE_FACT).assertEqual('fact');
+      expect(Migrator.SOURCE_LEGACY_M2).assertEqual('legacy-m2');
+    });
+
+    it('memory_summarizer_window_zero_until_turn_returns_all', 0, () => {
+      // [S2] untilTurn=0 → 全量窗口
+      const rows = mkRows(3);
+      const w = Summarizer.windowRows(rows, 0);
+      expect(w.length).assertEqual(rows.length);
+      expect(w[0].content === rows[0].content && w[w.length - 1].content === rows[rows.length - 1].content).assertTrue();
+    });
+
+    it('memory_summarizer_window_cuts_after_boundary_assistant_row', 0, () => {
+      // [S2] 边界=turn_no≤untilTurn 的最后一条 assistant 行，窗口为其后全部行（含下一轮 user 行）
+      const rows = mkRows(5);
+      const w = Summarizer.windowRows(rows, 3);
+      expect(w.length).assertEqual(4);
+      expect(w[0].content).assertEqual('问4');
+      expect(w[w.length - 1].content).assertEqual('答5');
+    });
+
+    it('memory_summarizer_window_until_turn_beyond_max_returns_empty', 0, () => {
+      // [S2] 边界 turn_no 大于现有最大轮次 → 窗口为空（历史只剩摘要）
+      const rows = mkRows(3);
+      expect(Summarizer.windowRows(rows, 99).length).assertEqual(0);
+    });
+
+    it('memory_summarizer_trigger_turn_threshold', 0, () => {
+      // [S1] 阈值钉死：12 轮不触发、13 轮触发（assistant 行数口径）
+      expect(Summarizer.shouldTrigger(mkRows(12))).assertFalse();
+      expect(Summarizer.shouldTrigger(mkRows(13))).assertTrue();
+    });
+
+    it('memory_summarizer_trigger_char_threshold', 0, () => {
+      // [S1] 字符超阈值触发：短轮次但总量大（5*(2*(4+1+2000))=20050 > 16000）
+      const rows: Msg[] = [];
+      const big: string = 'x'.repeat(2000);
+      for (let i = 1; i <= 5; i++) {
+        const u = new Msg();
+        u.id = rows.length + 1; u.convId = 1; u.role = 'user'; u.content = big;
+        u.plain = ''; u.turnNo = 0; u.createdAt = i * 10;
+        rows.push(u);
+        const a = new Msg();
+        a.id = rows.length + 1; a.convId = 1; a.role = 'assistant'; a.content = big;
+        a.plain = big; a.turnNo = i; a.createdAt = i * 10 + 1;
+        rows.push(a);
+      }
+      expect(Summarizer.shouldTrigger(rows)).assertTrue();
+    });
+
+    it('memory_summarizer_span_oldest_half_round_up', 0, () => {
+      // [S3] 跨度切分：13 轮取 7 轮（向上取整），跨度含第 7 条 assistant 行及其前导 user 行
+      const window = mkRows(13);
+      const span: Span = Summarizer.spanToSummarize(window)!;
+      expect(span.rows.length).assertEqual(14);  // 7 轮 × (user+assistant)
+      expect(span.endTurnNo).assertEqual(7);
+      expect(span.rows[span.rows.length - 1].content).assertEqual('答7');
+    });
+
+    it('memory_summarizer_span_too_few_turns_returns_null', 0, () => {
+      // [S3] 不足 2 轮返回 null（防御）
+      expect(Summarizer.spanToSummarize(mkRows(1)) === null).assertTrue();
+    });
+
+    it('memory_summarizer_prompt_uses_plain_for_assistant', 0, () => {
+      // [S4] 提示词构造：user 原文、assistant 优先 plain（防大 HTML 撑爆摘要请求）
+      const u = new Msg();
+      u.id = 1; u.convId = 1; u.role = 'user'; u.content = '<p>问题</p>'; u.plain = ''; u.turnNo = 0; u.createdAt = 1;
+      const a = new Msg();
+      a.id = 2; a.convId = 1; a.role = 'assistant'; a.content = '<html>大页面</html>'; a.plain = '纯文本回答'; a.turnNo = 1; a.createdAt = 2;
+      const p = Summarizer.buildPrompt([u, a]);
+      expect(p.includes('用户：<p>问题</p>')).assertTrue();
+      expect(p.includes('助手：纯文本回答')).assertTrue();
+      expect(p.includes('<html>大页面</html>')).assertFalse();
+    });
+
+    it('memory_summarizer_join_summary', 0, () => {
+      // [S5] 摘要拼接：旧空直用、非空 \n 连接
+      expect(Summarizer.joinSummary('', '新摘要')).assertEqual('新摘要');
+      expect(Summarizer.joinSummary('旧', '新')).assertEqual('旧\n新');
     });
   });
 }
