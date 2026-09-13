@@ -48,6 +48,18 @@ export class ConfigStore {
     await p.flush();
   }
 
+  // 皮肤（clear|aurora）：与 themeMode 同一套「同步读/选中即写」纪律
+  static getSkinIdSync(ctx: common.UIAbilityContext): string {
+    const p: preferences.Preferences = preferences.getPreferencesSync(ctx, { name: 'appConfig' });
+    return p.getSync('skinId', 'clear') as string;
+  }
+
+  static async setSkinId(ctx: common.UIAbilityContext, skinId: string): Promise<void> {
+    const p = await preferences.getPreferences(ctx, 'appConfig');
+    await p.put('skinId', skinId);
+    await p.flush();
+  }
+
   static async getWallpaper(ctx: common.UIAbilityContext): Promise<string> {
     const p = await preferences.getPreferences(ctx, 'appConfig');
     return (await p.get('wallpaper', '')) as string;

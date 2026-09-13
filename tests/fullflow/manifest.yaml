@@ -19,7 +19,7 @@ target:
   app:
     bundle: com.zhuolin.yunkai
     entry: EntryAbility
-    device_emulator: "127.0.0.1:5555"
+    device_emulator: "127.0.0.1:5557"  # 端口随模拟器重启漂移（5555/5557），跑前 hdc list targets 取实际串号
     device_real: "2MH0224513029186"
     hap: entry/build/default/outputs/default/entry-default-signed.hap
     test_hap: entry/build/default/outputs/ohosTest/entry-ohosTest-signed.hap
@@ -59,14 +59,14 @@ flow:
       assert:
         - { status: 0 }
 
-    - id: device_online_check         # ⓿ 前置：模拟器在线（hdc 目标须含 127.0.0.1:5555）
+    - id: device_online_check         # ⓿ 前置：模拟器在线（hdc 目标须含 127.0.0.1:555x；端口随重启漂移，跑前核对）
       cli:
         cmd: ["D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe", list, targets]
         cwd: "../.."
         timeout_s: 120
       assert:
         - { status: 0 }
-        - { text_contains: "127.0.0.1:5555" }
+        - { text_contains: "127.0.0.1:555" }
 
     # java 需在 PATH（hap-sign-tool 是 jar；本机 Temurin 21 已在 PATH）
     - id: hvigor_clean_assemble       # ① clean 全量构建主包
@@ -105,7 +105,7 @@ flow:
       assert:
         - { status: 0 }
 
-    - id: aa_test_logic               # ⑤ 模拟器实跑单测（51 用例；加用例时同步改计数断言）
+    - id: aa_test_logic               # ⑤ 模拟器实跑单测（72 用例；加用例时同步改计数断言）
       cli:
         cmd: ["D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe", shell, aa, test, "-b", com.zhuolin.yunkai, "-m", entry_test,
               "-s", unittest, OpenHarmonyTestRunner, "-s", class, logicTest]
@@ -113,7 +113,7 @@ flow:
         timeout_s: 600
       assert:
         - { status: 0 }
-        - { text_contains: "Tests run: 51, Failure: 0, Error: 0" }
+        - { text_contains: "Tests run: 72, Failure: 0, Error: 0" }
 
     # ─────────── 门2：界面层（AI 驱动模拟器；动作映射 goto→启动/切页、click→tap、
     # fill→uitest uiInput inputText、expect_visible→dumpLayout 找节点、text_contains→屏上文本）───────────

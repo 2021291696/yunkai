@@ -2,6 +2,7 @@
 // 纯展示组件：点 chips 经 onAsk(question) 上抛，由 Chat 页填输入并触发发送
 // 背景由 Chat 页根 Stack 的 WallpaperLayer 负责，本组件自身透明
 import { ThemeTokens } from '../theme/ThemeTokens';
+import { SkinScheme, CLEAR_LIGHT } from '../theme/Schemes';
 
 // 引导页快捷问题
 class Chip {
@@ -11,6 +12,8 @@ class Chip {
 
 @Component
 export struct GuidePage {
+  @StorageProp('scheme') scheme: SkinScheme = CLEAR_LIGHT;
+  @StorageProp('skinId') skinId: string = 'clear';
   onAsk: (question: string) => void = (question: string): void => {};
   convCount: number = 0;
 
@@ -35,20 +38,20 @@ export struct GuidePage {
 
       Column({ space: 4 }) {
         Text(`${this.greeting()}，`)
-          .fontSize(30)
+          .fontSize(this.skinId === 'aurora' ? 36 : 30)
           .fontWeight(FontWeight.Lighter)
-          .fontColor($r('app.color.text_hi'))
+          .fontColor(this.scheme.textHi)
           .fontFamily('Sora, HarmonyOS Sans')
           .width('100%')
         Text('想聊点什么？')
-          .fontSize(30)
+          .fontSize(this.skinId === 'aurora' ? 36 : 30)
           .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.accent'))
+          .fontColor(this.scheme.accent)
           .fontFamily('Sora, HarmonyOS Sans')
           .width('100%')
         Text(this.subtitle())
           .fontSize(12)
-          .fontColor($r('app.color.text_mid'))
+          .fontColor(this.scheme.textMid)
           .width('100%')
           .margin({ top: 12 })
       }
@@ -60,10 +63,10 @@ export struct GuidePage {
         ForEach(Chip.QUESTIONS, (q: string) => {
           Text(q)
             .fontSize(12)
-            .fontColor($r('app.color.text_mid'))
-            .backgroundColor($r('app.color.glass_bg'))
+            .fontColor(this.scheme.textMid)
+            .backgroundColor(this.scheme.glassBg)
             .backdropBlur(20)
-            .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+            .border({ width: ThemeTokens.BORDER_W, color: this.scheme.glassBorder })
             .borderRadius(999)
             .padding({ left: 14, right: 14, top: 8, bottom: 8 })
             .margin({ right: 10, top: 6, bottom: 6 })

@@ -6,12 +6,14 @@ import { AgentSkill } from '../model/Types';
 import { SkillRepo } from '../store/SkillRepo';
 import { SkillImporter } from '../service/SkillImporter';
 import { ThemeTokens } from '../theme/ThemeTokens';
+import { SkinScheme, CLEAR_LIGHT } from '../theme/Schemes';
 import { WallpaperLayer } from '../common/WallpaperLayer';
 
 @Entry
 @Component
 struct SkillManage {
   @StorageProp('statusBarH') statusBarH: number = 0;
+  @StorageProp('scheme') scheme: SkinScheme = CLEAR_LIGHT;
   @State skills: AgentSkill[] = [];
   // 表单模式：none=纯列表；create=新建；import=粘贴导入（两种表单互斥）
   @State mode: string = 'none';
@@ -129,17 +131,17 @@ struct SkillManage {
             .width(34)
             .height(34)
             .fontSize(18)
-            .fontColor($r('app.color.text_hi'))
-            .backgroundColor($r('app.color.glass_bg'))
+            .fontColor(this.scheme.textHi)
+            .backgroundColor(this.scheme.glassBg)
             .backdropBlur(20)
             .borderRadius(17)
-            .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+            .border({ width: ThemeTokens.BORDER_W, color: this.scheme.glassBorder })
             .padding(0)
             .onClick(() => { router.back(); })
           Text('技能库')
             .fontSize(24)
             .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.text_hi'))
+            .fontColor(this.scheme.textHi)
             .fontFamily('Sora, HarmonyOS Sans')
           Blank()
         }
@@ -153,7 +155,7 @@ struct SkillManage {
             Column({ space: 10 }) {
               Text('还没有技能，点下方新建或粘贴导入')
                 .fontSize(15)
-                .fontColor($r('app.color.text_mid'))
+                .fontColor(this.scheme.textMid)
                 .textAlign(TextAlign.Center)
             }
             .width('100%')
@@ -168,16 +170,16 @@ struct SkillManage {
                       Text(skill.name)
                         .fontSize(16)
                         .fontWeight(FontWeight.Bold)
-                        .fontColor($r('app.color.text_hi'))
+                        .fontColor(this.scheme.textHi)
                         .maxLines(1)
                         .textOverflow({ overflow: TextOverflow.Ellipsis })
                         .layoutWeight(1)
                       if (skill.builtin) {
                         Text('内置')
                           .fontSize(11)
-                          .fontColor($r('app.color.accent'))
+                          .fontColor(this.scheme.accent)
                           .padding({ left: 8, right: 8, top: 3, bottom: 3 })
-                          .backgroundColor($r('app.color.glass_bg_strong'))
+                          .backgroundColor(this.scheme.glassBgStrong)
                           .borderRadius(9)
                       }
                     }
@@ -186,7 +188,7 @@ struct SkillManage {
 
                     Text(skill.description)
                       .fontSize(13)
-                      .fontColor($r('app.color.text_mid'))
+                      .fontColor(this.scheme.textMid)
                       .maxLines(2)
                       .textOverflow({ overflow: TextOverflow.Ellipsis })
                       .width('100%')
@@ -194,9 +196,9 @@ struct SkillManage {
                   .alignItems(HorizontalAlign.Start)
                   .padding(14)
                   .borderRadius(16)
-                  .backgroundColor($r('app.color.glass_bg'))
+                  .backgroundColor(this.scheme.glassBg)
                   .backdropBlur(ThemeTokens.BLUR_CARD)
-                  .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+                  .border({ width: ThemeTokens.BORDER_W, color: this.scheme.glassBorder })
                   .shadow({ radius: 16, color: '#33000000', offsetY: 6 })
                   .width('100%')
                   .gesture(LongPressGesture().onAction(() => { this.confirmDelete(skill); }))
@@ -214,32 +216,32 @@ struct SkillManage {
         // ===== 新建表单（与导入互斥）=====
         if (this.mode === 'create') {
           Column({ space: 10 }) {
-            Text('新建技能').fontSize(15).fontColor($r('app.color.text_mid')).width('100%')
-            Text('技能名').fontSize(13).fontColor($r('app.color.text_hi')).width('100%')
+            Text('新建技能').fontSize(15).fontColor(this.scheme.textMid).width('100%')
+            Text('技能名').fontSize(13).fontColor(this.scheme.textHi).width('100%')
             TextInput({ text: this.formName, placeholder: '英文或中文名，@名字 引用' })
               .type(InputType.Normal)
               .width('100%')
-              .backgroundColor($r('app.color.glass_bg_strong'))
-              .fontColor($r('app.color.text_hi'))
-              .placeholderColor($r('app.color.text_low'))
+              .backgroundColor(this.scheme.glassBgStrong)
+              .fontColor(this.scheme.textHi)
+              .placeholderColor(this.scheme.textLow)
               .borderRadius(12)
               .onChange((v: string) => { this.formName = v; })
-            Text('简介').fontSize(13).fontColor($r('app.color.text_hi')).width('100%')
+            Text('简介').fontSize(13).fontColor(this.scheme.textHi).width('100%')
             TextInput({ text: this.formDesc, placeholder: '一句话说明这个技能做什么' })
               .type(InputType.Normal)
               .width('100%')
-              .backgroundColor($r('app.color.glass_bg_strong'))
-              .fontColor($r('app.color.text_hi'))
-              .placeholderColor($r('app.color.text_low'))
+              .backgroundColor(this.scheme.glassBgStrong)
+              .fontColor(this.scheme.textHi)
+              .placeholderColor(this.scheme.textLow)
               .borderRadius(12)
               .onChange((v: string) => { this.formDesc = v; })
-            Text('内容').fontSize(13).fontColor($r('app.color.text_hi')).width('100%')
+            Text('内容').fontSize(13).fontColor(this.scheme.textHi).width('100%')
             TextArea({ text: this.formContent, placeholder: '技能正文（多行）' })
               .width('100%')
               .height(110)
-              .backgroundColor($r('app.color.glass_bg_strong'))
-              .fontColor($r('app.color.text_hi'))
-              .placeholderColor($r('app.color.text_low'))
+              .backgroundColor(this.scheme.glassBgStrong)
+              .fontColor(this.scheme.textHi)
+              .placeholderColor(this.scheme.textLow)
               .borderRadius(12)
               .onChange((v: string) => { this.formContent = v; })
             Row({ space: 10 }) {
@@ -247,15 +249,15 @@ struct SkillManage {
                 .layoutWeight(1)
                 .height(40)
                 .fontSize(15)
-                .fontColor($r('app.color.accent'))
-                .backgroundColor($r('app.color.glass_bg_strong'))
+                .fontColor(this.scheme.accent)
+                .backgroundColor(this.scheme.glassBgStrong)
                 .onClick(() => { this.closeForms(); })
               Button('保存', { type: ButtonType.Capsule })
                 .layoutWeight(1)
                 .height(40)
                 .fontSize(15)
                 .fontColor('#FFFFFF')
-                .backgroundColor($r('app.color.accent'))
+                .backgroundColor(this.scheme.accent)
                 .onClick(() => { this.saveNew(); })
             }
             .width('100%')
@@ -263,9 +265,9 @@ struct SkillManage {
           .alignItems(HorizontalAlign.Start)
           .padding(14)
           .borderRadius(18)
-          .backgroundColor($r('app.color.glass_bg'))
+          .backgroundColor(this.scheme.glassBg)
           .backdropBlur(ThemeTokens.BLUR_CARD)
-          .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+          .border({ width: ThemeTokens.BORDER_W, color: this.scheme.glassBorder })
           .shadow({ radius: 20, color: '#40000000', offsetY: 8 })
           .width('100%')
           .margin({ top: 12 })
@@ -274,13 +276,13 @@ struct SkillManage {
         // ===== 粘贴导入表单（与新建互斥）=====
         if (this.mode === 'import') {
           Column({ space: 10 }) {
-            Text('粘贴导入').fontSize(15).fontColor($r('app.color.text_mid')).width('100%')
+            Text('粘贴导入').fontSize(15).fontColor(this.scheme.textMid).width('100%')
             TextArea({ text: this.importText, placeholder: '粘贴 SKILL.md 全文（frontmatter 或 # 标题均可识别）' })
               .width('100%')
               .height(150)
-              .backgroundColor($r('app.color.glass_bg_strong'))
-              .fontColor($r('app.color.text_hi'))
-              .placeholderColor($r('app.color.text_low'))
+              .backgroundColor(this.scheme.glassBgStrong)
+              .fontColor(this.scheme.textHi)
+              .placeholderColor(this.scheme.textLow)
               .borderRadius(12)
               .onChange((v: string) => { this.importText = v; })
             Row({ space: 10 }) {
@@ -288,15 +290,15 @@ struct SkillManage {
                 .layoutWeight(1)
                 .height(40)
                 .fontSize(15)
-                .fontColor($r('app.color.accent'))
-                .backgroundColor($r('app.color.glass_bg_strong'))
+                .fontColor(this.scheme.accent)
+                .backgroundColor(this.scheme.glassBgStrong)
                 .onClick(() => { this.closeForms(); })
               Button('解析并导入', { type: ButtonType.Capsule })
                 .layoutWeight(1)
                 .height(40)
                 .fontSize(15)
                 .fontColor('#FFFFFF')
-                .backgroundColor($r('app.color.accent'))
+                .backgroundColor(this.scheme.accent)
                 .onClick(() => { this.doImport(); })
             }
             .width('100%')
@@ -304,9 +306,9 @@ struct SkillManage {
           .alignItems(HorizontalAlign.Start)
           .padding(14)
           .borderRadius(18)
-          .backgroundColor($r('app.color.glass_bg'))
+          .backgroundColor(this.scheme.glassBg)
           .backdropBlur(ThemeTokens.BLUR_CARD)
-          .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+          .border({ width: ThemeTokens.BORDER_W, color: this.scheme.glassBorder })
           .shadow({ radius: 20, color: '#40000000', offsetY: 8 })
           .width('100%')
           .margin({ top: 12 })
@@ -318,8 +320,8 @@ struct SkillManage {
             .layoutWeight(1)
             .height(46)
             .fontSize(16)
-            .fontColor(this.mode === 'create' ? $r('app.color.accent') : '#FFFFFF')
-            .backgroundColor(this.mode === 'create' ? $r('app.color.glass_bg_strong') : $r('app.color.accent'))
+            .fontColor(this.mode === 'create' ? this.scheme.accent : '#FFFFFF')
+            .backgroundColor(this.mode === 'create' ? this.scheme.glassBgStrong : this.scheme.accent)
             .onClick(() => {
               if (this.mode === 'create') { this.closeForms(); } else { this.openCreate(); }
             })
@@ -327,8 +329,8 @@ struct SkillManage {
             .layoutWeight(1)
             .height(46)
             .fontSize(16)
-            .fontColor(this.mode === 'import' ? $r('app.color.accent') : '#FFFFFF')
-            .backgroundColor(this.mode === 'import' ? $r('app.color.glass_bg_strong') : $r('app.color.accent'))
+            .fontColor(this.mode === 'import' ? this.scheme.accent : '#FFFFFF')
+            .backgroundColor(this.mode === 'import' ? this.scheme.glassBgStrong : this.scheme.accent)
             .onClick(() => {
               if (this.mode === 'import') { this.closeForms(); } else { this.openImport(); }
             })

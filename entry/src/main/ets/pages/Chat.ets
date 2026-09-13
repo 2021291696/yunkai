@@ -21,6 +21,7 @@ import { CanvasCard } from './CanvasCard';
 import { HistoryDrawer } from './HistoryDrawer';
 import { GuidePage } from './GuidePage';
 import { ThemeTokens } from '../theme/ThemeTokens';
+import { SkinScheme, CLEAR_LIGHT } from '../theme/Schemes';
 import { WallpaperLayer } from '../common/WallpaperLayer';
 import { MarkdownText } from '../common/MarkdownLite';
 import { MemoryStore } from '../memory/MemoryStore';
@@ -71,6 +72,7 @@ function timelineLabel(e: LoopEvent): string {
 struct Chat {
   @StorageProp('statusBarH') statusBarH: number = 0;
   @StorageProp('navBarH') navBarH: number = 0;
+  @StorageProp('scheme') scheme: SkinScheme = CLEAR_LIGHT;
   @State convId: number = 0;
   @State title: string = '';
   @State msgs: RenderMsg[] = [];
@@ -500,7 +502,7 @@ struct Chat {
     Row() {
       Text(label)
         .fontSize(15)
-        .fontColor($r('app.color.text_hi'))
+        .fontColor(this.scheme.textHi)
     }
     .width('100%')
     .height(54)
@@ -645,7 +647,7 @@ struct Chat {
           Text(this.title)
             .fontSize(15)
             .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.text_hi'))
+            .fontColor(this.scheme.textHi)
             .textAlign(TextAlign.Center)
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -669,7 +671,7 @@ struct Chat {
                     Row({ space: 8 }) {
                       Text('✦ 思考过程 · ' + m.steps + ' 步')
                         .fontSize(12)
-                        .fontColor($r('app.color.text_mid'))
+                        .fontColor(this.scheme.textMid)
                         .onClick((): void => {
                           this.expandedIds = this.expandedIds.includes(m.id)
                             ? this.expandedIds.filter((v: number): boolean => v !== m.id)
@@ -677,13 +679,13 @@ struct Chat {
                         })
                       Text(this.expandedIds.includes(m.id) ? '▾' : '▸')
                         .fontSize(11)
-                        .fontColor($r('app.color.text_low'))
+                        .fontColor(this.scheme.textLow)
                     }
                     .padding({ left: 4, bottom: 6 })
                     if (this.expandedIds.includes(m.id)) {
                       Text(m.thinking)
                         .fontSize(12)
-                        .fontColor($r('app.color.text_mid'))
+                        .fontColor(this.scheme.textMid)
                         .padding({ left: 4, bottom: 8 })
                     }
                   }
@@ -693,9 +695,13 @@ struct Chat {
                       Text(m.content)
                         .fontSize(14)
                         .lineHeight(23)
-                        .fontColor($r('app.color.text_hi'))
+                        .fontColor(this.scheme.textHi)
                         .fontFamily('Sora, HarmonyOS Sans')
-                        .backgroundColor($r('app.color.bubble_user'))
+                        // 皮肤气泡：clear=双色同值（实色半透明）；aurora=品牌渐变
+                        .linearGradient({
+                          angle: 180,
+                          colors: [[this.scheme.bubbleUserTop, 0], [this.scheme.bubbleUser, 1]]
+                        })
                         .backdropBlur(ThemeTokens.BLUR_CARD)
                         .borderRadius({
                           topLeft: ThemeTokens.R_BUBBLE,
@@ -736,16 +742,16 @@ struct Chat {
             if (this.canContinue && !this.loading) {
               ListItem() {
                 Row({ space: 8 }) {
-                  Text('▶').fontSize(13).fontColor($r('app.color.text_hi'))
+                  Text('▶').fontSize(13).fontColor(this.scheme.textHi)
                   Text('继续未完成任务')
                     .fontSize(13)
-                    .fontColor($r('app.color.text_hi'))
+                    .fontColor(this.scheme.textHi)
                 }
                 .width('100%')
                 .padding({ left: 14, right: 14, top: 10, bottom: 10 })
-                .backgroundColor($r('app.color.glass_bg'))
+                .backgroundColor(this.scheme.glassBg)
                 .borderRadius(ThemeTokens.R_TIGHT)
-                .border({ width: 1, color: $r('app.color.glass_border') })
+                .border({ width: 1, color: this.scheme.glassBorder })
                 .onClick((): void => { this.resumeTask(); })
               }
             }
@@ -755,18 +761,18 @@ struct Chat {
               ListItem() {
                 Column({ space: 8 }) {
                   Row({ space: 8 }) {
-                    LoadingProgress().width(18).height(18).color($r('app.color.accent'))
+                    LoadingProgress().width(18).height(18).color(this.scheme.accent)
                     Text(this.failed ? '已停止（过程保留）' : '思考中…')
                       .fontSize(13)
-                      .fontColor($r('app.color.text_mid'))
+                      .fontColor(this.scheme.textMid)
                       .layoutWeight(1)
                     Button('取消')
                       .fontSize(13)
                       .height(30)
-                      .fontColor($r('app.color.text_hi'))
-                      .backgroundColor($r('app.color.glass_bg'))
+                      .fontColor(this.scheme.textHi)
+                      .backgroundColor(this.scheme.glassBg)
                       .borderRadius(15)
-                      .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+                      .border({ width: ThemeTokens.BORDER_W, color: this.scheme.glassBorder })
                       .onClick(() => { this.cancelLoading(); })
                   }
                   .width('100%')
@@ -775,7 +781,7 @@ struct Chat {
                   ForEach(this.timeline, (e: LoopEvent, idx: number) => {
                     Text(timelineLabel(e))
                       .fontSize(13)
-                      .fontColor(e.kind === 'tool_done' ? '#4C7A28' : $r('app.color.text_mid'))
+                      .fontColor(e.kind === 'tool_done' ? '#4C7A28' : this.scheme.textMid)
                       .maxLines(1)
                       .textOverflow({ overflow: TextOverflow.Ellipsis })
                       .width('100%')
@@ -783,7 +789,7 @@ struct Chat {
                   if (this.thinking !== '') {
                     Text(this.thinking.length > 600 ? '…' + this.thinking.substring(this.thinking.length - 600) : this.thinking)
                       .fontSize(12)
-                      .fontColor($r('app.color.text_mid'))
+                      .fontColor(this.scheme.textMid)
                       .opacity(0.75)
                       .width('100%')
                   }
@@ -791,9 +797,9 @@ struct Chat {
                 .alignItems(HorizontalAlign.Start)
                 .padding(14)
                 .borderRadius(ThemeTokens.R_CARD)
-                .backgroundColor($r('app.color.glass_bg'))
+                .backgroundColor(this.scheme.glassBg)
                 .backdropBlur(ThemeTokens.BLUR_CARD)
-                .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+                .border({ width: ThemeTokens.BORDER_W, color: this.scheme.glassBorder })
                 .shadow({ radius: 28, color: '#66000000', offsetY: 8 })
                 .width('100%')
               }
@@ -861,8 +867,8 @@ struct Chat {
                   .width(52)
                   .height(52)
                   .borderRadius(10)
-                  .backgroundColor($r('app.color.glass_bg_strong'))
-                  .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+                  .backgroundColor(this.scheme.glassBgStrong)
+                  .border({ width: ThemeTokens.BORDER_W, color: this.scheme.glassBorder })
                   .onClick(() => { this.removePicked(it.uri); })
                 } else {
                   // 文件 chip：类型徽标 + 文件名（自解释），✕ 内联
@@ -870,28 +876,28 @@ struct Chat {
                     Text(it.name.substring(it.name.lastIndexOf('.') + 1).substring(0, 4).toUpperCase())
                       .fontSize(10)
                       .fontWeight(FontWeight.Bold)
-                      .fontColor($r('app.color.text_hi'))
+                      .fontColor(this.scheme.textHi)
                       .width(34)
                       .height(34)
                       .textAlign(TextAlign.Center)
                       .borderRadius(8)
-                      .backgroundColor($r('app.color.glass_bg'))
+                      .backgroundColor(this.scheme.glassBg)
                     Text(it.name)
                       .fontSize(12)
-                      .fontColor($r('app.color.text_hi'))
+                      .fontColor(this.scheme.textHi)
                       .maxLines(1)
                       .textOverflow({ overflow: TextOverflow.Ellipsis })
                       .constraintSize({ maxWidth: 110 })
                     Text('✕')
                       .fontSize(12)
-                      .fontColor($r('app.color.text_low'))
+                      .fontColor(this.scheme.textLow)
                   }
                   .height(52)
                   .padding({ left: 9, right: 9 })
                   .alignItems(VerticalAlign.Center)
                   .borderRadius(10)
-                  .backgroundColor($r('app.color.glass_bg_strong'))
-                  .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+                  .backgroundColor(this.scheme.glassBgStrong)
+                  .border({ width: ThemeTokens.BORDER_W, color: this.scheme.glassBorder })
                   .onClick(() => { this.removePicked(it.uri); })
                 }
               }, (it: PickedItem) => it.uri)
@@ -904,17 +910,17 @@ struct Chat {
             Row({ space: 8 }) {
               Text('已排队：' + this.queued)
                 .fontSize(12)
-                .fontColor($r('app.color.text_mid'))
+                .fontColor(this.scheme.textMid)
                 .maxLines(1)
                 .textOverflow({ overflow: TextOverflow.Ellipsis })
                 .layoutWeight(1)
               Text('立即')
                 .fontSize(13)
-                .fontColor($r('app.color.accent'))
+                .fontColor(this.scheme.accent)
                 .onClick(() => { this.sendQueuedNow(); })
               Text('✕')
                 .fontSize(13)
-                .fontColor($r('app.color.text_low'))
+                .fontColor(this.scheme.textLow)
                 .onClick(() => { this.input = this.queued; this.queued = ''; })
             }
             .width('100%')
@@ -927,13 +933,13 @@ struct Chat {
               // 附件入口：＋ 开/关面板
               Text('＋')
                 .fontSize(17)
-                .fontColor($r('app.color.text_hi'))
+                .fontColor(this.scheme.textHi)
                 .width(40)
                 .height(40)
                 .textAlign(TextAlign.Center)
                 .borderRadius(20)
-                .backgroundColor($r('app.color.glass_bg'))
-                .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+                .backgroundColor(this.scheme.glassBg)
+                .border({ width: ThemeTokens.BORDER_W, color: this.scheme.glassBorder })
                 .enabled(!this.loading)
                 .onClick(() => { this.showAttach = !this.showAttach; })
               TextInput({ text: this.input, placeholder: '问我任何问题…' })
@@ -941,8 +947,8 @@ struct Chat {
                 .layoutWeight(1)
                 .height(40)
                 .backgroundColor(Color.Transparent)
-                .fontColor($r('app.color.text_hi'))
-                .placeholderColor($r('app.color.text_low'))
+                .fontColor(this.scheme.textHi)
+                .placeholderColor(this.scheme.textLow)
                 .fontSize(14)
                 .padding({ left: 16, right: 8 })
                 .onChange((v: string) => { this.input = v; })
@@ -954,7 +960,7 @@ struct Chat {
                 .fontSize(18)
                 .fontWeight(FontWeight.Bold)
                 .fontColor('#FFFFFF')
-                .backgroundColor($r('app.color.accent'))
+                .backgroundColor(this.scheme.accent)
                 .borderRadius(20)
                 .padding(0)
                 .onClick(() => {
@@ -978,10 +984,10 @@ struct Chat {
             }
           }
           .width('100%')
-          .backgroundColor($r('app.color.glass_bg_strong'))
+          .backgroundColor(this.scheme.glassBgStrong)
           .backdropBlur(ThemeTokens.BLUR_DOCK)
           .borderRadius(this.showAttach ? 26 : 999)
-          .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+          .border({ width: ThemeTokens.BORDER_W, color: this.scheme.glassBorder })
           .shadow({ radius: 30, color: '#44000000', offsetY: 10 })
           .animation({ duration: 220, curve: Curve.FastOutSlowIn })
         }
@@ -1021,11 +1027,11 @@ struct Chat {
         .width(34)
         .height(34)
         .fontSize(15)
-        .fontColor($r('app.color.text_hi'))
-        .backgroundColor($r('app.color.glass_bg'))
+        .fontColor(this.scheme.textHi)
+        .backgroundColor(this.scheme.glassBg)
         .backdropBlur(20)
         .borderRadius(17)
-        .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+        .border({ width: ThemeTokens.BORDER_W, color: this.scheme.glassBorder })
         .padding(0)
         .position({ x: 0, y: this.statusBarH + 12 })
         .translate({ x: this.showHistory ? this.screenW * 0.86 - 34 : 0 })

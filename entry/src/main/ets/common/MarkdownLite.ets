@@ -4,6 +4,7 @@
 // 用法：MarkdownText({ text: m.content }) 套用气泡 modifier 链（背景/圆角/边框照旧挂在组件上）。
 
 // 行内片段：一段连续同风格文本
+import { SkinScheme, CLEAR_LIGHT } from '../theme/Schemes';
 export class MdSpan {
   text: string = '';
   bold: boolean = false;
@@ -93,6 +94,7 @@ export function mdInlineSpans(text: string): MdSpan[] {
 @Component
 export struct MarkdownText {
   @Prop text: string = '';
+  @StorageProp('scheme') scheme: SkinScheme = CLEAR_LIGHT;
 
   @Builder
   spansOf(body: string) {
@@ -118,7 +120,7 @@ export struct MarkdownText {
         .fontSize(16)
         .lineHeight(25)
         .fontWeight(FontWeight.Bold)
-        .fontColor($r('app.color.text_hi'))
+        .fontColor(this.scheme.textHi)
         .fontFamily('Sora, HarmonyOS Sans')
     } else if (ln.kind === 'li') {
       Text() {
@@ -127,7 +129,7 @@ export struct MarkdownText {
       }
         .fontSize(14)
         .lineHeight(23)
-        .fontColor($r('app.color.text_hi'))
+        .fontColor(this.scheme.textHi)
         .fontFamily('Sora, HarmonyOS Sans')
     } else if (ln.kind === 'blank') {
       Text(' ')
@@ -139,7 +141,7 @@ export struct MarkdownText {
       }
         .fontSize(14)
         .lineHeight(23)
-        .fontColor($r('app.color.text_hi'))
+        .fontColor(this.scheme.textHi)
         .fontFamily('Sora, HarmonyOS Sans')
     }
   }

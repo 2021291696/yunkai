@@ -5,6 +5,7 @@ import { promptAction } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { ThemeTokens } from '../theme/ThemeTokens';
+import { SkinScheme, CLEAR_LIGHT } from '../theme/Schemes';
 import { MemoryStore, CoreBlock, ArchivalRow } from '../memory/MemoryStore';
 import { MemoryTools } from '../memory/MemoryTools';
 import { AGENT_SYSTEM } from '../service/AgentLoop';
@@ -15,6 +16,7 @@ const DOMAIN = 0x0000;
 @Component
 struct MemoryManage {
   @StorageProp('statusBarH') statusBarH: number = 0;
+  @StorageProp('scheme') scheme: SkinScheme = CLEAR_LIGHT;
   @State persona: string = '';
   @State human: string = '';
   @State personaEditing: boolean = false;
@@ -99,11 +101,11 @@ struct MemoryManage {
       if (name === 'human') {
         Row({ space: 8 }) {
           Text('human · 用户档案')
-            .fontSize(14).fontColor($r('app.color.text_hi')).layoutWeight(1)
+            .fontSize(14).fontColor(this.scheme.textHi).layoutWeight(1)
           Text(`${this.human.length}/${MemoryTools.CORE_HUMAN_LIMIT}`)
-            .fontSize(11).fontColor($r('app.color.text_low'))
+            .fontSize(11).fontColor(this.scheme.textLow)
           Text(this.humanEditing ? '取消' : '编辑')
-            .fontSize(12).fontColor($r('app.color.accent'))
+            .fontSize(12).fontColor(this.scheme.accent)
             .onClick((): void => {
               this.editBlock = name;
               this.editBuf = this.human;
@@ -122,20 +124,20 @@ struct MemoryManage {
             .onClick((): void => { this.saveBlock(name); })
         } else {
           Text(this.human === '' ? '（空）' : this.human)
-            .fontSize(12).fontColor($r('app.color.text_mid'))
+            .fontSize(12).fontColor(this.scheme.textMid)
             .width('100%').maxLines(4).textOverflow({ overflow: TextOverflow.Ellipsis })
         }
       } else {
         Row({ space: 8 }) {
           Text('persona · 自我定义')
-            .fontSize(14).fontColor($r('app.color.text_hi')).layoutWeight(1)
+            .fontSize(14).fontColor(this.scheme.textHi).layoutWeight(1)
           Text(`${this.persona.length}/${MemoryTools.CORE_PERSONA_LIMIT}`)
-            .fontSize(11).fontColor($r('app.color.text_low'))
+            .fontSize(11).fontColor(this.scheme.textLow)
           Text('重置种子')
-            .fontSize(12).fontColor($r('app.color.accent'))
+            .fontSize(12).fontColor(this.scheme.accent)
             .onClick((): void => { this.resetPersona(); })
           Text(this.personaEditing ? '取消' : '编辑')
-            .fontSize(12).fontColor($r('app.color.accent'))
+            .fontSize(12).fontColor(this.scheme.accent)
             .onClick((): void => {
               this.editBlock = name;
               this.editBuf = this.persona;
@@ -154,7 +156,7 @@ struct MemoryManage {
             .onClick((): void => { this.saveBlock(name); })
         } else {
           Text(this.persona === '' ? '（空）' : this.persona)
-            .fontSize(12).fontColor($r('app.color.text_mid'))
+            .fontSize(12).fontColor(this.scheme.textMid)
             .width('100%').maxLines(4).textOverflow({ overflow: TextOverflow.Ellipsis })
         }
       }
@@ -162,8 +164,8 @@ struct MemoryManage {
     .alignItems(HorizontalAlign.Start)
     .padding(12)
     .borderRadius(ThemeTokens.R_CARD)
-    .backgroundColor($r('app.color.glass_bg'))
-    .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+    .backgroundColor(this.scheme.glassBg)
+    .border({ width: ThemeTokens.BORDER_W, color: this.scheme.glassBorder })
     .width('100%')
   }
 
@@ -172,10 +174,10 @@ struct MemoryManage {
       // 顶栏：返回 + 标题
       Row({ space: 12 }) {
         Text('‹')
-          .fontSize(18).fontColor($r('app.color.text_hi'))
+          .fontSize(18).fontColor(this.scheme.textHi)
           .padding({ left: 12, right: 12 })
           .onClick((): void => { router.back(); })
-        Text('记忆').fontSize(22).fontColor($r('app.color.text_hi'))
+        Text('记忆').fontSize(22).fontColor(this.scheme.textHi)
         Blank()
       }
       .width('100%')
@@ -185,20 +187,20 @@ struct MemoryManage {
         Column({ space: 14 }) {
           if (this.archivalCount > 10000) {
             Text(`归档已达 ${this.archivalCount} 条（软上限 10000，建议清理）`)
-              .fontSize(12).fontColor($r('app.color.accent')).width('100%')
+              .fontSize(12).fontColor(this.scheme.accent).width('100%')
           }
 
-          Text('核心记忆').fontSize(16).fontColor($r('app.color.text_mid')).width('100%')
+          Text('核心记忆').fontSize(16).fontColor(this.scheme.textMid).width('100%')
           this.blockCard('human')
           this.blockCard('persona')
 
           Row({ space: 8 }) {
-            Text('归档').fontSize(16).fontColor($r('app.color.text_mid')).layoutWeight(1)
+            Text('归档').fontSize(16).fontColor(this.scheme.textMid).layoutWeight(1)
             TextInput({ placeholder: '搜索归档', text: this.query })
               .onChange((v: string) => { this.query = v; this.reload(); })
               .fontSize(13).height(34).width(160)
             Text('清空')
-              .fontSize(13).fontColor($r('app.color.accent'))
+              .fontSize(13).fontColor(this.scheme.accent)
               .onClick((): void => {
                 promptAction.showDialog({
                   title: '清空归档',
@@ -214,27 +216,27 @@ struct MemoryManage {
 
           if (this.archival.length === 0) {
             Text(this.query === '' ? '暂无归档记忆' : `没有匹配「${this.query}」的归档`)
-              .fontSize(13).fontColor($r('app.color.text_low')).width('100%').margin({ top: 20 })
+              .fontSize(13).fontColor(this.scheme.textLow).width('100%').margin({ top: 20 })
           }
           List({ space: 8 }) {
             ForEach(this.archival, (r: ArchivalRow) => {
               ListItem() {
                 Column({ space: 4 }) {
                   Row({ space: 6 }) {
-                    Text(this.typeLabel(r.type)).fontSize(10).fontColor($r('app.color.accent'))
-                    Text(r.hitCount > 0 ? `命中 ${r.hitCount}` : '').fontSize(10).fontColor($r('app.color.text_low'))
+                    Text(this.typeLabel(r.type)).fontSize(10).fontColor(this.scheme.accent)
+                    Text(r.hitCount > 0 ? `命中 ${r.hitCount}` : '').fontSize(10).fontColor(this.scheme.textLow)
                     Blank()
-                    Text('删除').fontSize(11).fontColor($r('app.color.accent'))
+                    Text('删除').fontSize(11).fontColor(this.scheme.accent)
                       .onClick((): void => {
                         this.store_().then((s) => s.deleteArchival(r.id)).then(() => this.reload());
                       })
                   }.width('100%')
-                  Text(r.content).fontSize(12).fontColor($r('app.color.text_mid')).width('100%')
+                  Text(r.content).fontSize(12).fontColor(this.scheme.textMid).width('100%')
                 }
                 .alignItems(HorizontalAlign.Start)
                 .padding(10)
                 .borderRadius(ThemeTokens.R_CARD)
-                .backgroundColor($r('app.color.glass_bg'))
+                .backgroundColor(this.scheme.glassBg)
                 .width('100%')
               }
             }, (r: ArchivalRow) => `arc_${r.id}`)

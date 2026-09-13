@@ -5,7 +5,7 @@ import { fileIo as fs } from '@kit.CoreFileKit';
 import { util } from '@kit.ArkTS';
 import { SkillRepo } from '../store/SkillRepo';
 import { ConfigStore } from '../store/ConfigStore';
-import { applyThemeMode, configIsDark, THEME_SYSTEM } from '../common/ThemeMode';
+import { applySkinAndTheme, configIsDark, THEME_SYSTEM } from '../common/ThemeMode';
 import { Migrator, LegacyRow } from '../memory/Migrator';
 import { MemoryStore } from '../memory/MemoryStore';
 
@@ -62,12 +62,13 @@ export default class EntryAbility extends UIAbility {
       font.registerFont({ familyName: 'Sora', familySrc: $rawfile('fonts/Sora.ttf') });
     } catch (e) { /* 字体缺失不致命 */ }
 
-    // 主题档位（system/light/dark）：同步读持久化配置。不用 Environment.envProp ——
-    // 环境变量只反映系统明暗，会把手动档覆盖掉
+    // 主题档位（system/light/dark）+ 皮肤（clear|aurora）：同步读持久化配置。不用
+    // Environment.envProp —— 环境变量只反映系统明暗，会把手动档覆盖掉
     const themeMode: string = ConfigStore.getThemeModeSync(this.context);
+    const skinId: string = ConfigStore.getSkinIdSync(this.context);
     AppStorage.setOrCreate('themeMode', themeMode);
     // loadContent 之前先试一次：手动档想让首帧就是对的；此时窗口可能尚未就绪而被忽略（无害）
-    applyThemeMode(this.context, themeMode);
+    applySkinAndTheme(this.context, themeMode, skinId);
 
     // 沉浸式：内容延伸到状态栏/导航条之下
     windowStage.getMainWindowSync().setWindowLayoutFullScreen(true);
@@ -82,7 +83,7 @@ export default class EntryAbility extends UIAbility {
 
     // SDK 明示 setColorMode 的前置条件：窗口已创建且 UIAbility 页面已 loadContent ——
     // 故此处必须再应用一次。漏掉会退化成「$r 资源停在浅色档、AppStorage 已是 DARK」的半深色且零信号
-    applyThemeMode(this.context, themeMode);
+    applySkinAndTheme(this.context, themeMode, skinId);
 
     const win = windowStage.getMainWindowSync();
     const topPx = win.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM).topRect.height;
@@ -96,11 +97,14 @@ export default class EntryAbility extends UIAbility {
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onWindowStageDestroy');
   }
 
-  // 系统明暗切换：仅「跟随系统」档同步给按明暗分支的组件（手动档不受影响）
+  // 系统明暗切换：仅「跟随系统」档重算（手动档不受影响）——scheme 也要跟着重算，
+  // 否则明暗变了皮肤 token 还停在旧档
   onConfigurationUpdate(newConfig: Configuration): void {
     const mode: string | undefined = AppStorage.get<string>('themeMode');
     if (mode === undefined || mode === THEME_SYSTEM) {
-      AppStorage.setOrCreate('colorMode', configIsDark(newConfig.colorMode) ? ColorMode.DARK : ColorMode.LIGHT);
+      const skinId: string | undefined = AppStorage.get<string>('skinId');
+      applySkinAndTheme(this.context, THEME_SYSTEM, skinId === undefined ? 'clear' : skinId,
+        configIsDark(newConfig.colorMode));
     }
   }
 

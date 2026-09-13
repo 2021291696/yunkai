@@ -2,10 +2,12 @@
 // 纯展示组件：数据由 Chat 传入，动作经回调上抛（含 onClose），自身不持有路由/DB 逻辑
 import { Conv } from '../model/Types';
 import { ThemeTokens } from '../theme/ThemeTokens';
+import { SkinScheme, CLEAR_LIGHT } from '../theme/Schemes';
 
 @Component
 export struct HistoryDrawer {
   @StorageProp('statusBarH') statusBarH: number = 0;
+  @StorageProp('scheme') scheme: SkinScheme = CLEAR_LIGHT;
   convs: Conv[] = [];
   onClose: () => void = (): void => {};
   onNewConversation: () => void = (): void => {};
@@ -33,7 +35,7 @@ export struct HistoryDrawer {
         Text('会话')
           .fontSize(18)
           .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.text_hi'))
+          .fontColor(this.scheme.textHi)
           .fontFamily('Sora, HarmonyOS Sans')
           .layoutWeight(1)
         // ✕ 已删——拉头 ☰ 即开关
@@ -41,11 +43,11 @@ export struct HistoryDrawer {
           .width(34)
           .height(34)
           .fontSize(16)
-          .fontColor($r('app.color.accent'))
-          .backgroundColor($r('app.color.glass_bg'))
+          .fontColor(this.scheme.accent)
+          .backgroundColor(this.scheme.glassBg)
           .backdropBlur(20)
           .borderRadius(17)
-          .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+          .border({ width: ThemeTokens.BORDER_W, color: this.scheme.glassBorder })
           .padding(0)
           .onClick(() => { this.onOpenSettings(); })
       }
@@ -61,7 +63,7 @@ export struct HistoryDrawer {
           .fontSize(14)
           .height(34)
           .fontColor('#FFFFFF')
-          .backgroundColor($r('app.color.accent'))
+          .backgroundColor(this.scheme.accent)
           .borderRadius(999)
           .layoutWeight(1)
           .onClick(() => { this.onNewConversation(); })
@@ -70,7 +72,7 @@ export struct HistoryDrawer {
       .padding({ left: 16, right: 16, bottom: 10 })
 
       if (this.convs.length === 0) {
-        Text('暂无会话').fontSize(14).fontColor($r('app.color.text_low')).padding(16)
+        Text('暂无会话').fontSize(14).fontColor(this.scheme.textLow).padding(16)
       } else {
         List({ space: 8 }) {
           ForEach(this.convs, (c: Conv) => {
@@ -78,21 +80,21 @@ export struct HistoryDrawer {
               Column({ space: 4 }) {
                 Text(c.title)
                   .fontSize(15)
-                  .fontColor($r('app.color.text_hi'))
+                  .fontColor(this.scheme.textHi)
                   .maxLines(1)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
                   .width('100%')
                 Text(this.timeLabel(c.updatedAt))
                   .fontSize(12)
-                  .fontColor($r('app.color.text_low'))
+                  .fontColor(this.scheme.textLow)
                   .width('100%')
               }
               .alignItems(HorizontalAlign.Start)
               .padding(12)
               .borderRadius(16)
-              .backgroundColor($r('app.color.glass_bg'))
+              .backgroundColor(this.scheme.glassBg)
               .backdropBlur(ThemeTokens.BLUR_CARD)
-              .border({ width: ThemeTokens.BORDER_W, color: $r('app.color.glass_border') })
+              .border({ width: ThemeTokens.BORDER_W, color: this.scheme.glassBorder })
               .width('100%')
               .onClick(() => { this.onOpenConversation(c.id); })
               .gesture(
@@ -108,14 +110,14 @@ export struct HistoryDrawer {
       }
       }
       .width('100%')
-      .backgroundColor($r('app.color.glass_bg_strong'))
+      .backgroundColor(this.scheme.glassBgStrong)
       .alignItems(HorizontalAlign.Start)
     }
     .width('86%')
     .height('100%')
-    .backgroundColor($r('app.color.glass_bg_strong'))
+    .backgroundColor(this.scheme.glassBgStrong)
     .backdropBlur(ThemeTokens.BLUR_DOCK)
-    .border({ width: { right: ThemeTokens.BORDER_W }, color: $r('app.color.glass_border') })
+    .border({ width: { right: ThemeTokens.BORDER_W }, color: this.scheme.glassBorder })
     .shadow({ radius: 40, color: '#33000000', offsetX: 8, offsetY: 0 })
     .alignItems(HorizontalAlign.Start)
   }
