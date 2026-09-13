@@ -28,7 +28,7 @@
 ## 技术栈与目录
 Kotlin 2.0.21 + AGP 8.9.1（compileSdk 36 / minSdk 30 / targetSdk 36）+ Compose BOM 2024.12.01 + Room 2.6.1(KSP) + DataStore 1.1.1 + OkHttp 4.12.0 + kotlinx-serialization 1.7.3。入口 `app/src/main/java/com/zhuolin/yunkai/`：
 - `model/Types.kt`（全量类型，@SerialName 蛇形映射）/ `service/`（AgentLoop 引擎 + LlmClient + SearchClient + HtmlGuard/HtmlExtractor + SkillImporter + SearchRouter + tools/）/ `store/`（Room 三表 + 三 Repo + ConfigStore）/ `ui/`（NavRoot + chat/settings/skills/canvas/guide/theme）
-- 单测 `app/src/test/java/com/zhuolin/yunkai/`（7 个测试类，移植鸿蒙 Logic.test.ets 43 用例）
+- 单测 `app/src/test/java/com/zhuolin/yunkai/`（10 个测试类，158 用例：移植鸿蒙 Logic.test.ets + 忆枢 memory 包向量回放/契约/注入/摘要测试）
 
 ## 硬约束（违反即出坑）
 - **GPL 红线**：`_reference/OpenMinis*` 可读不可抄，任何文件不得复制进本仓；参考产出物只有 `docs/openminis-notes.md`（纯文字）
