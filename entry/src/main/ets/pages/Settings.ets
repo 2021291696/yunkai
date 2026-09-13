@@ -47,6 +47,9 @@ struct Settings {
   @State fetchingModels: boolean = false;
   @State wallpaperLabel: string = '默认';
   @State themeMode: string = THEME_SYSTEM;
+  // 忆枢 M5b：隐私挡位 + 任务步数（选中即写，独立于「保存」）
+  @State memoryGear: string = 'strict';
+  @State maxSteps: number = 25;
   @State versionName: string = '';
 
   private ctx(): common.UIAbilityContext {
@@ -62,6 +65,10 @@ struct Settings {
     this.themeMode = ConfigStore.getThemeModeSync(this.ctx());
     ConfigStore.getWallpaper(this.ctx())
       .then((p: string) => { this.wallpaperLabel = p === '' ? '默认' : '自定义'; });
+    ConfigStore.getMemoryGear(this.ctx())
+      .then((g: string) => { this.memoryGear = g; });
+    ConfigStore.getMaxSteps(this.ctx())
+      .then((n: number) => { this.maxSteps = n; });
   }
 
   // 主题档位切换：持久化 + 立即生效（setColorMode 换 $r 资源档，同时刷 AppStorage）
@@ -71,6 +78,17 @@ struct Settings {
       AppStorage.setOrCreate('themeMode', mode);
       applyThemeMode(this.ctx(), mode);
     });
+  }
+
+  // 忆枢：隐私挡位（未知值由 PrivacyGate 回退 strict）与任务步数——选中即写
+  private pickGear(gear: string): void {
+    this.memoryGear = gear;
+    ConfigStore.setMemoryGear(this.ctx(), gear);
+  }
+
+  private pickSteps(steps: number): void {
+    this.maxSteps = steps;
+    ConfigStore.setMaxSteps(this.ctx(), steps);
   }
 
   private async loadConfig(): Promise<void> {
@@ -199,6 +217,73 @@ struct Settings {
 
         // ===== 外观卡片：壁纸自定义（点更换 / 长按恢复默认） =====
         Column({ space: 10 }) {
+          Text('外观').fontSize(16).fontColor($r('app.color.text_mid')).width('100%')
+          // 忆枢 M5b：记忆隐私三挡（协议 §5，选中即写）+ 记忆管理入口 + 任务步数三档（§2）
+          Text('记忆隐私').fontSize(15).fontColor($r('app.color.text_hi'))
+          Row({ space: 8 }) {
+            Button('严格')
+              .fontSize(12).height(30).padding({ left: 12, right: 12 })
+              .fontColor(this.memoryGear === 'strict' ? $r('app.color.accent') : $r('app.color.text_hi'))
+              .backgroundColor(this.memoryGear === 'strict' ? $r('app.color.glass_bg_strong') : $r('app.color.glass_bg'))
+              .borderRadius(15)
+              .border({ width: ThemeTokens.BORDER_W, color: this.memoryGear === 'strict' ? $r('app.color.accent') : $r('app.color.glass_border') })
+              .onClick(() => { this.pickGear('strict'); })
+            Button('标准')
+              .fontSize(12).height(30).padding({ left: 12, right: 12 })
+              .fontColor(this.memoryGear === 'standard' ? $r('app.color.accent') : $r('app.color.text_hi'))
+              .backgroundColor(this.memoryGear === 'standard' ? $r('app.color.glass_bg_strong') : $r('app.color.glass_bg'))
+              .borderRadius(15)
+              .border({ width: ThemeTokens.BORDER_W, color: this.memoryGear === 'standard' ? $r('app.color.accent') : $r('app.color.glass_border') })
+              .onClick(() => { this.pickGear('standard'); })
+            Button('自由')
+              .fontSize(12).height(30).padding({ left: 12, right: 12 })
+              .fontColor(this.memoryGear === 'free' ? $r('app.color.accent') : $r('app.color.text_hi'))
+              .backgroundColor(this.memoryGear === 'free' ? $r('app.color.glass_bg_strong') : $r('app.color.glass_bg'))
+              .borderRadius(15)
+              .border({ width: ThemeTokens.BORDER_W, color: this.memoryGear === 'free' ? $r('app.color.accent') : $r('app.color.glass_border') })
+              .onClick(() => { this.pickGear('free'); })
+            Blank()
+            Text('拒证件·拒密码 / 拒证件 / 不拦').fontSize(10).fontColor($r('app.color.text_low'))
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+          Row({ space: 8 }) {
+            Text('任务步数').fontSize(15).fontColor($r('app.color.text_hi'))
+            Button('省流 10')
+              .fontSize(12).height(30).padding({ left: 12, right: 12 })
+              .fontColor(this.maxSteps === 10 ? $r('app.color.accent') : $r('app.color.text_hi'))
+              .backgroundColor(this.maxSteps === 10 ? $r('app.color.glass_bg_strong') : $r('app.color.glass_bg'))
+              .borderRadius(15)
+              .border({ width: ThemeTokens.BORDER_W, color: this.maxSteps === 10 ? $r('app.color.accent') : $r('app.color.glass_border') })
+              .onClick(() => { this.pickSteps(10); })
+            Button('标准 25')
+              .fontSize(12).height(30).padding({ left: 12, right: 12 })
+              .fontColor(this.maxSteps === 25 ? $r('app.color.accent') : $r('app.color.text_hi'))
+              .backgroundColor(this.maxSteps === 25 ? $r('app.color.glass_bg_strong') : $r('app.color.glass_bg'))
+              .borderRadius(15)
+              .border({ width: ThemeTokens.BORDER_W, color: this.maxSteps === 25 ? $r('app.color.accent') : $r('app.color.glass_border') })
+              .onClick(() => { this.pickSteps(25); })
+            Button('深度 50')
+              .fontSize(12).height(30).padding({ left: 12, right: 12 })
+              .fontColor(this.maxSteps === 50 ? $r('app.color.accent') : $r('app.color.text_hi'))
+              .backgroundColor(this.maxSteps === 50 ? $r('app.color.glass_bg_strong') : $r('app.color.glass_bg'))
+              .borderRadius(15)
+              .border({ width: ThemeTokens.BORDER_W, color: this.maxSteps === 50 ? $r('app.color.accent') : $r('app.color.glass_border') })
+              .onClick(() => { this.pickSteps(50); })
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+          Row({ space: 8 }) {
+            Text('记忆管理').fontSize(15).fontColor($r('app.color.text_hi'))
+            Blank()
+            Text('›')
+              .fontSize(18)
+              .fontColor($r('app.color.text_hi'))
+              .padding({ left: 16, right: 4 })
+              .onClick((): void => { router.pushUrl({ url: 'pages/MemoryManage' }); })
+          }
+          .width('100%')
+          .onClick((): void => { router.pushUrl({ url: 'pages/MemoryManage' }); })
           Text('外观').fontSize(16).fontColor($r('app.color.text_mid')).width('100%')
           // 主题档位：写入即生效（手动档调 setColorMode，跟随系统档吃系统明暗）
           Row({ space: 8 }) {

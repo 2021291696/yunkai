@@ -80,6 +80,8 @@ export class AppConfig {
                                       // 键不迁移不删除避免 schema 变动；不再被设置页读写
   searchProvider: string = 'bing';    // bing(免key爬取) | bocha | tavily
   searchApiKey: string = '';
+  memoryGear: string = 'strict';      // 忆枢隐私挡位（协议 §5：strict|standard|free，未知回退 strict）
+  maxSteps: number = 25;              // 忆枢任务步数三档（协议 §2：10/25/50，非法收敛 25）
 }
 
 // Agent 技能配方：skills 表一行（内置 eli5 与用户自建技能共用）

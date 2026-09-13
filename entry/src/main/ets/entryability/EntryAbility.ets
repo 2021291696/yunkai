@@ -1,9 +1,13 @@
 import { AbilityConstant, Configuration, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window, font } from '@kit.ArkUI';
+import { fileIo as fs } from '@kit.CoreFileKit';
+import { util } from '@kit.ArkTS';
 import { SkillRepo } from '../store/SkillRepo';
 import { ConfigStore } from '../store/ConfigStore';
 import { applyThemeMode, configIsDark, THEME_SYSTEM } from '../common/ThemeMode';
+import { Migrator, LegacyRow } from '../memory/Migrator';
+import { MemoryStore } from '../memory/MemoryStore';
 
 const DOMAIN = 0x0000;
 
@@ -14,6 +18,35 @@ export default class EntryAbility extends UIAbility {
     SkillRepo.seedIfEmpty(this.context).catch((err: Error) => {
       hilog.error(DOMAIN, 'testTag', 'seedIfEmpty failed: %{public}s', err.message);
     });
+    // 忆枢旧数据迁移（协议 §1.5，一次性）：filesDir/agent_memory.json 存在且无 .bak →
+    // KV 迁入 archival（source=legacy-m2）→ 原文件改名 .bak（损坏文件也改名，视为空库）。
+    // 幂等：.bak 已存在即跳过；失败不影响启动（下轮再试）
+    this.migrateLegacyMemory().catch((err: Error) => {
+      hilog.error(DOMAIN, 'testTag', 'migrate legacy memory failed: %{public}s', err.message);
+    });
+  }
+
+  private async migrateLegacyMemory(): Promise<void> {
+    const legacyPath = this.context.filesDir + '/agent_memory.json';
+    const bakPath = legacyPath + '.bak';
+    if (!fs.accessSync(legacyPath) || fs.accessSync(bakPath)) {
+      return;
+    }
+    const stat = fs.statSync(legacyPath);
+    const file = fs.openSync(legacyPath, fs.OpenMode.READ_ONLY);
+    let text = '';
+    try {
+      const buf = new ArrayBuffer(stat.size);
+      fs.readSync(file.fd, buf, { offset: 0, length: stat.size });
+      text = new util.TextDecoder('utf-8').decodeToString(new Uint8Array(buf));
+    } finally {
+      fs.closeSync(file);
+    }
+    const store = await MemoryStore.create(this.context);
+    const rows: LegacyRow[] = Migrator.migrate(text);
+    await store.migrationWrite(rows);
+    fs.renameSync(legacyPath, bakPath);
+    hilog.info(DOMAIN, 'testTag', 'legacy memory migrated');
   }
 
   onDestroy(): void {

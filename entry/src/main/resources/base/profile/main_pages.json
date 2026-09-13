@@ -4,6 +4,7 @@
     "pages/Settings",
     "pages/Chat",
     "pages/Canvas",
-    "pages/SkillManage"
+    "pages/SkillManage",
+    "pages/MemoryManage"
   ]
 }

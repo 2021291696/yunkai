@@ -15,6 +15,9 @@ export class ConfigStore {
     c.searchMode = (await p.get('searchMode', 'auto')) as string;
     c.searchProvider = (await p.get('searchProvider', 'bing')) as string;
     c.searchApiKey = (await p.get('searchApiKey', '')) as string;
+    // 忆枢：隐私挡位（strict|standard|free，未知回退 strict）+ 任务步数三档（10/25/50，非法收敛 25）
+    c.memoryGear = (await p.get('memoryGear', 'strict')) as string;
+    c.maxSteps = ConfigStore.sanitizeMaxSteps((await p.get('maxSteps', 25)) as number);
     return c;
   }
 
@@ -28,6 +31,8 @@ export class ConfigStore {
     await p.put('searchMode', cfg.searchMode);
     await p.put('searchProvider', cfg.searchProvider);
     await p.put('searchApiKey', cfg.searchApiKey);
+    await p.put('memoryGear', cfg.memoryGear);
+    await p.put('maxSteps', cfg.maxSteps);
     await p.flush();
   }
 
@@ -52,6 +57,33 @@ export class ConfigStore {
     const p = await preferences.getPreferences(ctx, 'appConfig');
     await p.put('wallpaper', path);
     await p.flush();
+  }
+
+  // 忆枢 M1c/M3：隐私挡位与任务步数——选中即写独立于「保存」（写入下一轮对话即生效）
+  static async getMemoryGear(ctx: common.UIAbilityContext): Promise<string> {
+    const p = await preferences.getPreferences(ctx, 'appConfig');
+    return (await p.get('memoryGear', 'strict')) as string;
+  }
+
+  static async setMemoryGear(ctx: common.UIAbilityContext, gear: string): Promise<void> {
+    const p = await preferences.getPreferences(ctx, 'appConfig');
+    await p.put('memoryGear', gear);
+    await p.flush();
+  }
+
+  static async getMaxSteps(ctx: common.UIAbilityContext): Promise<number> {
+    const p = await preferences.getPreferences(ctx, 'appConfig');
+    return ConfigStore.sanitizeMaxSteps((await p.get('maxSteps', 25)) as number);
+  }
+
+  static async setMaxSteps(ctx: common.UIAbilityContext, steps: number): Promise<void> {
+    const p = await preferences.getPreferences(ctx, 'appConfig');
+    await p.put('maxSteps', ConfigStore.sanitizeMaxSteps(steps));
+    await p.flush();
+  }
+
+  static sanitizeMaxSteps(v: number): number {
+    return (v === 10 || v === 25 || v === 50) ? v : 25;
   }
 }
 

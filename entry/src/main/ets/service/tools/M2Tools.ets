@@ -65,33 +65,19 @@ function writeTextFile(path: string, content: string): void {
   }
 }
 
-// 记忆库读取：{key: value} 平铺 JSON；文件不存在或损坏 → 空库重新开始
-function loadMemory(memPath: string): Record<string, Object> {
-  let all: Record<string, Object> = {};
-  try {
-    const parsed = JSON.parse(readTextFile(memPath)) as Record<string, Object>;
-    if (parsed !== null && typeof parsed === 'object') {
-      all = parsed;
-    }
-  } catch (e) {
-    // 空库
-  }
-  return all;
-}
+// 记忆库读取已随忆枢 M5b 摘除（旧 KV json 迁移见 EntryAbility + memory/Migrator.ets）
 
 export class M2Tools {
-  // 工厂：4 个 M2 工具；agent_files 沙箱根目录不存在则创建
+  // 工厂：文件两件（read_file/write_file）。忆枢后记忆五件迁至 memory/MemoryTools.ets，
+  // 旧 KV memory_save/memory_search 已摘除（协议 §3，被五工具取代，存量 JSON 由 EntryAbility 一次性迁移）
   static createAll(ctx: common.Context): AgentTool[] {
     const root = ctx.filesDir + '/agent_files';
     if (!fs.accessSync(root)) {
       fs.mkdirSync(root, true);
     }
-    const memPath = ctx.filesDir + '/agent_memory.json';
     const out: AgentTool[] = [];
     out.push(M2Tools.buildReadFile(root));
     out.push(M2Tools.buildWriteFile(root));
-    out.push(M2Tools.buildMemorySave(memPath));
-    out.push(M2Tools.buildMemorySearch(memPath));
     return out;
   }
 
@@ -148,59 +134,6 @@ export class M2Tools {
     return tool;
   }
 
-  // memory_save：{key, value} → upsert 后落盘
-  private static buildMemorySave(memPath: string): AgentTool {
-    const tool = new AgentTool();
-    tool.name = 'memory_save';
-    tool.description = '保存长期记忆（跨会话持久化，同名 key 覆盖旧值）。参数：key、value。';
-    tool.parametersJson = '{"type":"object","properties":{"key":{"type":"string"},"value":{"type":"string"}},"required":["key","value"]}';
-    tool.execute = async (argsJson: string): Promise<string> => {
-      try {
-        const key = m2Field(argsJson, 'key');
-        const value = m2FieldOrEmpty(argsJson, 'value');
-        if (key === '') {
-          return m2Err('缺少 key');
-        }
-        if (value === '') {
-          return m2Err('缺少 value');
-        }
-        const all = loadMemory(memPath);
-        all[key] = value;
-        writeTextFile(memPath, JSON.stringify(all));
-        return JSON.stringify({ saved: true, key: key });
-      } catch (e) {
-        return m2Err(`记忆保存失败: ${(e as Error).message}`);
-      }
-    };
-    return tool;
-  }
-
-  // memory_search：{keyword?} → key/value 模糊匹配（不区分大小写，空串列全部）
-  private static buildMemorySearch(memPath: string): AgentTool {
-    const tool = new AgentTool();
-    tool.name = 'memory_search';
-    tool.description = '搜索长期记忆。参数：keyword（按 key/value 模糊匹配，不区分大小写；空串或省略=列出全部）。';
-    tool.parametersJson = '{"type":"object","properties":{"keyword":{"type":"string"}},"required":[]}';
-    tool.execute = async (argsJson: string): Promise<string> => {
-      try {
-        const all = loadMemory(memPath);
-        const kw = m2FieldOrEmpty(argsJson, 'keyword');
-        const needle = kw.toLowerCase();
-        const lines: string[] = [];
-        let count = 0;
-        for (const k of Object.keys(all)) {
-          const v = all[k];
-          if (typeof v !== 'string') { continue; }
-          if (needle === '' || k.toLowerCase().includes(needle) || (v as string).toLowerCase().includes(needle)) {
-            count++;
-            lines.push(`- ${k}: ${v}`);
-          }
-        }
-        return `共 ${count} 条记忆\n${lines.join('\n')}`;
-      } catch (e) {
-        return m2Err(`记忆查询失败: ${(e as Error).message}`);
-      }
-    };
-    return tool;
-  }
+  // memory_save / memory_search 已随忆枢 M5b 摘除：新五工具见 memory/MemoryTools.ets，
+  // 旧 agent_memory.json 由 EntryAbility 启动时一次性迁入 archival（协议 §1.5）
 }

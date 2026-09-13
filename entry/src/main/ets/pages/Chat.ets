@@ -15,6 +15,7 @@ import { ConversationRepo } from '../store/ConversationRepo';
 import { MessageRepo } from '../store/MessageRepo';
 import { SkillRepo } from '../store/SkillRepo';
 import { AgentLoop, LoopEvent, LoopResult } from '../service/AgentLoop';
+import { LlmClient } from '../service/LlmClient';
 import { HtmlGuard, ReplyKind } from '../service/HtmlGuard';
 import { CanvasCard } from './CanvasCard';
 import { HistoryDrawer } from './HistoryDrawer';
@@ -22,6 +23,8 @@ import { GuidePage } from './GuidePage';
 import { ThemeTokens } from '../theme/ThemeTokens';
 import { WallpaperLayer } from '../common/WallpaperLayer';
 import { MarkdownText } from '../common/MarkdownLite';
+import { MemoryStore } from '../memory/MemoryStore';
+import { Summarizer, SummaryState } from '../memory/Summarizer';
 
 // 画布 HTML 的 AppStorage 暂存 key（Chat → Canvas 页传参用，避开 router params 大字符串）
 const CANVAS_HTML_KEY: string = 'canvasHtml';
@@ -87,11 +90,21 @@ struct Chat {
   @State genId: number = 0;
   @State picked: PickedItem[] = [];
   @State showAttach: boolean = false;
+  // 忆枢 M5b/M3：上一轮到顶后为真，UI 出「▶ 继续」；换会话按 task_state 恢复
+  @State canContinue: boolean = false;
+  private memStore: MemoryStore | null = null;
   private nextId: number = 1;
   private listScroller: Scroller = new Scroller();
 
   private ctx(): common.UIAbilityContext {
     return getContext(this) as common.UIAbilityContext;
+  }
+
+  private async mem(): Promise<MemoryStore> {
+    if (this.memStore === null) {
+      this.memStore = await MemoryStore.create(this.ctx());
+    }
+    return this.memStore;
   }
 
   aboutToAppear(): void {
@@ -124,6 +137,8 @@ struct Chat {
       }
     }
     this.turns = await MessageRepo.listByConv(this.ctx(), this.convId);
+    // M3：换会话时按 task_state 恢复「继续」可用态
+    this.canContinue = await (await this.mem()).getTaskState(this.convId) !== null;
     for (let i = 0; i < this.turns.length; i++) {
       const m: Msg = this.turns[i];
       const rm = new RenderMsg();
@@ -241,12 +256,20 @@ struct Chat {
         }
       }
 
-      // 历史 turns → ChatMsg[]（只含 user/assistant 文本内容；assistant 用 plain 防大 HTML 撑上下文）
+      // 历史 turns → ChatMsg[]：忆枢换出边界之前的前文以「[早期对话摘要]」system 消息前置
+      // （协议 §4.1），窗口=边界之后的行；assistant 用 plain 防大 HTML 撑上下文
       const history: ChatMsg[] = [];
       if (this.convId > 0) {
         const past: Msg[] = await MessageRepo.listByConv(this.ctx(), this.convId);
-        for (let i = 0; i < past.length; i++) {
-          const t: Msg = past[i];
+        const store = await this.mem();
+        const st: SummaryState = await store.summaryState(this.convId);
+        if (st.summary.trim() !== '') {
+          const sm: ChatMsg = { role: 'system', content: '[早期对话摘要]\n' + st.summary };
+          history.push(sm);
+        }
+        const window: Msg[] = Summarizer.windowRows(past, st.untilTurn);
+        for (let i = 0; i < window.length; i++) {
+          const t: Msg = window[i];
           if (t.role === 'user') {
             const h: ChatMsg = { role: 'user', content: t.content };
             history.push(h);
@@ -296,7 +319,8 @@ struct Chat {
         }
       }
       const r: LoopResult = await AgentLoop.run(cfg, this.ctx(), history, q, forcedSkill, onEvent,
-        undefined, (): boolean => { return gen !== this.genId; }, onDelta, parts, onThinking);
+        undefined, (): boolean => { return gen !== this.genId; }, onDelta, parts, onThinking,
+        cfg.maxSteps, await this.mem());
       if (gen !== this.genId) { return; }
 
       // 输出形态（全 app 唯一口径）：sanitize 通过且 sanitize 后内容仍以 <!DOCTYPE/<html 开头
@@ -334,6 +358,17 @@ struct Chat {
       this.scrollToBottom();
       await this.refreshTurns();
       await this.refreshConvs();
+      // M3 到顶处理：轨迹持久化供「继续」续跑；正常作答清掉旧轨迹
+      if (r.hitLimit && r.trace !== null) {
+        await (await this.mem()).saveTaskState(this.convId, JSON.stringify(r.trace), r.steps);
+        this.canContinue = true;
+      } else {
+        await (await this.mem()).deleteTaskState(this.convId);
+        this.canContinue = false;
+      }
+      // 忆枢 M2 会话摘要（协议 §4.4）：落库成功后检查窗口阈值，超限则摘要换出最旧一半轮次；
+      // 失败静默跳过（摘要属增益，绝不让已成功的回答报错）
+      await this.maybeSummarize(cfg);
     } catch (e) {
       if (gen === this.genId) {
         this.failed = true;
@@ -354,6 +389,107 @@ struct Chat {
           this.input = q;
           this.send();
         }
+      }
+    }
+  }
+
+  // ===== 忆枢 M2 会话摘要编排（协议 §4.4） =====
+  // 窗口超阈值 → 最旧一半轮次交给主模型压缩 ≤300 字，追加进 conversations.summary 并前移边界。
+  // 任何异常静默跳过（摘要属增益）；eli5 长文轮不走此处（send 成功路径固定调用一次）
+  private async maybeSummarize(cfg: AppConfig): Promise<void> {
+    try {
+      if (this.convId <= 0) { return; }
+      const store = await this.mem();
+      const st: SummaryState = await store.summaryState(this.convId);
+      const rows: Msg[] = await MessageRepo.listByConv(this.ctx(), this.convId);
+      const window: Msg[] = Summarizer.windowRows(rows, st.untilTurn);
+      if (!Summarizer.shouldTrigger(window)) { return; }
+      const span = Summarizer.spanToSummarize(window);
+      if (span === null) { return; }
+      const llm = new LlmClient(cfg);
+      const resp = await llm.chatMessage([{ role: 'user', content: Summarizer.buildPrompt(span.rows) }], null);
+      const text: string = resp.content.trim();
+      if (text === '') { return; }
+      await store.appendSummary(this.convId, text.substring(0, Summarizer.SUMMARY_MAX_CHARS), span.endTurnNo);
+    } catch (e) {
+      hilog.warn(0x0000, 'yunkai', 'summarize skipped: %{public}s', (e as Error).message);
+    }
+  }
+
+  // ===== 忆枢 M3 继续任务 =====
+  // 取到顶轨迹续跑（AgentLoop.seedMessages 内 system 就地重建、步数与软预算重置）；
+  // 完成后照常落库；再次到顶则更新轨迹（canContinue 保持），否则清掉 task_state
+  private async resumeTask(): Promise<void> {
+    if (this.loading || this.convId <= 0) { return; }
+    const gen: number = this.genId + 1;
+    this.genId = gen;
+    this.loading = true;
+    this.timeline = [];
+    this.thinking = '';
+    this.steps = 0;
+    this.canContinue = false;
+    this.scrollToBottom();
+    try {
+      const cfg: AppConfig = await ConfigStore.load(this.ctx());
+      if (cfg.baseUrl === '' || cfg.apiKey === '' || cfg.model === '') {
+        this.failed = true;
+        this.canContinue = true;
+        this.toast('请先在设置页配置 API 地址/密钥/模型');
+        return;
+      }
+      const store = await this.mem();
+      const traceJson: string | null = await store.getTaskState(this.convId);
+      if (traceJson === null) { return; }
+      const trace: ChatMsg[] = JSON.parse(traceJson) as ChatMsg[];
+      const r: LoopResult = await AgentLoop.run(cfg, this.ctx(), [], '', null,
+        (e: LoopEvent): void => {
+          if (gen !== this.genId) { return; }
+          this.timeline.push(e);
+          if (e.kind === 'tool_start') { this.steps += 1; }
+          this.scrollToBottom();
+        },
+        undefined, (): boolean => { return gen !== this.genId; }, undefined, undefined, undefined,
+        cfg.maxSteps, store, trace);
+      if (gen !== this.genId) { return; }
+      let content: string = r.answer;
+      let kind: string = ReplyKind.TEXT;
+      const safe: string | null = HtmlGuard.sanitize(content);
+      if (safe !== null && ReplyKind.detect(safe) === ReplyKind.HTML) {
+        content = safe;
+        kind = ReplyKind.HTML;
+      }
+      await MessageRepo.add(this.ctx(), this.convId, 'assistant', content, kind);
+      await ConversationRepo.touch(this.ctx(), this.convId);
+      if (r.hitLimit && r.trace !== null) {
+        await store.saveTaskState(this.convId, JSON.stringify(r.trace), r.steps);
+        this.canContinue = true;
+      } else {
+        await store.deleteTaskState(this.convId);
+        this.canContinue = false;
+      }
+      const am = new RenderMsg();
+      am.id = this.allocId();
+      am.role = 'assistant';
+      am.content = content;
+      am.kind = kind;
+      am.thinking = this.thinking;
+      am.steps = this.steps;
+      this.msgs.push(am);
+      this.scrollToBottom();
+      await this.refreshTurns();
+    } catch (e) {
+      if (gen === this.genId) {
+        this.failed = true;
+        const em: string = (e as Error).message;
+        if (em !== 'AGENT_LOOP_CANCELLED') {
+          hilog.error(0x0000, 'yunkai', 'resume failed: %{public}s', em);
+          this.toast('出错了：' + em);
+        }
+      }
+    } finally {
+      if (gen === this.genId) {
+        this.loading = false;
+        this.streamText = '';
       }
     }
   }
@@ -595,6 +731,24 @@ struct Chat {
                   .animation({ curve: ThemeTokens.EASE, duration: ThemeTokens.RISE_MS }))
               }
             }, (m: RenderMsg) => `msg_${m.id}`)
+
+            // M3 继续任务：上一轮到顶时出现（符号优先），点击以轨迹续跑
+            if (this.canContinue && !this.loading) {
+              ListItem() {
+                Row({ space: 8 }) {
+                  Text('▶').fontSize(13).fontColor($r('app.color.text_hi'))
+                  Text('继续未完成任务')
+                    .fontSize(13)
+                    .fontColor($r('app.color.text_hi'))
+                }
+                .width('100%')
+                .padding({ left: 14, right: 14, top: 10, bottom: 10 })
+                .backgroundColor($r('app.color.glass_bg'))
+                .borderRadius(ThemeTokens.R_TIGHT)
+                .border({ width: 1, color: $r('app.color.glass_border') })
+                .onClick((): void => { this.resumeTask(); })
+              }
+            }
 
             // 过程卡：loading 实时看；失败/取消保持展开（三态规则）
             if (this.loading || this.failed) {

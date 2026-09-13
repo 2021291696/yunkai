@@ -39,6 +39,34 @@ export class Db {
     } catch (err) {
       // 列已存在（升级重跑），忽略
     }
+    // 忆枢 schema v3（协议 §1）：core_blocks / archival / task_state 三表 + conversations 摘要两列
+    await s.executeSql(`CREATE TABLE IF NOT EXISTS core_blocks (
+      name TEXT NOT NULL PRIMARY KEY,
+      content TEXT NOT NULL DEFAULT '',
+      updated_at INTEGER NOT NULL)`);
+    await s.executeSql(`CREATE TABLE IF NOT EXISTS archival (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      content TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'fact',
+      source TEXT NOT NULL DEFAULT 'agent',
+      hit_count INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL)`);
+    await s.executeSql(`CREATE TABLE IF NOT EXISTS task_state (
+      conversation_id INTEGER NOT NULL PRIMARY KEY,
+      trace_json TEXT NOT NULL,
+      step_used INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL)`);
+    try {
+      await s.executeSql(`ALTER TABLE conversations ADD COLUMN summary TEXT`);
+    } catch (err) {
+      // 列已存在，忽略
+    }
+    try {
+      await s.executeSql(`ALTER TABLE conversations ADD COLUMN summarized_until_turn INTEGER NOT NULL DEFAULT 0`);
+    } catch (err) {
+      // 列已存在，忽略
+    }
     await Db.backfillKinds(s);
     Db.store = s;
     return s;

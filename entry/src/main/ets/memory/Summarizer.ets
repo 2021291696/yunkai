@@ -15,6 +15,12 @@ export interface Span {
   endTurnNo: number;
 }
 
+// 摘要状态（conversations.summary + summarized_until_turn，协议 §1.3）
+export class SummaryState {
+  summary: string = '';
+  untilTurn: number = 0;
+}
+
 export class Summarizer {
   static readonly SUMMARY_TURN_THRESHOLD: number = 12;
   static readonly SUMMARY_CHAR_THRESHOLD: number = 16000;
