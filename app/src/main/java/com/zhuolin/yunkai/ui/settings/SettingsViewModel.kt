@@ -22,6 +22,8 @@ class SettingsViewModel(private val app: YunkaiApp) : ViewModel() {
     // 忆枢隐私挡位（M1c）：wire 字符串 strict/standard/free；选中即写 ConfigStore（见 Screen），
     // 这里随 collect() 一并带上——防止「保存」按钮按默认 strict 悄悄覆盖已选挡位
     var memoryGear: MutableState<String> = mutableStateOf(ConfigStore.PRIVACY_GEAR_DEFAULT)
+    // 忆枢任务步数三档（M3）：同理随 collect() 带上，防「保存」按默认 25 覆盖已选档位
+    var maxSteps: MutableState<Int> = mutableStateOf(ConfigStore.MAX_STEPS_DEFAULT)
     var modelOptions: MutableState<List<String>> = mutableStateOf(emptyList())
     var fetchingModels: MutableState<Boolean> = mutableStateOf(false)
 
@@ -35,6 +37,7 @@ class SettingsViewModel(private val app: YunkaiApp) : ViewModel() {
             searchProvider.value = cfg.searchProvider
             searchApiKey.value = cfg.searchApiKey
             memoryGear.value = cfg.memoryGear
+            maxSteps.value = cfg.maxSteps
         }
     }
 
@@ -47,6 +50,7 @@ class SettingsViewModel(private val app: YunkaiApp) : ViewModel() {
         c.searchProvider = searchProvider.value
         c.searchApiKey = searchApiKey.value.trim()
         c.memoryGear = memoryGear.value
+        c.maxSteps = maxSteps.value
         return c
     }
 

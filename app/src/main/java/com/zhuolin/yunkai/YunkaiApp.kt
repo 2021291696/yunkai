@@ -50,7 +50,10 @@ class YunkaiApp : Application() {
                 val bak = File(filesDir, "agent_memory.json.bak")
                 if (legacy.exists() && !bak.exists()) {
                     val rows = Migrator.migrate(legacy.readText())
-                    memoryStore.migrationWrite(rows)
+                    // 幂等护栏（门0 审查项）：库里已有 legacy-m2 行 = 上次迁移部分成功，跳过写入防重复
+                    if (!memoryStore.hasLegacyRows()) {
+                        memoryStore.migrationWrite(rows)
+                    }
                     if (!legacy.renameTo(bak)) {
                         Log.e(TAG, "legacy memory rename failed: $legacy")
                     }

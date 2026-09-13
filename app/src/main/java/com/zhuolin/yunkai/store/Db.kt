@@ -205,6 +205,10 @@ interface ArchivalDao {
     @Query("SELECT COUNT(*) FROM archival")
     suspend fun count(): Int
 
+    // 忆枢迁移幂等护栏：已存在 legacy-m2 行则跳过重迁（门0 审查项）
+    @Query("SELECT COUNT(*) FROM archival WHERE source = 'legacy-m2'")
+    suspend fun countLegacy(): Int
+
     // hit_count 批量 +1（不动 updated_at：命中统计不是内容变更）
     @Query("UPDATE archival SET hit_count = hit_count + 1 WHERE id IN (:ids)")
     suspend fun incrementHits(ids: List<Long>)

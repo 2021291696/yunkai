@@ -55,6 +55,9 @@ interface MemoryStore {
     /** Migrator 产出的旧 KV 行批量写入 archival（content/type/source 已带）。 */
     suspend fun migrationWrite(rows: List<Migrator.LegacyRow>)
 
+    /** 幂等护栏：archival 已存在 legacy-m2 行 = 上次迁移部分成功，重试时跳过写入防重复。 */
+    suspend fun hasLegacyRows(): Boolean
+
     companion object {
         const val BLOCK_HUMAN = "human"
         const val BLOCK_PERSONA = "persona"

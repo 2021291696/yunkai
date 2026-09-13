@@ -63,13 +63,16 @@ class InMemoryMemoryStore : MemoryStore {
 
     override suspend fun conversationSearch(query: String, limit: Int): List<ConversationHit> {
         val terms = MemoryStore.searchTerms(query)
+        // 空查询与 Room 实现对齐：返回全库最近 limit 条（不带 content 过滤）
         return messages.asSequence()
             .filter { it.role == "user" || it.role == "assistant" }
-            .filter { hit -> terms.any { hit.content.contains(it, ignoreCase = true) } }
+            .filter { hit -> terms.isEmpty() || terms.any { hit.content.contains(it, ignoreCase = true) } }
             .sortedByDescending { it.createdAt }
             .take(limit)
             .toList()
     }
+
+    override suspend fun hasLegacyRows(): Boolean = archivalRows.any { it.source == "legacy-m2" }
 
     override suspend fun migrationWrite(rows: List<Migrator.LegacyRow>) {
         rows.forEach { insertArchival(it.content, it.type, it.source) }

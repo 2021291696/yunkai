@@ -31,13 +31,15 @@ class MainActivity : ComponentActivity() {
                 ConfigStore.THEME_LIGHT -> false
                 else -> isSystemInDarkTheme()
             }
+            // 皮肤：clear 通透（默认）/ aurora 极光——设置页写入即生效
+            val skin by store.skinFlow.collectAsState(initial = ConfigStore.SKIN_CLEAR)
             // 系统栏图标明暗随主题翻转（手动档时系统不知道，必须显式设，否则暗色下看不清时间/电量）
             LaunchedEffect(dark) {
                 val bar = if (dark) SystemBarStyle.dark(Color.TRANSPARENT)
                 else SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
                 this@MainActivity.enableEdgeToEdge(statusBarStyle = bar, navigationBarStyle = bar)
             }
-            YunkaiTheme(darkTheme = dark) {
+            YunkaiTheme(darkTheme = dark, skin = skin) {
                 Box(Modifier.fillMaxSize()) {
                     WallpaperLayer() // 全局壁纸垫底层（不吃点击由下层页面自己消费）
                     NavRoot()

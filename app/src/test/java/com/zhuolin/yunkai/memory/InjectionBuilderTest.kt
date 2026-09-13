@@ -51,14 +51,16 @@ class InjectionBuilderTest {
     }
 
     @Test
-    fun `两块有值时按 persona human 说明块顺序拼接`() {
-        assertEquals("P内容\n\nH内容\n\n$guideExpected", MemoryInjection.coreSection("P内容", "H内容"))
+    fun `两块有值时按 human 说明块顺序拼接（persona 由 baseSystem 注入不重复）`() {
+        // 门0 审查修正：coreSection 不含 persona（AgentLoop 的 baseSystem 已注入一次）
+        assertEquals("H内容\n\n$guideExpected", MemoryInjection.coreSection("P内容", "H内容"))
     }
 
     @Test
     fun `单块为空时只拼非空块与说明块`() {
         assertEquals("H内容\n\n$guideExpected", MemoryInjection.coreSection("", "H内容"))
-        assertEquals("P内容\n\n$guideExpected", MemoryInjection.coreSection("P内容", "  "))
+        // persona 空而 human 非空：human + 说明块（baseSystem 由调用方回退 AGENT_SYSTEM）
+        assertEquals("H内容\n\n$guideExpected", MemoryInjection.coreSection("", "H内容"))
     }
 
     @Test

@@ -31,9 +31,10 @@ val ErrorRed = Color(0xFFFF453A)
 @Composable
 fun YunkaiTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    skin: String = com.zhuolin.yunkai.store.ConfigStore.SKIN_CLEAR,
     content: @Composable () -> Unit,
 ) {
-    val glass = if (darkTheme) DarkGlass else LightGlass
+    val glass = schemeFor(skin, darkTheme)
     val colors = remember(darkTheme) {
         val base = if (darkTheme) darkColorScheme() else lightColorScheme()
         base.copy(

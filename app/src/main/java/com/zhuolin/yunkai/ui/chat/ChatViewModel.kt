@@ -257,9 +257,13 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
                 }
                 msgs.add(RenderMsg(nextId++, "assistant", content, kind, thinking = thinking.value, steps = steps.value))
                 loadTurns()
+                // 忆枢 M2：resume 续跑同样走摘要检查（长收尾回答恰易触发阈值）
+                maybeSummarize(cfg)
             } catch (e: Exception) {
                 if (gen == genId) {
                     failed.value = true
+                    // 失败不清 task_state：恢复「继续」可用态，用户可重试（轨迹仍在）
+                    canContinue.value = app.taskStateDao.get(convId) != null
                     Log.e("yunkai", "resume failed: ${e.message}")
                     toast(context, "出错了：${e.message}")
                 }
@@ -298,6 +302,11 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
                 }
             }
             app.messageRepo.deleteFromPosition(convId, fromId)
+            // 忆枢 M3：编辑使到顶轨迹失效（轨迹引用的轮次被改写），同步清 task_state
+            if (app.taskStateDao.get(convId) != null) {
+                app.taskStateDao.delete(convId)
+                canContinue.value = false
+            }
             for (k in turns.size - 1 downTo index) turns.removeAt(k)
             for (k in msgs.size - 1 downTo index) msgs.removeAt(k)
             input.value = text

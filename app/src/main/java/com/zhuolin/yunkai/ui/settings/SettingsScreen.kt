@@ -83,6 +83,14 @@ fun SettingsScreen(onOpenSkills: () -> Unit = {}, onOpenMemory: () -> Unit = {},
     }
     LaunchedEffect(Unit) { themeMode = app.configStore.getThemeMode() }
 
+    // 皮肤：clear 通透（默认）/ aurora 极光。写入即生效（MainActivity 订阅 ConfigStore.skinFlow 换 scheme）
+    var skin by remember { mutableStateOf(ConfigStore.SKIN_CLEAR) }
+    val pickSkin: (String) -> Unit = { s ->
+        skin = s
+        scope.launch(Dispatchers.IO) { app.configStore.setSkin(s) }
+    }
+    LaunchedEffect(Unit) { skin = app.configStore.getSkin() }
+
     // M3 任务步数三档：写入即生效（下一轮 send 走 cfg.maxSteps），不随「保存」
     var maxSteps by remember { mutableStateOf(ConfigStore.MAX_STEPS_DEFAULT) }
     val pickSteps: (Int) -> Unit = { v ->
@@ -133,14 +141,22 @@ fun SettingsScreen(onOpenSkills: () -> Unit = {}, onOpenMemory: () -> Unit = {},
             Text("设置", fontSize = 26.sp, color = MaterialTheme.colorScheme.onBackground)
         }
 
-        // ===== 外观卡片：主题模式 =====
+        // ===== 外观卡片：设计（皮肤）+ 主题模式 =====
         GlassCard {
             Text("外观", fontSize = 16.sp, color = TextMuted)
+            FieldLabel("设计")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ThemeOption(ConfigStore.SKIN_CLEAR, "通透", skin, pickSkin)
+                ThemeOption(ConfigStore.SKIN_AURORA, "极光", skin, pickSkin)
+            }
             FieldLabel("主题")
             Row(verticalAlignment = Alignment.CenterVertically) {
                 ThemeOption("system", "跟随系统", themeMode, pickTheme)
                 ThemeOption("light", "浅色", themeMode, pickTheme)
                 ThemeOption("dark", "深色", themeMode, pickTheme)
+            }
+            if (skin == ConfigStore.SKIN_AURORA) {
+                Text("极光皮肤自带背景光，壁纸仅在「通透」皮肤显示", fontSize = 10.sp, color = TextFaint)
             }
         }
 

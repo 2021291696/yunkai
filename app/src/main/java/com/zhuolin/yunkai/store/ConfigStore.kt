@@ -59,6 +59,16 @@ class ConfigStore(private val ctx: Context) {
         ctx.dataStore.edit { p -> p[K_THEME_MODE] = mode }
     }
 
+    // 皮肤（clear 通透 | aurora 极光）：与 themeMode 同理选中即写，
+    // MainActivity 订阅本 Flow 重选 scheme 实例（ui/theme/Glass.kt schemeFor）
+    val skinFlow: Flow<String> = ctx.dataStore.data.map { it[K_SKIN] ?: SKIN_CLEAR }
+
+    suspend fun getSkin(): String = ctx.dataStore.data.first()[K_SKIN] ?: SKIN_CLEAR
+
+    suspend fun setSkin(skin: String) {
+        ctx.dataStore.edit { p -> p[K_SKIN] = skin }
+    }
+
     // 自定义壁纸（file 绝对路径），空串 = 默认壁纸。独立于 AppConfig，与鸿蒙版 ConfigStore.getWallpaper 同语义。
     val wallpaperFlow: Flow<String> = ctx.dataStore.data.map { it[K_WALLPAPER] ?: "" }
 
@@ -93,6 +103,10 @@ class ConfigStore(private val ctx: Context) {
         const val THEME_LIGHT = "light"
         const val THEME_DARK = "dark"
 
+        /** 皮肤：clear=通透（现役玻璃壁纸）| aurora=极光（辉光替代壁纸） */
+        const val SKIN_CLEAR = "clear"
+        const val SKIN_AURORA = "aurora"
+
         /** 忆枢隐私挡位默认值（协议 §2 PRIVACY_GEAR_DEFAULT）。 */
         const val PRIVACY_GEAR_DEFAULT = "strict"
 
@@ -113,6 +127,7 @@ class ConfigStore(private val ctx: Context) {
         private val K_SEARCH_KEY = stringPreferencesKey("searchApiKey")
         private val K_WALLPAPER = stringPreferencesKey("wallpaper")
         private val K_THEME_MODE = stringPreferencesKey("themeMode")
+        private val K_SKIN = stringPreferencesKey("skinId")
         private val K_MEMORY_GEAR = stringPreferencesKey("memoryGear")
         private val K_MAX_STEPS = intPreferencesKey("maxSteps")
     }

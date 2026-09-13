@@ -2,9 +2,10 @@ package com.zhuolin.yunkai.memory
 
 /**
  * 每轮 system 注入拼装（忆枢协议 §4.1/§4.2）：
- * system = persona 块 + "\n\n" + human 块 + "\n\n" + 记忆说明块（下文案逐字双端同步）+ skillBlock。
- * 两块皆空（含纯空白）时整段省略返回 null——避免裸记忆说明标题（§4.1「避免裸标题」）；
- * 单块为空时只拼非空块与说明块。skillBlock 的拼接与省略由 AgentLoop 现状逻辑负责，不在本函数内。
+ * system = baseSystem(=persona 块，persona 空回退 AGENT_SYSTEM 前缀) + 本函数记忆段 + skillBlock。
+ * 记忆段 = human 块（非空时）+ "\n\n" + 记忆说明块（下文案逐字双端同步）。
+ * persona 由调用方作 baseSystem 注入一次——本函数【不含 persona】，否则重复注入烧双倍 token
+ * （门0 审查实锤的双端共同缺陷）。两块皆空（含纯空白）时整段省略返回 null。
  */
 object MemoryInjection {
     const val GUIDE: String =
@@ -15,9 +16,9 @@ object MemoryInjection {
         "需要旧信息时用 archival_memory_search 检索；用户提及过往对话时用 conversation_search。\n" +
         "只记对用户有用的信息，存取要克制。"
 
-    /** 拼装记忆段（不含前导分隔符；null=两块皆空，整段省略）。 */
+    /** 拼装记忆段（不含 persona；不含前导分隔符；null=两块皆空，整段省略）。 */
     fun coreSection(persona: String, human: String): String? {
         if (persona.isBlank() && human.isBlank()) return null
-        return listOf(persona, human, GUIDE).filter { it.isNotBlank() }.joinToString("\n\n")
+        return listOf(human, GUIDE).filter { it.isNotBlank() }.joinToString("\n\n")
     }
 }

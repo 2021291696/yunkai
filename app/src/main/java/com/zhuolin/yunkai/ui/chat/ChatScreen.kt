@@ -17,6 +17,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.background
@@ -515,10 +516,14 @@ private fun MessageItem(m: RenderMsg, onOpenCanvas: () -> Unit, onEdit: () -> Un
                             topStart = GlassTokens.R_BUBBLE.dp, topEnd = GlassTokens.R_BUBBLE.dp,
                             bottomEnd = GlassTokens.R_TIGHT.dp, bottomStart = GlassTokens.R_BUBBLE.dp,
                         ), clip = false, ambientColor = BubbleShadow, spotColor = BubbleShadow)
-                        .background(glass.bubbleUser, RoundedCornerShape(
-                            topStart = GlassTokens.R_BUBBLE.dp, topEnd = GlassTokens.R_BUBBLE.dp,
-                            bottomEnd = GlassTokens.R_TIGHT.dp, bottomStart = GlassTokens.R_BUBBLE.dp,
-                        ))
+                        // 皮肤气泡：clear=双色同值（实色半透明）；aurora=品牌渐变
+                        .background(
+                            Brush.verticalGradient(listOf(glass.bubbleUserTop, glass.bubbleUser)),
+                            RoundedCornerShape(
+                                topStart = GlassTokens.R_BUBBLE.dp, topEnd = GlassTokens.R_BUBBLE.dp,
+                                bottomEnd = GlassTokens.R_TIGHT.dp, bottomStart = GlassTokens.R_BUBBLE.dp,
+                            ),
+                        )
                         .clickable { onEdit() }
                         .padding(horizontal = 17.dp, vertical = 13.dp),
                 )

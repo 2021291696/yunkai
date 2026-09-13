@@ -81,6 +81,8 @@ class RoomMemoryStore(private val db: YunkaiDb) : MemoryStore {
         rows.forEach { insertArchival(it.content, it.type, it.source) }
     }
 
+    override suspend fun hasLegacyRows(): Boolean = db.archivalDao().countLegacy() > 0
+
     private fun ArchivalEntity.toRow() = ArchivalRow(
         id = id, content = content, type = type, source = source,
         hitCount = hit_count, createdAt = created_at, updatedAt = updated_at,
