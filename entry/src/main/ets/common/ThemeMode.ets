@@ -41,13 +41,19 @@ export function applyThemeMode(ctx: common.UIAbilityContext, mode: string): void
   AppStorage.setOrCreate('colorMode', effectiveDark(ctx, mode) ? ColorMode.DARK : ColorMode.LIGHT);
 }
 
+// 只重算皮肤 token（绝不触碰 setColorMode）——系统明暗回调里用。
+// 回调内若再调 setColorMode 会同步触发下一轮 onConfigurationUpdate → 无限递归栈溢出（真机亲历）
+export function applySkinTokens(skinId: string, isDark: boolean): void {
+  AppStorage.setOrCreate('skinId', skinId);
+  AppStorage.setOrCreate('scheme', schemeFor(skinId, isDark));
+}
+
 // 应用皮肤+主题（唯一入口）：在 applyThemeMode 之上重算生效皮肤的完整 token 并整体写入
 // AppStorage 'scheme'（页面 @StorageProp('scheme') 订阅即换装）。skinId 同步落 AppStorage 供
 // 按 skinId 分支的组件（壁纸层、问候区）读取。必须单点调用——散落重算会复刻「半深色」退化。
 // sysDark：跟随系统档在 onConfigurationUpdate 里拿到的系统明暗（ctx.config 此时可能未刷新）
 export function applySkinAndTheme(ctx: common.UIAbilityContext, mode: string, skinId: string, sysDark?: boolean): void {
   applyThemeMode(ctx, mode);
-  AppStorage.setOrCreate('skinId', skinId);
   const dark: boolean = sysDark === undefined ? effectiveDark(ctx, mode) : sysDark;
-  AppStorage.setOrCreate('scheme', schemeFor(skinId, dark));
+  applySkinTokens(skinId, dark);
 }

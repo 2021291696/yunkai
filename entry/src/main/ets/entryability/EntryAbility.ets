@@ -5,7 +5,7 @@ import { fileIo as fs } from '@kit.CoreFileKit';
 import { util } from '@kit.ArkTS';
 import { SkillRepo } from '../store/SkillRepo';
 import { ConfigStore } from '../store/ConfigStore';
-import { applySkinAndTheme, configIsDark, THEME_SYSTEM } from '../common/ThemeMode';
+import { applySkinAndTheme, applySkinTokens, configIsDark, THEME_SYSTEM } from '../common/ThemeMode';
 import { Migrator, LegacyRow } from '../memory/Migrator';
 import { MemoryStore } from '../memory/MemoryStore';
 
@@ -97,14 +97,15 @@ export default class EntryAbility extends UIAbility {
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onWindowStageDestroy');
   }
 
-  // 系统明暗切换：仅「跟随系统」档重算（手动档不受影响）——scheme 也要跟着重算，
-  // 否则明暗变了皮肤 token 还停在旧档
+  // 系统明暗切换：仅「跟随系统」档重算（手动档不受影响）。这里绝不能再调 setColorMode——
+  // 回调本身就是 setColorMode 触发的，再调即无限递归栈溢出（jscrash RangeError 亲历）
   onConfigurationUpdate(newConfig: Configuration): void {
     const mode: string | undefined = AppStorage.get<string>('themeMode');
     if (mode === undefined || mode === THEME_SYSTEM) {
       const skinId: string | undefined = AppStorage.get<string>('skinId');
-      applySkinAndTheme(this.context, THEME_SYSTEM, skinId === undefined ? 'clear' : skinId,
-        configIsDark(newConfig.colorMode));
+      const dark: boolean = configIsDark(newConfig.colorMode);
+      AppStorage.setOrCreate('colorMode', dark ? ColorMode.DARK : ColorMode.LIGHT);
+      applySkinTokens(skinId === undefined ? 'clear' : skinId, dark);
     }
   }
 

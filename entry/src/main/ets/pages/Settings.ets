@@ -229,7 +229,7 @@ struct Settings {
 
         // ===== 外观卡片：壁纸自定义（点更换 / 长按恢复默认） =====
         Column({ space: 10 }) {
-          Text('外观').fontSize(16).fontColor(this.scheme.textMid).width('100%')
+          Text('忆枢记忆').fontSize(16).fontColor(this.scheme.textMid).width('100%')
           // 忆枢 M5b：记忆隐私三挡（协议 §5，选中即写）+ 记忆管理入口 + 任务步数三档（§2）
           Text('记忆隐私').fontSize(15).fontColor(this.scheme.textHi)
           Row({ space: 8 }) {
@@ -292,7 +292,6 @@ struct Settings {
               .fontSize(18)
               .fontColor(this.scheme.textHi)
               .padding({ left: 16, right: 4 })
-              .onClick((): void => { router.pushUrl({ url: 'pages/MemoryManage' }); })
           }
           .width('100%')
           .onClick((): void => { router.pushUrl({ url: 'pages/MemoryManage' }); })

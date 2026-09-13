@@ -189,12 +189,28 @@ struct Chat {
     this.send();
   }
 
-  // 编辑已发送消息：截断删除该条及其之后，内容回填输入框（改完重发即重新生成）
+  // 编辑已发送消息：截断删除该条及其之后，内容回填输入框（改完重发即重新生成）。
+  // 忆枢 M5b 双防护（对齐 Android）：① 截断点落入已摘要跨度 → 清摘要（防陈旧摘要注入）；
+  // ② 到顶轨迹失效 → 清 task_state（防「继续」续跑陈旧上下文）
   async startEdit(index: number): Promise<void> {
     if (this.loading || index < 0 || index >= this.turns.length) { return; }
     const fromId: number = this.turns[index].id;
     const text: string = this.msgs[index].content;
+    const s = await this.mem();
+    const st: SummaryState = await s.summaryState(this.convId);
+    if (st.untilTurn > 0) {
+      const rows: Msg[] = await MessageRepo.listByConv(this.ctx(), this.convId);
+      const boundaryRows: Msg[] = rows.filter((r: Msg): boolean => r.role === 'assistant' && r.turnNo <= st.untilTurn);
+      const boundary: Msg | undefined = boundaryRows.length > 0 ? boundaryRows[boundaryRows.length - 1] : undefined;
+      if (boundary !== undefined && fromId <= boundary.id) {
+        await s.clearSummary(this.convId);
+      }
+    }
     await MessageRepo.deleteFromPosition(this.ctx(), this.convId, fromId);
+    if (await s.getTaskState(this.convId) !== null) {
+      await s.deleteTaskState(this.convId);
+      this.canContinue = false;
+    }
     this.turns = this.turns.slice(0, index);
     this.msgs = this.msgs.slice(0, index);
     this.input = text;
