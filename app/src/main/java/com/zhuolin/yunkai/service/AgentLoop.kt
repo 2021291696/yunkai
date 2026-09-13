@@ -37,7 +37,7 @@ import android.util.Log
 // 循环事件：tool_start/tool_done 携带工具名与「参数 / 结果前80字」摘要；answer/limit 无工具名
 data class LoopEvent(val kind: String, val toolName: String = "", val detail: String = "")
 
-// 循环结果：最终回答文本 + 实际步数。M3：hitLimit=步数到顶收尾（true 时 trace 携带到顶前
+// 循环结果：最终回答文本 + 实际步数（到顶时 = maxSteps + 1，含收尾调用）。M3：hitLimit=步数到顶收尾（true 时 trace 携带到顶前
 // 完整消息轨迹，调用方持久化 task_state 供「继续」续跑）；正常作答两字段为默认值。
 // 输出形态（画布/气泡）不在引擎层判定：Chat 消费方用 HtmlGuard.sanitize+ReplyKind.detect
 // 做唯一口径判定（防散文夹 <html 子串被 sanitize 的 includes 语义误判），引擎只给纯文本。
@@ -182,10 +182,15 @@ object AgentLoop {
                     var out = execTool(tools, tc, longFormActive)
                     Log.i("yunkai", "tool ${tc.function.name} ${System.currentTimeMillis() - ts}ms outLen=${out.length}")
                     // M3 软预算（协议 §2 TOOL_OUTPUT_BUDGET=30000）：累计超限即截断本条并标记，
-                    // 模型据此改用更小粒度的工具调用；预算逐轮重置（每轮 send 重新计）
+                    // 模型据此改用更小粒度的工具调用；预算逐轮重置（每轮 send 重新计）。
+                    // 预算已被前序结果打满（keep==0）时本条不再截零加标记，直接替换为耗尽提示
                     if (toolBudgetUsed + out.length > TOOL_OUTPUT_BUDGET) {
                         val keep = (TOOL_OUTPUT_BUDGET - toolBudgetUsed).coerceAtLeast(0)
-                        out = out.take(keep) + "\n…[已截断：本轮工具输出累计超 ${TOOL_OUTPUT_BUDGET} 字软预算]"
+                        out = if (keep == 0) {
+                            "本轮工具输出预算已耗尽，请基于已有结果作答"
+                        } else {
+                            out.take(keep) + "\n…[已截断：本轮工具输出累计超 ${TOOL_OUTPUT_BUDGET} 字软预算]"
+                        }
                     }
                     toolBudgetUsed += out.length
                     // use_skill 成功返回说明书（非 '{"error"' 开头）→ 本轮余下调用切长文模型；

@@ -82,6 +82,30 @@ class AgentLoopM3Test {
         assertFalse(toolMsg.content.contains("已截断"))
     }
 
+    // 预算被前序结果打满（keep==0）：后续工具结果不再截零加标记，直接替换为耗尽提示
+    @Test
+    fun `预算耗尽后工具结果替换为耗尽提示`() = runTest {
+        val full = SpamTool(AgentLoop.TOOL_OUTPUT_BUDGET)   // 首条恰好打满预算（不触发截断）
+        val seen = mutableListOf<List<ChatMsg>>()
+        AgentLoop.run(cfg(), repo, emptyList(), "问", null, {},
+            fakeChat = { ms, _, _ ->
+                seen.add(ms.toList())
+                when (ms.count { it.role == "tool" }) {
+                    0 -> OpenAiMessage("", listOf(callSpam("c1")))   // 第 1 次工具调用：恰好打满预算
+                    1 -> OpenAiMessage("", listOf(callSpam("c2")))   // 第 2 次工具调用：预算已耗尽
+                    else -> OpenAiMessage("完成")                     // 第 3 次直接收尾（无 toolCalls 即退出循环）
+                }
+            },
+            extraTools = listOf(full),
+        )
+        val toolMsgs = seen.last().filter { it.role == "tool" }
+        assertEquals(2, toolMsgs.size)
+        // 首条恰好等于预算上限，原样回传不截断
+        assertEquals(AgentLoop.TOOL_OUTPUT_BUDGET, toolMsgs[0].content.length)
+        // 第二次工具调用：预算已耗尽 → 固定短提示文案
+        assertEquals("本轮工具输出预算已耗尽，请基于已有结果作答", toolMsgs[1].content)
+    }
+
     // ===== 到顶轨迹（继续按钮引擎侧）=====
 
     @Test

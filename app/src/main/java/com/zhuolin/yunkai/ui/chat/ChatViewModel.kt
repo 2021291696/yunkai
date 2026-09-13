@@ -34,6 +34,19 @@ data class PickedItem(
         get() = name
 }
 
+// M3 到顶轨迹落库瘦身：带图轮的 user 消息 contentParts 含 base64 大图，全量持久化会把
+// task_state 撑到 MB 级。深拷贝 trace，把每条含 contentParts 的消息替换为单条占位文本
+// （图/附件只服务当轮请求，续跑上下文不再需要原图）；无 contentParts 的轮次原样返回（同实例）。
+// 顶层 internal 而非类私有：ChatViewModel 依赖 Android 运行时无法在 JVM 单测实例化，
+// StripTraceTest 直接以纯函数口径钉死此行为。
+internal fun stripTraceForPersist(trace: List<ChatMsg>): List<ChatMsg> {
+    if (trace.all { it.contentParts.isNullOrEmpty() }) return trace
+    return trace.map { m ->
+        if (m.contentParts.isNullOrEmpty()) m
+        else m.copy(contentParts = listOf(ContentPart(type = "text", text = "[图片/附件内容已于首轮消费，续跑上下文省略]")))
+    }
+}
+
 class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
     val msgs = mutableStateListOf<RenderMsg>()
     val turns = mutableStateListOf<Msg>()
@@ -243,9 +256,10 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
                 if (r.hitLimit && r.trace != null) {
                     app.taskStateDao.upsert(com.zhuolin.yunkai.store.TaskStateEntity(
                         conversation_id = convId,
+                        // 落库前瘦身：带图轮 contentParts 的 base64 换占位文本，防 task_state 膨胀
                         trace_json = traceJson.encodeToString(
                             kotlinx.serialization.builtins.ListSerializer(com.zhuolin.yunkai.model.ChatMsg.serializer()),
-                            r.trace,
+                            stripTraceForPersist(r.trace),
                         ),
                         step_used = r.steps,
                         updated_at = System.currentTimeMillis(),
@@ -491,9 +505,10 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
                 if (r.hitLimit && r.trace != null) {
                     app.taskStateDao.upsert(com.zhuolin.yunkai.store.TaskStateEntity(
                         conversation_id = convId,
+                        // 落库前瘦身：带图轮 contentParts 的 base64 换占位文本，防 task_state 膨胀
                         trace_json = traceJson.encodeToString(
                             kotlinx.serialization.builtins.ListSerializer(com.zhuolin.yunkai.model.ChatMsg.serializer()),
-                            r.trace,
+                            stripTraceForPersist(r.trace),
                         ),
                         step_used = r.steps,
                         updated_at = System.currentTimeMillis(),
@@ -551,6 +566,8 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
     }
 
     suspend fun doDelete(id: Long, context: Context) {
+        // 删会话前先清 task_state：该表无外键，会话删除后到顶轨迹行会变孤儿残留
+        app.taskStateDao.delete(id)
         app.conversationRepo.remove(id)
         toast(context, "已删除")
         refreshConvs()
