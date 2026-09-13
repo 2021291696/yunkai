@@ -1,6 +1,6 @@
-// 忆枢注入拼装（协议 §4.1/§4.2）：核心块 + 标准记忆说明块。Android 侧 MemoryInjection.kt 同构。
-// 两块皆空（blank）→ 整段省略（返回 null，避免裸标题）；persona 空而 human 非空时
-// baseSystem 由调用方回退 AGENT_SYSTEM 原文（防人格丢失，§4.1 种子与省略语义）。
+// 忆枢注入拼装（协议 §4.1/§4.2）：persona 由调用方作 baseSystem 注入一次——本函数【不含 persona】，
+// 否则重复注入烧双倍 token（门0 审查实锤的双端共同缺陷）。
+// 记忆段 = human 块（非空时）+ 标准记忆说明块；两块皆空（blank）→ 整段省略（返回 null）。
 
 // 记忆说明块（协议 §4.2 标准文案，逐字双端同步，禁改一字）
 export const MEMORY_GUIDE: string =
@@ -12,17 +12,14 @@ export const MEMORY_GUIDE: string =
   '只记对用户有用的信息，存取要克制。';
 
 export class MemoryInjection {
-  // 拼「persona 块 + human 块 + 说明块」；两块皆空返回 null（调用方省略整段）
+  // 拼「human 块 + 说明块」（不含 persona；两块皆空返回 null，调用方省略整段）
   static coreSection(persona: string, human: string): string | null {
-    const parts: string[] = [];
-    if (persona.trim() !== '') {
-      parts.push(persona);
+    if (persona.trim() === '' && human.trim() === '') {
+      return null;
     }
+    const parts: string[] = [];
     if (human.trim() !== '') {
       parts.push(human);
-    }
-    if (parts.length === 0) {
-      return null;
     }
     parts.push(MEMORY_GUIDE);
     return parts.join('\n\n');

@@ -138,23 +138,25 @@ export class MemoryTools {
         if (block !== MemoryTools.BLOCK_HUMAN && block !== MemoryTools.BLOCK_PERSONA) {
           return memErr('block 必须为 human 或 persona');
         }
+        // 隐私闸门前置（协议 §3.3，与 Android 同序）且只检 new_content（old_content 是待删除方）
+        const rejected = PrivacyGate.check(newContent, gear);
+        if (rejected !== null) {
+          return memErr(`[隐私闸门-${gear === 'strict' || gear === 'standard' || gear === 'free' ? gear : 'strict'}] 检测到疑似${rejected}，已拒存；该挡位可在设置中调整`);
+        }
         const cur = await store.getCoreBlock(block);
         const existing = cur !== null ? cur.content : '';
         if (oldContent === '' || !existing.includes(oldContent)) {
           return memErr('old_content 未找到');
         }
-        if (existing.split(oldContent).length - 1 > 1) {
-          return memErr('old_content 匹配到多处，请提供更长的片段');
+        const hits: number = existing.split(oldContent).length - 1;
+        if (hits > 1) {
+          return memErr(`old_content 匹配到 ${hits} 处，请提供更长的片段`);
         }
-        // 隐私闸门只检 new_content（old_content 是待删除方，§3.3）
-        const rejected = PrivacyGate.check(newContent, gear);
-        if (rejected !== null) {
-          return memErr(`[隐私闸门-${gear}] 检测到疑似${rejected}，已拒存；该挡位可在设置中调整`);
-        }
-        const merged = existing.replace(oldContent, newContent);
+        // 字面替换：split/join 不解释 new_content 里的 $&/$` 等替换模式（JS replace 会静默篡改）
+        const merged = existing.split(oldContent).join(newContent);
         const limit = MemoryTools.blockLimit(block);
         if (merged.length > limit) {
-          return memErr(`核心记忆 ${block} 块超限(${merged.length}/${limit})，请缩小替换内容`);
+          return memErr(`核心记忆 ${block} 块已满(${merged.length}/${limit})，请用 core_memory_replace 替换不再需要的旧内容`);
         }
         await store.putCoreBlock(block, merged);
         return JSON.stringify({ replaced: true, block: block, chars: merged.length, limit: limit });
@@ -176,9 +178,9 @@ export class MemoryTools {
         if (content === '') {
           return memErr('缺少 content');
         }
-        let type = memField(argsJson, 'type');
-        if (type !== 'fact' && type !== 'episode' && type !== 'preference' && type !== 'identity') {
-          type = 'fact';
+        const type = memField(argsJson, 'type');
+        if (type !== '' && type !== 'fact' && type !== 'episode' && type !== 'preference' && type !== 'identity') {
+          return memErr('type 须为 fact|episode|preference|identity');
         }
         const rejected = PrivacyGate.check(content, gear);
         if (rejected !== null) {

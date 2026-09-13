@@ -224,19 +224,18 @@ export class MemoryStore {
   }
 
   async conversationSearch(query: string, limit: number): Promise<ConversationHitRow[]> {
+    // 空查询语义与 Android 对齐：返回全库最近 limit 条（不带 content 过滤）
     const terms = query.trim().split(/\s+/).filter((t: string) => t !== '');
-    if (terms.length === 0) {
-      return [];
-    }
     const conds: string[] = [];
     const args: relationalStore.ValueType[] = [];
     for (const t of terms) {
       conds.push("content LIKE ? ESCAPE '\\'");
       args.push(MemoryStore.likePattern(t));
     }
+    const where = conds.length > 0 ? ' AND (' + conds.join(' OR ') + ')' : '';
     args.push(limit);
     const sql = "SELECT conversation_id, turn_no, role, content, created_at FROM messages" +
-      " WHERE role IN ('user','assistant') AND (" + conds.join(' OR ') + ")" +
+      " WHERE role IN ('user','assistant')" + where +
       " ORDER BY created_at DESC LIMIT ?";
     const rs = await this.s.querySql(sql, args);
     const out: ConversationHitRow[] = [];
