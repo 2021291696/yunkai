@@ -15,4 +15,5 @@
 /.mimosa/
 _dump.json
 _hilog_send.txt
-build.sh
+build.shentry/src/main/ets/.mimosa/
+tests/fullflow/.mimosa/

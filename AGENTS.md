@@ -6,7 +6,7 @@
 ## 构建与测试
 - CLI 构建：`DEVECO_SDK_HOME='D:\Huawei\DevEcoStudio\sdk' node "D:/Huawei/DevEcoStudio/tools/hvigor/bin/hvigorw.js" --mode module -p product=default assembleHap`；**签名构建另需 `PATH` 前缀 DevEco 的 JBR（`/d/Huawei/DevEcoStudio/jbr/bin`，hap-sign-tool 是 jar，缺 java 报 spawn java ENOENT）且加 `--no-daemon`**（daemon 缓存旧 PATH 与旧 signingConfigs）
 - 测试包：同命令加 `-p module=entry@ohosTest`；产物在 `entry/build/default/outputs/{default,ohosTest}/`
-- 单测（模拟器实跑）：`hdc shell aa test -b com.zhuolin.yunkai -m entry_test -s unittest OpenHarmonyTestRunner -s class logicTest`（当前 43/43）
+- 单测（模拟器实跑）：`hdc shell aa test -b com.zhuolin.yunkai -m entry_test -s unittest OpenHarmonyTestRunner -s class logicTest`（忆枢后 72/72）
 
 ## 全流程测试（run-all）
 清单 `tests/fullflow/manifest.yaml` v2（5 条 cli + 8 条 ui）：门1 含 `device_wake_screen`/`device_unlock_screen`——**息屏时 `aa test` 报 10106102**（developer mode 下无法自动解锁），故唤醒+解锁固化成步骤；门2 由 AI 驱动（hdc + uitest）。
@@ -34,7 +34,7 @@ ArkTS（API 26）+ ArkWeb + RDB。入口 `entry/src/main/ets/`：
 - 必应轨搜索词必须走 `SearchClient.extractKeywords`；改图标须 bm uninstall 刷缓存；9568332=卸载重装、9568423=重勾自动签名
 
 ## 当前状态（2026-09-10）
-- **09-10 双端 run-all 轮**：清单**重写为 v2**——旧版是 eli5-harmony 时代产物（包名 `com.zhuolin.eli5harmony`、路径写已不存在的「列表页 / 🌐 搜索开关」、单测数 19，且 `health` 段写成 list 让 run.py 直接崩所以从未被跑过），现按云开形态重写：包名 `com.zhuolin.yunkai`、单测 43、门1 五条 cli、门2 八条路径。门1 PASS（`Tests run: 43, Failure: 0`）；门2 **7 PASS + 1 挂账**（挂账 `probe_bad_baseurl`：错误 URL 报错路径未触发——保存按钮在折叠下方 + 打字后 IME 挡滚动，收键盘后已能保存；收尾状态已还原，地址与模型均正常）。报告 `tests/fullflow/reports/{20260910-review,2026-09-10_211910_run,2026-09-10_214023_ui}/`
+- **09-10 双端 run-all 轮**：清单**重写为 v2**——旧版是 eli5-harmony 时代产物（包名 `com.zhuolin.eli5harmony`、路径写已不存在的「列表页 / 🌐 搜索开关」、单测数 19，且 `health` 段写成 list 让 run.py 直接崩所以从未被跑过），现按云开形态重写：包名 `com.zhuolin.yunkai`、单测 43、门1 五条 cli、门2 八条路径。门1 PASS（`Tests run: 43, Failure: 0`）；门2 7 PASS + 1 挂账：错误 URL 报错路径未触发——保存按钮在折叠下方 + 打字后 IME 挡滚动，收键盘后已能保存；收尾状态已还原，地址与模型均正常）。报告 `tests/fullflow/reports/{20260910-review,2026-09-10_211910_run,2026-09-10_214023_ui}/`
 - **门0 3 条 Important 修 1**：`setColorMode` 的 SDK 前置条件（须在窗口已创建且页面 `loadContent` 之后再调；原来只在 loadContent 前调一次，被忽略时会退化成「`$r` 资源浅色 + AppStorage 深色」的半深色）已修——loadContent 前后各应用一次 + 异常补 hilog（`15970d4`）；未修披露：HtmlGuard 只剥 `<script>`（未处理内联 `on*`/iframe/`javascript:`，Web 未关 js）、ThemeMode 零单测
 - **09-10 UI 与 Android 版同步**：顶栏 `[‹][标题][⋯]` → `[☰][标题][等宽占位]`（Chat 只经 `replaceUrl` 进入、路由栈内没有上一页，原 ‹ 实为「退出」）；抽屉 ⚙ 无字设置钮、透明遮罩点外部收起、`onBackPress` 收抽屉（此前返回会退出页面）；抽屉标题改「会话」；删「历史轮次」分区；去 📘/⚠️/📋 装饰 emoji；**主题三档**（跟随系统/浅色/深色）
 - 09-09 及更早的 M1 交付细节见 git log 与 `tests/fullflow/reports/2026*`
