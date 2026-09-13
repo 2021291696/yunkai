@@ -47,7 +47,9 @@ Kotlin 2.0.21 + AGP 8.9.1（compileSdk 36 / minSdk 30 / targetSdk 36）+ Compose
 - 每个 Task 结束即 commit（commit message 不带任何 AI 署名）
 - **改 `app/src/**` 会被 video2code 插件的 `check_plan_first.py` 必拦**（它按路径判：`<project>/app/src/**` 当网站组件源码，要求 `out/plan.md` 存在）→ 正解是用 Bash + python 做精确字符串替换落盘；**别为解封去创建 `out/plan.md`**（hook 源码写明写它即认领契约，会触发 Stop hook 强制收尾）
 
-## 当前状态（2026-09-10）
+## 当前状态（2026-09-13）
+- **09-13 双皮肤架构**（卷入 `c45fc57`，与鸿蒙 a697b3f 同构）：设置页「设计」两维（通透=现役 / 极光=辉光替代壁纸）× 明暗三档；`ui/theme/Glass.kt` 增 bubbleUserTop/glows/auroraVeil* + LightAurora/DarkAurora + schemeFor；ConfigStore.skinFlow → MainActivity → YunkaiTheme(dark,skin)；WallpaperLayer 按 skin 分叉（aurora=radialGradient 辉光 14s 往返）；ChatScreen 气泡竖向渐变；升级默认 clear。截图 `tests/fullflow/reports/2026-09-13_aurora_skin/artifacts/`
+- **09-12~13 忆枢集成**（M1c/M2/M3/M5b → `c45fc57` 门0 闭环）：Room v3 + 记忆管理页 + 会话摘要 + 到顶「▶继续」+ 隐私三挡/步数三档，单测 158 全绿；详见 git log 忆枢系列提交
 - **09-10 双端 run-all 轮，本仓三门全绿**：门0 全量审查（整库 31 文件 3314 行）抓到 **1 blocking**——`ChatViewModel.load()` 换会话不作废在途 `send`（旧轮回来会把回答写进新会话 + `nextId` 归 1 撞 id 触发 LazyColumn 重复 key 崩；鸿蒙版靠 replaceUrl 换新页实例天然规避，属移植回归），已修 `6d7ec97`（`genId += 1` + `loading = false`），并把该场景补成清单 ⑮ 回归路径；门1 PASS（单测 73 / assembleDebug / 真连 DeepSeek `LLM_CHAIN_OK`）；门2 **12/12 PASS**（裸对话、搜索链路 web_search×2+read_web×2、取消中断、@eli5 全屏画布 11 节目录、抽屉两条收起、在途切会话）。报告 `tests/fullflow/reports/{20260910-review,2026-09-10_211653_run,2026-09-10_212002_ui}/`
 - **09-10 UI 收口（用户按截图报的 5 条 + 同类审计）**：顶栏开钮挪左上 `☰`（右侧等宽占位保持标题居中）；「收起 ✕」「设置」文字钮 → ✕/⚙ 圆玻璃符号钮；抽屉点面板外 + 系统返回都能收（此前按返回会退出 app）；引导页去掉 🌤️；**补 `android:icon`**（此前从未声明，桌面图标一直是系统默认机器人占位图）；抽屉标题「会话与历史」→「会话」、长按提示上标题行；删掉下半「历史轮次」分区
 - **主题三档**（跟随系统/浅色/深色）：`store/ConfigStore.themeModeFlow` + `MainActivity` 订阅决定 `darkTheme`，手动档即时生效并持久化，系统栏图标随主题翻转
