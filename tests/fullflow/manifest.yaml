@@ -154,11 +154,11 @@ flow:
         - { action: click, target: "text=＋ 新对话" }
         - { action: expect_visible, target: "text=新对话" }
 
-    - id: drawer_dismiss          # ⑩ 抽屉收起：✕ 符号钮 / 点面板外区域
+    - id: drawer_dismiss          # ⑩ 抽屉收起：系统返回键 / 点面板外区域（09-10 改版已删 ✕ 钮）
       ui:
         - { action: click, target: "左上角侧边栏按钮 ☰" }
         - { action: expect_visible, target: "text=会话" }
-        - { action: click, target: "抽屉头部右侧 ✕ 钮（无「收起」二字）" }
+        - { action: click, target: "系统返回键（keyevent 4，收抽屉不退 app）" }
         - { action: click, target: "左上角侧边栏按钮 ☰" }
         - { action: click, target: "屏幕右侧非抽屉区域（面板外空白）" }
         - { action: fill, target: "聊天输入框", value: "抽屉已收起" }
@@ -180,10 +180,10 @@ flow:
     - id: chat_image_question      # ⑯ 一期图片链路：＋→相册→选图→chip→发送（纯图）→视觉回答
       ui:
         - { action: click, target: "输入坞左侧 ＋ 附件钮" }
-        - { action: expect_visible, target: "text=🖼 相册" }
-        - { action: click, target: "text=🖼 相册" }
+        - { action: expect_visible, target: "text=相册" }      # 附件面板文案已去 emoji
+        - { action: click, target: "text=相册" }
         - { action: click, target: "系统相册首张图片" }
-        - { action: click, target: "text=Add" }
+        - { action: click, target: "text=Add（含 Add (N) 多选态）" }
         - { action: expect_visible, target: "text=✕" }          # chip 就绪（缩略图+删除钮）
         - { action: click, target: "发送钮 ↑" }
         - { action: expect_visible, target: "text=图片提问" }     # 纯图发送的标题兜底
