@@ -89,7 +89,8 @@ class ReadScreenTool(private val app: YunkaiApp) : AgentTool() {
     override suspend fun execute(argsJson: String): String {
         val svc = ScreenSenseService.instance
             ?: return BuiltinTools.err("无障碍服务未开启：请在云开设置→屏幕感知中开启无障碍读屏")
-        val cur = svc.readForeground()
+        // DFS 逐节点 binder IPC，600 节点预算在巨型页面耗时可观——必须离开主线程（门0 I1）
+        val cur = withContext(Dispatchers.IO) { svc.readForeground() }
             ?: return BuiltinTools.err("读不到当前屏幕：请确认目标应用在前台")
         val pkg = cur.first
         val nodes = cur.second
@@ -117,10 +118,12 @@ class CaptureScreenTool(private val app: YunkaiApp) : AgentTool() {
     override val parametersJson = """{"type":"object","properties":{}}"""
 
     override suspend fun execute(argsJson: String): String {
-        // 黑名单判定借无障碍服务的包名读取；无障碍未开时截屏链路同样不成立，提示一致
         val svc = ScreenSenseService.instance
             ?: return BuiltinTools.err("无障碍服务未开启：请在云开设置→屏幕感知中开启无障碍读屏")
-        val pkg = svc.readForeground()?.first ?: ""
+        // 黑名单判定 fail-closed（门0 I3）：读不到前台包名=不知道会截到什么=拒绝
+        val pkg = withContext(Dispatchers.IO) { svc.readForeground() }?.first
+            ?: return BuiltinTools.err("读不到当前前台应用，拒绝截屏（隐私保护）")
+        val cfg = app.configStore.load()
         if (ScreenBlacklist.isBlocked(pkg, app.configStore.getUserBlacklist())) {
             return BuiltinTools.err("应用 " + pkg + " 在隐私黑名单中，默认不截取其内容")
         }
@@ -130,7 +133,14 @@ class CaptureScreenTool(private val app: YunkaiApp) : AgentTool() {
         val b64 = try {
             withContext(Dispatchers.IO) { ProjectionService.captureBase64() }
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             return BuiltinTools.err(e.message ?: "截屏失败")
+        }
+        // TOCTOU 收口（门0 I3）：截的是 t2 帧而包名是 t1 快照——截完复读前台，
+        // 切换过（或进了黑名单 app）即丢弃，绝不把黑名单画面回传外发
+        val pkgAfter = withContext(Dispatchers.IO) { svc.readForeground() }?.first ?: ""
+        if (pkgAfter != pkg || ScreenBlacklist.isBlocked(pkgAfter, app.configStore.getUserBlacklist())) {
+            return BuiltinTools.err("截屏期间前台应用发生切换，已丢弃本次截图，请重试")
         }
         return try {
             val llm = LlmClient(app.configStore.load())
@@ -143,6 +153,7 @@ class CaptureScreenTool(private val app: YunkaiApp) : AgentTool() {
             )
             resp.content.trim().ifEmpty { BuiltinTools.err("视觉模型返回空内容，请重试") }
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             BuiltinTools.err("视觉转述失败: " + (e.message ?: "未知错误"))
         }
     }

@@ -18,10 +18,20 @@ class ScreenSenseService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        android.util.Log.i("yunkai", "a11y onServiceConnected")
         instance = this
     }
 
+    // 系统对同一 service 记录解绑后再绑走 onRebind（force-stop 后重授、无障碍列表翻转等场景），
+    // 不会再走 onServiceConnected——漏了它 instance 永久为 null（门2 实测：「已开启」变「未开启」不恢复）
+    override fun onRebind(intent: android.content.Intent?) {
+        android.util.Log.i("yunkai", "a11y onRebind")
+        instance = this
+        super.onRebind(intent)
+    }
+
     override fun onUnbind(intent: android.content.Intent?): Boolean {
+        android.util.Log.i("yunkai", "a11y onUnbind")
         instance = null
         return super.onUnbind(intent)
     }
@@ -31,8 +41,16 @@ class ScreenSenseService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
 
     // 读当前前台窗口：返回 (包名, 节点快照)。无前台窗口/未授权返回 null。
+    // rootInActiveWindow 在窗口切换动画/服务重绑等时机会瞬时返回 null（门2 ⑱ 实测），
+    // 兜底取默认显示器上 focused/active 窗口的 root。
     fun readForeground(): Pair<String, List<ScreenNode>>? {
-        val root = rootInActiveWindow ?: return null
+        val root = rootInActiveWindow
+            ?: run {
+                val w = windows.firstOrNull { it.isFocused }
+                    ?: windows.firstOrNull { it.isActive }
+                    ?: return null
+                w.root ?: return null
+            }
         val pkg = root.packageName?.toString() ?: ""
         val out = mutableListOf<ScreenNode>()
         dfs(root, 0, out)

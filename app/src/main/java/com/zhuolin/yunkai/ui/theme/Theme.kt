@@ -35,7 +35,8 @@ fun YunkaiTheme(
     content: @Composable () -> Unit,
 ) {
     val glass = schemeFor(skin, darkTheme)
-    val colors = remember(darkTheme) {
+    // 门0 I5：keys 必须含 skin——漏了它 clear↔aurora 切换后 MaterialTheme 停留旧皮肤配色
+    val colors = remember(darkTheme, skin) {
         val base = if (darkTheme) darkColorScheme() else lightColorScheme()
         base.copy(
             primary = glass.accent,
@@ -51,7 +52,7 @@ fun YunkaiTheme(
             error = ErrorRed,
         )
     }
-    val typography = remember(darkTheme) {
+    val typography = remember(darkTheme, skin) {
         Typography(
             titleLarge = TextStyle(fontSize = 24.sp, fontWeight = FontWeight.Bold, color = glass.textHi),
             titleMedium = TextStyle(fontSize = 19.sp, fontWeight = FontWeight.Medium, color = glass.textHi),

@@ -322,6 +322,11 @@ fun SettingsScreen(onOpenSkills: () -> Unit = {}, onOpenMemory: () -> Unit = {},
                 Switch(checked = screenSense, onCheckedChange = { on ->
                     screenSense = on
                     scope.launch(Dispatchers.IO) { app.configStore.setScreenSense(on) }
+                    if (!on) {
+                        // 门0 I2：总开关关闭=彻底禁用，投屏会话一并停止（兑现通知里「停止请在设置页关闭」）
+                        com.zhuolin.yunkai.service.screen.ProjectionService.stop(context)
+                        projReady = false
+                    }
                 })
             }
             Text("开启后 agent 可列出/打开应用并读取屏幕：文字走无障碍节点树，图片与自绘应用走截图视觉", fontSize = 12.sp, color = TextFaint)

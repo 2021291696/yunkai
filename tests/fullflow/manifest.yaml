@@ -13,7 +13,7 @@
 # 分叉语义（粘贴导入 vs 新建、取消 vs 跑完）已并入线性步骤，
 # llm_off 场景由门2 的 pm clear 空态护栏步骤覆盖。
 # ═══════════════════════════════════════════════════════════════════
-name: yunkai-android v1 全流程
+name: yunkai-android v2 全流程
 target:
   platform: android
   app:
@@ -192,3 +192,36 @@ flow:
       # 前置：设备需配智谱端点（glm-5.3-flash 支持图片输入，已实测）；相册需有测试图。
       # 收起判据（内容级，AI 驱动层读屏复核）：点 ✕ 与点面板外后抽屉面板均须消失；
       # 面板未消失时输入框仍被遮罩/面板覆盖，fill 打不进去 → 文案不可见 → 本步 RED
+
+    # ─────────── 屏幕感知 M1（豆包对齐，2026-09-14） ───────────
+    # 前置（AI 编排层）：adb settings put secure enabled_accessibility_services=
+    #   com.zhuolin.yunkai/com.zhuolin.yunkai.service.screen.ScreenSenseService 且 accessibility_enabled=1
+    - id: screen_sense_enable       # ⑰ 设置页屏幕感知卡片：总开关开 + 两项授权状态行
+      ui:
+        - { action: click, target: "左上角侧边栏按钮 ☰" }
+        - { action: click, target: "抽屉内齿轮设置钮 ⚙" }
+        - { action: click, target: "屏幕感知卡片右侧 Switch（滚到卡片可见后）" }
+        - { action: expect_visible, target: "text=屏幕感知" }
+        - { action: expect_visible, target: "text=无障碍读屏" }
+        - { action: expect_visible, target: "text=屏幕录制" }
+      # 判据：无障碍读屏状态行变「已开启」（adb 已授权 + 1.5s 轮询刷新）；
+      # 屏幕录制行「未授权」→ AI 驱动点「授权」→ 系统弹窗选 Entire screen → Start → 行变「已授权」
+
+    - id: screen_open_and_read      # ⑱ 打开应用并读屏（list_apps/open_app/read_screen 链）
+      ui:
+        - { action: click, target: "左上角返回钮 ‹" }
+        - { action: fill, target: "聊天输入框", value: "打开设置应用，看看它的当前页面上有什么内容" }
+        - { action: click, target: "发送钮 ↑" }
+        - { action: expect_visible, target: "text=调用 list_apps" }
+        - { action: expect_visible, target: "text=调用 open_app" }
+        - { action: expect_visible, target: "text=调用 read_screen" }
+      # 内容级断言（AI 驱动层读屏）：回答须描述设置页真实条目（Network/网络 或 Settings 字样）；
+      # 出现 route=vision 提示或「无障碍服务未开启」= FAIL
+
+    - id: screen_capture_vision     # ⑲ 截屏视觉转述（capture_screen；MediaProjection 链）
+      ui:
+        - { action: fill, target: "聊天输入框", value: "截取当前手机屏幕，看看上面是什么内容" }
+        - { action: click, target: "发送钮 ↑" }
+        - { action: expect_visible, target: "text=调用 capture_screen" }
+        - { action: expect_visible, target: "text=✓ 完成" }
+      # 内容级断言：回答为画面描述（含时间/应用名/布局要素之一）；出现「视觉转述失败」「截屏未授权」= FAIL
