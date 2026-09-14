@@ -199,6 +199,14 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
     // M3 轨迹序列化器：ChatMsg 含 @SerialName，编解码对称；与请求体 wire transform 无关（内部态）
     private val traceJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
 
+    // 屏幕感知工具（豆包对齐 M1）：总开关开才进工具表；关=彻底不暴露给模型，不产生任何系统能力调用
+    private suspend fun screenTools(): List<com.zhuolin.yunkai.service.tools.AgentTool> =
+        if (app.configStore.getScreenSense()) {
+            com.zhuolin.yunkai.service.screen.createScreenTools(app)
+        } else {
+            emptyList()
+        }
+
     // M3 继续任务：取到顶轨迹续跑——system 就地重建（AgentLoop.seedMessages）、步数与软预算重置。
     // 完成后照常落库；若再次到顶则更新轨迹（canContinue 保持），否则清掉 task_state
     fun resumeTask(context: Context) {
@@ -231,10 +239,16 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
                         if (gen == genId) {
                             timeline.add(e)
                             if (e.kind == "tool_start") steps.value += 1
+                            // 后台执行时每步回显进度通知（Q7）；前台有实时时间线，不打扰
+                            if (!com.zhuolin.yunkai.MainActivity.activityForeground) {
+                                com.zhuolin.yunkai.service.screen.ScreenNotify.notifyProgress(
+                                    app, "步骤 " + steps.value + "：" + e.toolName,
+                                )
+                            }
                         }
                     },
                     isCancelled = { gen != genId },
-                    extraTools = com.zhuolin.yunkai.service.tools.createM2Tools(app) +
+                    extraTools = com.zhuolin.yunkai.service.tools.createM2Tools(app) + screenTools() +
                         com.zhuolin.yunkai.memory.createMemoryTools(app.memoryStore) {
                             app.configStore.load().memoryGear
                         },
@@ -270,12 +284,19 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
                     canContinue.value = false
                 }
                 msgs.add(RenderMsg(nextId++, "assistant", content, kind, thinking = thinking.value, steps = steps.value))
+                // 后台完成：结果通知静默送达（Q7）
+                if (!com.zhuolin.yunkai.MainActivity.activityForeground) {
+                    com.zhuolin.yunkai.service.screen.ScreenNotify.notifyResult(
+                        app, title.value, com.zhuolin.yunkai.service.screen.notifySummary(content),
+                    )
+                }
                 loadTurns()
                 // 忆枢 M2：resume 续跑同样走摘要检查（长收尾回答恰易触发阈值）
                 maybeSummarize(cfg)
             } catch (e: Exception) {
                 if (gen == genId) {
                     failed.value = true
+                    com.zhuolin.yunkai.service.screen.ScreenNotify.cancelProgress(app)
                     // 失败不清 task_state：恢复「继续」可用态，用户可重试（轨迹仍在）
                     canContinue.value = app.taskStateDao.get(convId) != null
                     Log.e("yunkai", "resume failed: ${e.message}")
@@ -451,6 +472,12 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
                         if (gen == genId) {
                             timeline.add(e)
                             if (e.kind == "tool_start") steps.value += 1
+                            // 后台执行时每步回显进度通知（Q7）；前台有实时时间线，不打扰
+                            if (!com.zhuolin.yunkai.MainActivity.activityForeground) {
+                                com.zhuolin.yunkai.service.screen.ScreenNotify.notifyProgress(
+                                    app, "步骤 " + steps.value + "：" + e.toolName,
+                                )
+                            }
                         }
                     },
                     isCancelled = { gen != genId },
@@ -464,7 +491,7 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
                             thinking.value = acc
                         }
                     },
-                    extraTools = com.zhuolin.yunkai.service.tools.createM2Tools(app) +
+                    extraTools = com.zhuolin.yunkai.service.tools.createM2Tools(app) + screenTools() +
                         com.zhuolin.yunkai.memory.createMemoryTools(app.memoryStore) {
                             app.configStore.load().memoryGear
                         },
@@ -499,6 +526,12 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
                     }
                 }
                 msgs.add(RenderMsg(nextId++, "assistant", content, kind, thinking = thinking.value, steps = steps.value))
+                // 后台完成：结果通知静默送达（Q7），点入看完整回答
+                if (!com.zhuolin.yunkai.MainActivity.activityForeground) {
+                    com.zhuolin.yunkai.service.screen.ScreenNotify.notifyResult(
+                        app, title.value, com.zhuolin.yunkai.service.screen.notifySummary(content),
+                    )
+                }
                 picked.value = emptyList()    // 发送成功即清空（失败保留可重试）
                 loadTurns()
                 // M3 到顶处理：轨迹持久化供「继续」续跑；正常作答清掉旧轨迹
@@ -535,6 +568,7 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
                 if (gen == genId) {
                     loading.value = false
                     streamText.value = ""
+                    com.zhuolin.yunkai.service.screen.ScreenNotify.cancelProgress(app)
                     val q = queued.value
                     if (q.isNotEmpty()) {
                         queued.value = ""

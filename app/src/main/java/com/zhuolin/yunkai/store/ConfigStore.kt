@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.zhuolin.yunkai.model.AppConfig
 import kotlinx.coroutines.flow.Flow
@@ -98,6 +99,43 @@ class ConfigStore(private val ctx: Context) {
         ctx.dataStore.edit { p -> p[K_MAX_STEPS] = sanitizeMaxSteps(steps) }
     }
 
+    // ── 屏幕感知（豆包对齐 M1，设计简报 §五）：总开关默认关=彻底不接线；
+    // 视觉路线运行时学习集（read_screen 贫瘠的 app 自动补入，下次直走视觉）；
+    // 用户黑名单增补集（内置名单在 ScreenBlacklist，这里是用户自加的拒绝读屏 app）──
+    val screenSenseFlow: Flow<Boolean> = ctx.dataStore.data.map { it[K_SCREEN_SENSE] ?: false }
+
+    suspend fun getScreenSense(): Boolean = ctx.dataStore.data.first()[K_SCREEN_SENSE] ?: false
+
+    suspend fun setScreenSense(on: Boolean) {
+        ctx.dataStore.edit { p -> p[K_SCREEN_SENSE] = on }
+    }
+
+    suspend fun getVisionLearned(): Set<String> =
+        ctx.dataStore.data.first()[K_VISION_LEARNED] ?: emptySet()
+
+    suspend fun addVisionLearnedPkg(pkg: String) {
+        if (pkg.isEmpty()) return
+        ctx.dataStore.edit { p ->
+            p[K_VISION_LEARNED] = (p[K_VISION_LEARNED] ?: emptySet()) + pkg
+        }
+    }
+
+    suspend fun getUserBlacklist(): Set<String> =
+        ctx.dataStore.data.first()[K_SCREEN_BLACKLIST] ?: emptySet()
+
+    suspend fun addUserBlacklist(pkg: String) {
+        if (pkg.isEmpty()) return
+        ctx.dataStore.edit { p ->
+            p[K_SCREEN_BLACKLIST] = (p[K_SCREEN_BLACKLIST] ?: emptySet()) + pkg
+        }
+    }
+
+    suspend fun removeUserBlacklist(pkg: String) {
+        ctx.dataStore.edit { p ->
+            p[K_SCREEN_BLACKLIST] = (p[K_SCREEN_BLACKLIST] ?: emptySet()) - pkg
+        }
+    }
+
     companion object {
         const val THEME_SYSTEM = "system"
         const val THEME_LIGHT = "light"
@@ -130,5 +168,8 @@ class ConfigStore(private val ctx: Context) {
         private val K_SKIN = stringPreferencesKey("skinId")
         private val K_MEMORY_GEAR = stringPreferencesKey("memoryGear")
         private val K_MAX_STEPS = intPreferencesKey("maxSteps")
+        private val K_SCREEN_SENSE = booleanPreferencesKey("screenSense")
+        private val K_VISION_LEARNED = stringSetPreferencesKey("visionLearnedPkgs")
+        private val K_SCREEN_BLACKLIST = stringSetPreferencesKey("screenBlacklistUser")
     }
 }

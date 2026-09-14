@@ -293,6 +293,69 @@ fun SettingsScreen(onOpenSkills: () -> Unit = {}, onOpenMemory: () -> Unit = {},
             Text("壁纸铺在全局背景层，玻璃卡片会透出它", fontSize = 12.sp, color = TextFaint)
         }
 
+        // ===== 屏幕感知卡片（豆包对齐 M1）：总开关默认关 + 两项系统授权引导；写入即生效 =====
+        var screenSense by remember { mutableStateOf(false) }
+        var a11yReady by remember { mutableStateOf(false) }
+        var projReady by remember { mutableStateOf(false) }
+        LaunchedEffect(Unit) {
+            screenSense = app.configStore.getScreenSense()
+            // 轻量轮询：从系统设置授权回来后状态自动跟上（页面存活时 1.5s 一次，成本可忽略）
+            while (true) {
+                a11yReady = com.zhuolin.yunkai.service.screen.ScreenSenseService.ready
+                projReady = com.zhuolin.yunkai.service.screen.ProjectionService.active
+                kotlinx.coroutines.delay(1500)
+            }
+        }
+        val projLauncher = rememberLauncherForActivityResult(
+            ActivityResultContracts.StartActivityForResult(),
+        ) { res ->
+            if (res.resultCode == android.app.Activity.RESULT_OK && res.data != null) {
+                com.zhuolin.yunkai.service.screen.ProjectionService.start(context, res.resultCode, res.data!!)
+                projReady = true
+            } else {
+                Toast.makeText(context, "未授予屏幕录制", Toast.LENGTH_SHORT).show()
+            }
+        }
+        GlassCard {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("屏幕感知", fontSize = 15.sp, modifier = Modifier.weight(1f))
+                Switch(checked = screenSense, onCheckedChange = { on ->
+                    screenSense = on
+                    scope.launch(Dispatchers.IO) { app.configStore.setScreenSense(on) }
+                })
+            }
+            Text("开启后 agent 可列出/打开应用并读取屏幕：文字走无障碍节点树，图片与自绘应用走截图视觉", fontSize = 12.sp, color = TextFaint)
+            Text("隐私：银行/支付类默认不读；密码框内容永不上传；截屏期间有常驻通知", fontSize = 12.sp, color = TextFaint)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "无障碍读屏", fontSize = 14.sp, modifier = Modifier.weight(1f),
+                    color = if (a11yReady) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                )
+                Text(if (a11yReady) "已开启" else "未开启", fontSize = 12.sp, color = TextFaint)
+                if (!a11yReady) {
+                    TextButton(onClick = {
+                        context.startActivity(
+                            android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+                    }) { Text("去开启", color = glass.accent) }
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "屏幕录制", fontSize = 14.sp, modifier = Modifier.weight(1f),
+                    color = if (projReady) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                )
+                Text(if (projReady) "已授权" else "未授权", fontSize = 12.sp, color = TextFaint)
+                if (!projReady) {
+                    TextButton(onClick = {
+                        val mpm = context.getSystemService(android.media.projection.MediaProjectionManager::class.java)
+                        if (mpm != null) projLauncher.launch(mpm.createScreenCaptureIntent())
+                    }) { Text("授权", color = glass.accent) }
+                }
+            }
+        }
+
         // ===== 记忆隐私卡片（M1c）：三挡写入即生效，不随「保存」；说明文案按协议 §5.2 挡位矩阵 =====
         GlassCard {
             Text("记忆隐私", fontSize = 16.sp, color = TextMuted)
