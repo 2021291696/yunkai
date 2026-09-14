@@ -123,7 +123,6 @@ fun SettingsScreen(onOpenSkills: () -> Unit = {}, onOpenMemory: () -> Unit = {},
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding() // 边缘到边缘后避让状态栏
-            .verticalScroll(rememberScrollState())
             .padding(horizontal = 18.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
@@ -141,6 +140,14 @@ fun SettingsScreen(onOpenSkills: () -> Unit = {}, onOpenMemory: () -> Unit = {},
             Text("设置", fontSize = 26.sp, color = MaterialTheme.colorScheme.onBackground)
         }
 
+        // 门2 交互发现：返回钮原先在滚动容器内，页面滚到底后返回钮滚出视口，只能靠系统返回键退出——
+        // 顶栏固定化（仅卡片列表滚动）
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+        ) {
         // ===== 外观卡片：设计（皮肤）+ 主题模式 =====
         GlassCard {
             Text("外观", fontSize = 16.sp, color = TextMuted)
@@ -430,6 +437,7 @@ fun SettingsScreen(onOpenSkills: () -> Unit = {}, onOpenMemory: () -> Unit = {},
         }
 
         Spacer(Modifier.height(24.dp))
+        }
     }
 }
 
