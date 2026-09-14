@@ -55,6 +55,8 @@ struct Settings {
   @State memoryGear: string = 'strict';
   @State maxSteps: number = 25;
   @State versionName: string = '';
+  // 自动保存防抖定时器（-1=无挂起）；输入停顿 500ms 后落盘，离页时兜底冲刷
+  private saveTimer: number = -1;
 
   private ctx(): common.UIAbilityContext {
     return getContext(this) as common.UIAbilityContext;
@@ -74,6 +76,15 @@ struct Settings {
       .then((g: string) => { this.memoryGear = g; });
     ConfigStore.getMaxSteps(this.ctx())
       .then((n: number) => { this.maxSteps = n; });
+  }
+
+  // 离页兜底：尚有未落盘的输入立即写入（自动保存的产品动机就是防丢，500ms 窗口内退出也不能漏）
+  aboutToDisappear(): void {
+    if (this.saveTimer !== -1) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = -1;
+      this.autoSaveNow();
+    }
   }
 
   // 主题档位/皮肤切换：持久化 + 立即生效（applySkinAndTheme 单点重算 token，同时刷 AppStorage）
@@ -128,6 +139,31 @@ struct Settings {
     promptAction.showToast({ message: msg, duration: 2500 });
   }
 
+  // ===== 自动保存（产品改动：真机漏点「保存」丢配置 → 字段输入即持久化）=====
+  // 文本字段 onChange 触发：500ms 防抖后落盘
+  private autoSave(): void {
+    if (this.saveTimer !== -1) {
+      clearTimeout(this.saveTimer);
+    }
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = -1;
+      this.autoSaveNow();
+    }, 500);
+  }
+
+  // 落盘本体：以已存配置为底、当前 @State 覆盖本页可编辑六项再全量写回——
+  // 勿用裸 new AppConfig()（会把 longModel/memoryGear/maxSteps/searchMode 冲回默认值）
+  private async autoSaveNow(): Promise<void> {
+    const cfg: AppConfig = await ConfigStore.load(this.ctx());
+    cfg.baseUrl = this.baseUrl.trim();
+    cfg.apiKey = this.apiKey.trim();
+    cfg.model = this.model.trim();
+    cfg.autoRoute = this.autoRoute;
+    cfg.searchProvider = this.searchProvider;
+    cfg.searchApiKey = this.searchApiKey.trim();
+    await ConfigStore.save(this.ctx(), cfg);
+  }
+
   private async fetchModels(): Promise<void> {
     const cfg: AppConfig = this.collect();
     if (cfg.baseUrl === '' || cfg.apiKey === '') {
@@ -161,7 +197,8 @@ struct Settings {
       this.toast('API 地址、密钥、模型名都不能为空');
       return;
     }
-    await ConfigStore.save(this.ctx(), cfg);
+    // 与自动保存同一路径（合并落盘，保住 longModel/memoryGear/maxSteps 等非本页 @State 字段）
+    await this.autoSaveNow();
     this.toast('已保存');
     router.back();
   }
@@ -183,8 +220,11 @@ struct Settings {
       fs.closeSync(srcFile);
       fs.closeSync(dstFile);
       await ConfigStore.setWallpaper(ctx, 'file://' + dstPath);
+      // 门0 审查：经 AppStorage 推送即时生效（WallpaperLayer @StorageProp 订阅），
+      // 不再依赖「返回对话页」的页面重建（pushUrl 返回不重建，原文案兑现不了）
+      AppStorage.setOrCreate('wallpaperUri', 'file://' + dstPath);
       this.wallpaperLabel = '自定义';
-      this.toast('已更换，返回对话页生效');
+      this.toast('壁纸已更换');
     } catch (e) {
       this.toast('更换失败：' + (e as Error).message);
     }
@@ -192,6 +232,7 @@ struct Settings {
 
   private async resetWallpaper(): Promise<void> {
     await ConfigStore.setWallpaper(this.ctx(), '');
+    AppStorage.setOrCreate('wallpaperUri', '');
     this.wallpaperLabel = '默认';
     this.toast('已恢复默认壁纸');
   }
@@ -398,7 +439,7 @@ struct Settings {
             .fontColor(this.scheme.textHi)
             .placeholderColor(this.scheme.textLow)
             .borderRadius(12)
-            .onChange((v: string) => { this.baseUrl = v; })
+            .onChange((v: string) => { this.baseUrl = v; this.autoSave(); })
           Text('API 密钥').fontSize(14).fontColor(this.scheme.textHi).width('100%')
           TextInput({ text: this.apiKey, placeholder: 'sk-...' })
             .type(InputType.Password)
@@ -407,7 +448,7 @@ struct Settings {
             .fontColor(this.scheme.textHi)
             .placeholderColor(this.scheme.textLow)
             .borderRadius(12)
-            .onChange((v: string) => { this.apiKey = v; })
+            .onChange((v: string) => { this.apiKey = v; this.autoSave(); })
           Text('模型名').fontSize(14).fontColor(this.scheme.textHi).width('100%')
           Row({ space: 10 }) {
             TextInput({ text: this.model, placeholder: '如 glm-4.7 / deepseek-chat' })
@@ -417,7 +458,7 @@ struct Settings {
               .fontColor(this.scheme.textHi)
               .placeholderColor(this.scheme.textLow)
               .borderRadius(12)
-              .onChange((v: string) => { this.model = v; })
+              .onChange((v: string) => { this.model = v; this.autoSave(); })
             Button(this.fetchingModels ? '获取中…' : '获取模型列表')
               .fontColor(this.scheme.textHi)
               .backgroundColor(this.scheme.glassBgStrong)
@@ -438,6 +479,7 @@ struct Settings {
                 const picked: string = this.modelOptions[index].value;
                 this.modelSelected = picked;
                 this.model = picked;
+                this.autoSave(); // 下拉选模型同样走防抖落盘（不经键盘 onChange）
               })
           }
         }
@@ -452,17 +494,17 @@ struct Settings {
             Radio({ value: 'bing', group: 'searchProvider' })
               .checked(this.searchProvider === 'bing')
               .radioStyle({ checkedBackgroundColor: this.scheme.accent })
-              .onChange((on: boolean) => { if (on) { this.searchProvider = 'bing'; } })
+              .onChange((on: boolean) => { if (on) { this.searchProvider = 'bing'; this.autoSave(); } })
             Text('必应(免key)').fontSize(15).fontColor(this.scheme.textHi)
             Radio({ value: 'bocha', group: 'searchProvider' })
               .checked(this.searchProvider === 'bocha')
               .radioStyle({ checkedBackgroundColor: this.scheme.accent })
-              .onChange((on: boolean) => { if (on) { this.searchProvider = 'bocha'; } })
+              .onChange((on: boolean) => { if (on) { this.searchProvider = 'bocha'; this.autoSave(); } })
             Text('博查').fontSize(15).fontColor(this.scheme.textHi)
             Radio({ value: 'tavily', group: 'searchProvider' })
               .checked(this.searchProvider === 'tavily')
               .radioStyle({ checkedBackgroundColor: this.scheme.accent })
-              .onChange((on: boolean) => { if (on) { this.searchProvider = 'tavily'; } })
+              .onChange((on: boolean) => { if (on) { this.searchProvider = 'tavily'; this.autoSave(); } })
             Text('Tavily').fontSize(15).fontColor(this.scheme.textHi)
           }
           .width('100%')
@@ -475,7 +517,7 @@ struct Settings {
             .fontColor(this.scheme.textHi)
             .placeholderColor(this.scheme.textLow)
             .borderRadius(12)
-            .onChange((v: string) => { this.searchApiKey = v; })
+            .onChange((v: string) => { this.searchApiKey = v; this.autoSave(); })
 
           Text('搜索源选博查/Tavily 时需填密钥；必应免密钥。是否搜索由 agent 在对话中自主决定')
             .fontSize(12).fontColor(this.scheme.textLow).width('100%')
@@ -488,7 +530,7 @@ struct Settings {
             Text('技能自动路由').fontSize(15).fontColor(this.scheme.textHi).layoutWeight(1)
             Toggle({ type: ToggleType.Switch, isOn: this.autoRoute })
               .selectedColor(this.scheme.accent)
-              .onChange((on: boolean) => { this.autoRoute = on; })
+              .onChange((on: boolean) => { this.autoRoute = on; this.autoSave(); })
           }
           .width('100%')
           .alignItems(VerticalAlign.Center)

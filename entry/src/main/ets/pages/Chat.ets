@@ -499,6 +499,9 @@ struct Chat {
       await this.refreshTurns();
       // 续跑成功同步会话列表（touch 已更新 updated_at，抽屉排序需要新数据，对齐 Android resume）
       await this.refreshConvs();
+      // 门0 审查（双端分歧补齐）：Android resume 成功后走 maybeSummarize——续跑的长收尾
+      // 回答恰易触发阈值，缺失会让连续续跑场景摘要永不换出
+      await this.maybeSummarize(cfg);
     } catch (e) {
       if (gen === this.genId) {
         this.failed = true;

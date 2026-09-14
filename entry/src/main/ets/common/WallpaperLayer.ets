@@ -13,12 +13,17 @@ export struct WallpaperLayer {
   @StorageProp('colorMode') colorMode: number = ColorMode.LIGHT;
   @StorageProp('skinId') skinId: string = 'clear';
   @StorageProp('scheme') scheme: SkinScheme = CLEAR_LIGHT;
-  @State customUri: string = '';
+  // 门0 审查：customUri 走 AppStorage 订阅——aboutToAppear 只读一次会让
+  // 「设置页换壁纸→返回对话页」不刷新（pushUrl 返回不重建本组件）
+  @StorageProp('wallpaperUri') customUri: string = '';
   @State drift: boolean = false;
 
   aboutToAppear(): void {
-    ConfigStore.getWallpaper(getContext(this) as common.UIAbilityContext)
-      .then((p: string) => { this.customUri = p; });
+    // 首帧兜底：AppStorage 尚无值时读一次持久化配置并回填（此后变更由写入方推送）
+    if (AppStorage.get<string>('wallpaperUri') === undefined) {
+      ConfigStore.getWallpaper(getContext(this) as common.UIAbilityContext)
+        .then((p: string) => { AppStorage.setOrCreate('wallpaperUri', p); });
+    }
     // 延迟一拍置位：.animation 只动画「属性变化」，首帧就置 true 会当成初始值而静止
     setTimeout((): void => { this.drift = true; }, 120);
   }
