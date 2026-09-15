@@ -1,9 +1,11 @@
 package com.zhuolin.yunkai.service.screen
 
 import android.accessibilityservice.AccessibilityService
+import android.graphics.Bitmap
 import android.graphics.Rect
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import kotlin.coroutines.resume
 
 // 无障碍读屏服务：按需读「当前前台窗口」节点树（只读；不订阅事件流、不做任何注入）。
 // 授权：系统设置→无障碍→云开（设置页「屏幕感知」引导跳转）；用户在系统里关闭 = 实例置空，读屏即不可用。
@@ -39,6 +41,32 @@ class ScreenSenseService : AccessibilityService() {
     override fun onInterrupt() {}
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+
+    // API 30+：无障碍自带截屏（免 MediaProjection/授权弹窗/前台服务）。
+    // hardwareBuffer 必须 close，否则每次截屏泄漏一块 GraphicBuffer。
+    suspend fun captureScreen(): Bitmap? {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.R) return null
+        return kotlinx.coroutines.suspendCancellableCoroutine { cont ->
+            takeScreenshot(
+                android.view.Display.DEFAULT_DISPLAY,
+                mainExecutor,
+                object : AccessibilityService.TakeScreenshotCallback {
+                    override fun onSuccess(screenshot: AccessibilityService.ScreenshotResult) {
+                        val bmp = android.graphics.Bitmap.wrapHardwareBuffer(
+                            screenshot.hardwareBuffer, screenshot.colorSpace
+                        )?.copy(Bitmap.Config.ARGB_8888, false)
+                        screenshot.hardwareBuffer.close()
+                        cont.resume(bmp)
+                    }
+
+                    override fun onFailure(errorCode: Int) {
+                        android.util.Log.w("yunkai", "takeScreenshot fail code=$errorCode")
+                        cont.resume(null)
+                    }
+                },
+            )
+        }
+    }
 
     // 读当前前台窗口：返回 (包名, 节点快照)。无前台窗口/未授权返回 null。
     // rootInActiveWindow 在窗口切换动画/服务重绑等时机会瞬时返回 null（门2 ⑱ 实测），
