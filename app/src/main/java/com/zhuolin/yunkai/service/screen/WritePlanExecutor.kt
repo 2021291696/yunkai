@@ -47,6 +47,16 @@ class WritePlanExecutor(
     private val _events = MutableSharedFlow<PlanEvent>(extraBufferCapacity = 64)
     val events: MutableSharedFlow<PlanEvent> = _events
 
+    // 最近一次 submit 的步骤文案快照（UI 计划卡读它渲染步骤列表；执行中 state 只带 index）。
+    // 写发生在 submit 的 synchronized 块内、置 Pending 之前；读在 Compose 主线程，用 @Volatile 保证可见性。
+    @Volatile var lastLabels: List<String> = emptyList()
+        private set
+
+    // 最近一次 submit 的 planId：approve/approveSend/cancel 都要按 planId 校验，
+    // 而 planId 不在 PlanState 里（state 只有 index），计划卡按钮需要它 → 与 lastLabels 同源暴露。
+    @Volatile var lastPlanId: String = ""
+        private set
+
     private val lock = Any()
     private var planId: String = ""
     private var actions: List<WriteAction> = emptyList()
@@ -63,6 +73,8 @@ class WritePlanExecutor(
             this.planId = planId
             this.actions = actions
             this.labels = labels
+            this.lastLabels = labels
+            this.lastPlanId = planId
             this.sensitiveHint = sensitiveHint
             this.cancelRequested = false
             this.gate = CompletableDeferred()

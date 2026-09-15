@@ -106,6 +106,25 @@ class ScreenSenseService : AccessibilityService() {
         return t.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
     }
 
+    // 无坐标输入：找当前 focused editable 注入文本（Input 动作执行用；聚焦由计划里的前置 tap 负责）
+    fun setTextFocused(text: String): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        var n = 0
+        while (queue.isNotEmpty() && n < 600) {
+            val cur = queue.removeFirst(); n++
+            if (cur.isEditable && cur.isFocused) {
+                val args = android.os.Bundle().apply {
+                    putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+                }
+                return cur.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+            }
+            for (i in 0 until cur.childCount) cur.getChild(i)?.let { queue.add(it) }
+        }
+        return false
+    }
+
     fun pressBack(): Boolean = performGlobalAction(GLOBAL_ACTION_BACK)
     fun pressHome(): Boolean = performGlobalAction(GLOBAL_ACTION_HOME)
 

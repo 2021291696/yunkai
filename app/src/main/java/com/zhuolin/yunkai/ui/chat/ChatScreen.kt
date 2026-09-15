@@ -219,6 +219,8 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
                         }
 
                     }
+                    // 写操作计划卡（M2a-T6）：非终态显示（待批准/执行中/暂停中），终态自动消失
+                    item(key = "plan") { PlanCardHost(app.writePlanExecutor) }
                 }
                 // 引导态：无任何消息时
                 if (vm.msgs.isEmpty() && !vm.loading.value) {

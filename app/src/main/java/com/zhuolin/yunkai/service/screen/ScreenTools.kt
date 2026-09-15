@@ -158,4 +158,5 @@ fun createScreenTools(app: YunkaiApp): List<AgentTool> = listOf(
     OpenAppTool(app),
     ReadScreenTool(app),
     CaptureScreenTool(app),
+    PlanTool(app),
 )

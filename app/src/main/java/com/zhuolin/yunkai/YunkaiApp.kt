@@ -28,6 +28,42 @@ class YunkaiApp : Application() {
 
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    // 写操作计划状态机单例（M2a）：UI（计划卡）与工具（propose_plan）共享同一实例，
+    // 敏感检测与单动作执行在此注入真实实现（无障碍未开启一律 fail-closed 视为敏感/失败）。
+    val writePlanExecutor: com.zhuolin.yunkai.service.screen.WritePlanExecutor by lazy {
+        com.zhuolin.yunkai.service.screen.WritePlanExecutor(
+            scope = appScope,
+            sensitiveChecker = sens@{ _ ->
+                val svc = com.zhuolin.yunkai.service.screen.ScreenSenseService.instance
+                    ?: return@sens "读不到当前页面（无障碍未开启），保守视为敏感"
+                val cur = svc.readForeground()
+                    ?: return@sens "读不到当前页面，保守视为敏感"
+                if (com.zhuolin.yunkai.service.screen.ScreenBlacklist.isBlocked(
+                        cur.first, configStore.getUserBlacklist())) {
+                    return@sens "当前应用在隐私黑名单"
+                }
+                val hit = cur.second.firstOrNull {
+                    it.isPassword || com.zhuolin.yunkai.service.screen.ScreenGuard.hasSensitive(it.text)
+                }
+                hit?.let { "当前页面命中敏感内容（${if (it.isPassword) "密码框" else "敏感词"}）" }
+            },
+            executor = exec@{ action ->
+                val svc = com.zhuolin.yunkai.service.screen.ScreenSenseService.instance
+                    ?: return@exec false
+                when (action) {
+                    is com.zhuolin.yunkai.service.screen.WriteAction.Tap ->
+                        svc.performTap(action.x.toFloat(), action.y.toFloat())
+                    is com.zhuolin.yunkai.service.screen.WriteAction.Swipe ->
+                        svc.performSwipe(action.x1.toFloat(), action.y1.toFloat(), action.x2.toFloat(), action.y2.toFloat(), action.durMs)
+                    is com.zhuolin.yunkai.service.screen.WriteAction.Input -> svc.setTextFocused(action.text)
+                    is com.zhuolin.yunkai.service.screen.WriteAction.Back -> svc.pressBack()
+                    is com.zhuolin.yunkai.service.screen.WriteAction.Home -> svc.pressHome()
+                    is com.zhuolin.yunkai.service.screen.WriteAction.Finished -> true
+                }
+            },
+        )
+    }
+
     override fun onCreate() {
         super.onCreate()
         // 二期 PDF 抽取：PdfBox-Android 需要初始化资源加载器（字体/编码表），否则抽文本抛错
