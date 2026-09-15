@@ -108,6 +108,28 @@ interface TaskStateDao {
     suspend fun delete(convId: Long)
 }
 
+// 闪问独立存档表（M2b）：闪问会话不落 conversations/messages，只在这里留一问一答；
+// 画布形态的 HTML 正文不进本表（写 filesDir/flash_canvas_last.html），answer 只存提示文案。
+@Entity(tableName = "flash_sessions")
+data class FlashEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val question: String,
+    val answer: String,
+    val created_at: Long,
+)
+
+@Dao
+interface FlashDao {
+    @Query("SELECT * FROM flash_sessions ORDER BY id DESC LIMIT 100")
+    suspend fun recent(): List<FlashEntity>
+
+    @Insert
+    suspend fun insert(e: FlashEntity): Long
+
+    @Query("DELETE FROM flash_sessions")
+    suspend fun clearAll()
+}
+
 @Dao
 interface ConvDao {
     @Query("SELECT * FROM conversations ORDER BY updated_at DESC")
@@ -248,12 +270,27 @@ private val MIGRATION_2_3 = object : Migration(2, 3) {
     }
 }
 
+// schema version 4：M2b 闪问存档表（flash_sessions）。沿用 MIGRATION_2_3 风格：显式 CREATE TABLE
+// 保住存量对话/记忆数据，不毁库（fallbackToDestructiveMigration 仍只兜更早版本）。
+private val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS flash_sessions (" +
+                "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                "question TEXT NOT NULL, " +
+                "answer TEXT NOT NULL, " +
+                "created_at INTEGER NOT NULL)"
+        )
+    }
+}
+
 @Database(
     entities = [
         ConvEntity::class, MsgEntity::class, SkillEntity::class,
         CoreBlockEntity::class, ArchivalEntity::class, TaskStateEntity::class,
+        FlashEntity::class,
     ],
-    version = 3,
+    version = 4,
 )
 abstract class YunkaiDb : RoomDatabase() {
     abstract fun convDao(): ConvDao
@@ -262,6 +299,7 @@ abstract class YunkaiDb : RoomDatabase() {
     abstract fun coreBlockDao(): CoreBlockDao
     abstract fun archivalDao(): ArchivalDao
     abstract fun taskStateDao(): TaskStateDao
+    abstract fun flashDao(): FlashDao
 
     companion object {
         @Volatile
@@ -269,7 +307,7 @@ abstract class YunkaiDb : RoomDatabase() {
 
         fun instance(ctx: Context): YunkaiDb = inst ?: synchronized(this) {
             inst ?: Room.databaseBuilder(ctx.applicationContext, YunkaiDb::class.java, "yunkai.db")
-                .addMigrations(MIGRATION_2_3)
+                .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
                 .fallbackToDestructiveMigration()
                 .build().also { inst = it }
         }
