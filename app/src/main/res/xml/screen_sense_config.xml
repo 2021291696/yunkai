@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 屏幕感知无障碍服务：只取窗口内容（canRetrieveWindowContent），不订阅按键、不做手势注入。
-     手势能力 M2 再开（canPerformGestures），权限面最小化。 -->
+<!-- 屏幕感知无障碍服务：读窗口内容（canRetrieveWindowContent）+ M2a 起手势注入（canPerformGestures）。
+     不订阅按键事件（accessibilityEventTypes 仍只有窗口状态变化），权限面最小化。 -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeWindowStateChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
     android:accessibilityFlags="flagDefault|flagRetrieveInteractiveWindows"
     android:canRetrieveWindowContent="true"
+    android:canPerformGestures="true"
     android:description="@string/screen_sense_desc"
     android:canTakeScreenshot="true" />

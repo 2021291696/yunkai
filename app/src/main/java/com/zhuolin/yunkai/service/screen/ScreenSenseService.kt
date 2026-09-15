@@ -3,11 +3,13 @@ package com.zhuolin.yunkai.service.screen
 import android.accessibilityservice.AccessibilityService
 import android.graphics.Bitmap
 import android.graphics.Rect
+import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import java.util.ArrayDeque
 import kotlin.coroutines.resume
 
-// 无障碍读屏服务：按需读「当前前台窗口」节点树（只读；不订阅事件流、不做任何注入）。
+// 无障碍读屏+写操作服务：按需读「当前前台窗口」节点树，M2a 起提供手势注入基元（不订阅事件流）。
 // 授权：系统设置→无障碍→云开（设置页「屏幕感知」引导跳转）；用户在系统里关闭 = 实例置空，读屏即不可用。
 // 隐私红线（设计简报 §五）：isPassword 节点永不取文本，只出 [密码框] 标记。
 class ScreenSenseService : AccessibilityService() {
@@ -67,6 +69,45 @@ class ScreenSenseService : AccessibilityService() {
             )
         }
     }
+
+    // ── 手势基元（M2a）：全部 dispatchGesture 实现，坐标屏幕系 ──
+    fun performTap(x: Float, y: Float): Boolean {
+        val path = android.graphics.Path().apply { moveTo(x, y) }
+        val b = android.accessibilityservice.GestureDescription.Builder()
+            .addStroke(android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, 10L))
+        return dispatchGesture(b.build(), null, null)
+    }
+
+    fun performSwipe(x1: Float, y1: Float, x2: Float, y2: Float, durMs: Long): Boolean {
+        val path = android.graphics.Path().apply { moveTo(x1, y1); lineTo(x2, y2) }
+        val b = android.accessibilityservice.GestureDescription.Builder()
+            .addStroke(android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, durMs))
+        return dispatchGesture(b.build(), null, null)
+    }
+
+    // 输入：先聚焦目标框再 ACTION_SET_TEXT（不依赖 IME，规避输入法碎字）
+    fun setText(x: Float, y: Float, text: String): Boolean {
+        if (!performTap(x, y)) return false
+        SystemClock.sleep(300)
+        val root = rootInActiveWindow ?: return false
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        var target: AccessibilityNodeInfo? = null
+        var n = 0
+        while (queue.isNotEmpty() && n < 600) {
+            val cur = queue.removeFirst(); n++
+            if (cur.isEditable && cur.isFocused) { target = cur; break }
+            for (i in 0 until cur.childCount) cur.getChild(i)?.let { queue.add(it) }
+        }
+        val t = target ?: return false
+        val args = android.os.Bundle().apply {
+            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+        }
+        return t.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+    }
+
+    fun pressBack(): Boolean = performGlobalAction(GLOBAL_ACTION_BACK)
+    fun pressHome(): Boolean = performGlobalAction(GLOBAL_ACTION_HOME)
 
     // 读当前前台窗口：返回 (包名, 节点快照)。无前台窗口/未授权返回 null。
     // rootInActiveWindow 在窗口切换动画/服务重绑等时机会瞬时返回 null（门2 ⑱ 实测），
