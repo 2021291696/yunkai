@@ -22,6 +22,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- 闪问面板宿主（透明 Activity）：悬浮球/磁贴直接拉起，不依赖主界面窗口 token（修 BadTokenException） -->
+        <activity
+            android:name=".ui.flash.FlashActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Yunkai.Flash" />
         <!-- 无障碍读屏：只取窗口内容，不订阅按键、不做注入（M2 手势再扩） -->
         <service
             android:name=".service.screen.ScreenSenseService"
@@ -35,7 +40,7 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/screen_sense_config" />
         </service>
-        <!-- 快捷设置磁贴（M2b-T10）：下拉点按 → 拉起云开并置 open_flash，由 MainActivity 消费开闪问面板 -->
+        <!-- 快捷设置磁贴（M2b-T10）：下拉点按 → 直接拉起透明 FlashActivity 开闪问面板 -->
         <service
             android:name=".service.screen.ScreenTileService"
             android:exported="true"

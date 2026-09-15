@@ -318,9 +318,9 @@ fun SettingsScreen(onOpenSkills: () -> Unit = {}, onOpenMemory: () -> Unit = {},
                     screenSense = on
                     scope.launch(Dispatchers.IO) { app.configStore.setScreenSense(on) }
                     if (on) {
-                        // 悬浮球随总开关出现（主战场入口，M2b）；点按唤起闪问面板（T9b：intent 拉前台 + open_flash）
+                        // 悬浮球随总开关出现（主战场入口，M2b）；点按唤起闪问面板（T9b：拉起透明 FlashActivity）
                         com.zhuolin.yunkai.service.screen.FloatingBall.show(context) {
-                            com.zhuolin.yunkai.service.screen.FloatingBall.openFlashIntent(context)
+                            com.zhuolin.yunkai.ui.flash.FlashPanelLauncher.launch(context)
                         }
                     } else {
                         // 开关关闭即移除悬浮球（原 ProjectionService.stop 联动已随该服务下线，此处只留悬浮球）

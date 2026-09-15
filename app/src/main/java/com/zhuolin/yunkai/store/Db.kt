@@ -276,7 +276,8 @@ private val MIGRATION_3_4 = object : Migration(3, 4) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL(
             "CREATE TABLE IF NOT EXISTS flash_sessions (" +
-                "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                // Room 校验按字面比对：必须显式 NOT NULL（INTEGER PRIMARY KEY 语义非空但 schema 报 notNull=false）
+                "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, " +
                 "question TEXT NOT NULL, " +
                 "answer TEXT NOT NULL, " +
                 "created_at INTEGER NOT NULL)"

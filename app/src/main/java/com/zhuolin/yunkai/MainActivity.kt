@@ -24,9 +24,6 @@ class MainActivity : ComponentActivity() {
         // 前后台旗标（Q7）：后台时工具进度/结果走系统通知送达，前台不打扰
         @Volatile
         var activityForeground: Boolean = false
-
-        // 闪问面板唤起旗标（M2b-T9b）：FloatingBall.openFlashIntent 写入，本页消费
-        const val FLASH_EXTRA = "open_flash"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -67,22 +64,6 @@ class MainActivity : ComponentActivity() {
         activityForeground = true
         // 回前台即清后台进度通知（Q7：前台有完整时间线，通知残留是噪音）
         com.zhuolin.yunkai.service.screen.ScreenNotify.cancelProgress(applicationContext)
-        // M2b-T9b：悬浮球点按唤起闪问面板——FloatingBall 侧只发 intent 把云开拉回前台并置 open_flash，
-        // 面板窗口（ComposeView）始终由前台 Activity 承载
-        maybeOpenFlashPanel()
-    }
-
-    // 已在前台时 launcher intent 走 onNewIntent（onResume 不会再触发），两条路都接；旗标消费即清，天然幂等
-    override fun onNewIntent(intent: android.content.Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        maybeOpenFlashPanel()
-    }
-
-    private fun maybeOpenFlashPanel() {
-        if (intent?.getBooleanExtra(FLASH_EXTRA, false) != true) return
-        intent.removeExtra(FLASH_EXTRA)
-        com.zhuolin.yunkai.ui.flash.FlashPanel.show(this)
     }
 
     override fun onPause() {

@@ -1,21 +1,14 @@
 package com.zhuolin.yunkai.ui.flash
 
-// 闪问悬浮面板（M2b-T9b）：半屏 Compose 对话面板，以 TYPE_ACCESSIBILITY_OVERLAY 窗口贴屏幕下半部
-// （与悬浮球同权限通道，免悬浮窗授权）。宿主为前台 MainActivity：悬浮球点按只发 intent 把云开拉回前台，
-// MainActivity.onResume/onNewIntent 见 open_flash 即 show(this)——规避 Service context 建 ComposeView 的坑。
-// 生命周期：面板不随 Activity 销毁（窗口挂在 Activity 的 WindowManager 上，Activity 结束时进程通常仍在）——
-// 关闭统一走 onClose/hide()；再次 show() 视为 toggle 关闭。
+// 闪问悬浮面板（M2b-T9b）：半屏 Compose 对话面板。
+// 宿主为透明 FlashActivity（2026-09 修复 BadTokenException）：旧实现用前台 Activity 的 WindowManager
+// 往系统层 addView，点球时主界面已退后台、窗口 token 失效必炸；现改由 startActivity 正常拉起透明 Activity 承载，
+// 窗口 token 由系统分配，与主界面生命周期彻底解耦。入口统一走 FlashPanelLauncher.launch。
 import android.content.Context
 import android.content.Intent
-import android.graphics.PixelFormat
-import android.util.Log
-import android.view.Gravity
-import android.view.WindowManager
-import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,68 +33,22 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.ViewModelProvider
-import androidx.lifecycle.viewmodel.initializer
-import androidx.lifecycle.viewmodel.viewModelFactory
-import com.zhuolin.yunkai.YunkaiApp
 import com.zhuolin.yunkai.MainActivity
 import com.zhuolin.yunkai.ui.theme.ErrorRed
 import com.zhuolin.yunkai.ui.theme.GlassTokens
 import com.zhuolin.yunkai.ui.theme.LocalGlassScheme
 import com.zhuolin.yunkai.ui.theme.TextFaint
-import com.zhuolin.yunkai.ui.theme.YunkaiTheme
 
-object FlashPanel {
-    private var composeView: ComposeView? = null
-    private var wm: WindowManager? = null
-
-    fun show(activity: ComponentActivity) {
-        if (composeView != null) { hide(); return }   // 已开则 toggle 关闭
-        val windowManager = activity.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        val app = activity.applicationContext as YunkaiApp
-        // VM 挂 Activity ViewModelStore：面板关了再开，会话状态（问答/时间线）不丢
-        val vm: FlashViewModel = ViewModelProvider(
-            activity,
-            viewModelFactory { initializer { FlashViewModel(app) } },
-        )[FlashViewModel::class.java]
-        val view = ComposeView(activity).apply {
-            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindowOrReleasedFromPool)
-            setContent {
-                YunkaiTheme(darkTheme = isSystemInDarkTheme(), skin = "clear") {
-                    FlashPanelContent(vm = vm, onClose = { hide() })
-                }
-            }
-        }
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            (activity.resources.displayMetrics.heightPixels * 0.55f).toInt(),
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
-            PixelFormat.TRANSLUCENT,
-        ).apply {
-            gravity = Gravity.BOTTOM
-            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE   // 底部输入行不被键盘盖住
-        }
-        try {
-            windowManager.addView(view, params)
-            composeView = view
-            wm = windowManager
-        } catch (e: Exception) {
-            // 无障碍未连接/授权被撤时 2032 会被 WMS 拒（BadToken/Security）——记日志不崩主界面
-            Log.e("yunkai", "FlashPanel.show failed: $e")
-            vm.toast(activity, "闪问面板打开失败：${e.message}")
-        }
-    }
-
-    fun hide() {
-        try { composeView?.let { wm?.removeView(it) } } catch (e: Exception) {}
-        composeView = null
-        wm = null
+// 面板启动器：悬浮球 / 快捷磁贴等非 Activity 上下文的统一入口
+object FlashPanelLauncher {
+    fun launch(context: Context) {
+        val up = Intent(context, FlashActivity::class.java)
+        // NEW_TASK：调用方是 Service/Application 上下文；SINGLE_TOP：面板已在前台时不叠新实例
+        up.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        context.startActivity(up)
     }
 }
 
