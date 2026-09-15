@@ -39,6 +39,12 @@ class ScreenSenseService : AccessibilityService() {
         android.util.Log.i("yunkai", "a11y onUnbind")
         instance = null
         FloatingBall.remove()
+        // M2c-T13：服务被系统回收/用户关闭时给一次明确回执，避免「读屏突然失灵」无解释
+        android.widget.Toast.makeText(
+            this,
+            "云开屏幕感知已断开，如需继续请在系统设置中重新开启",
+            android.widget.Toast.LENGTH_LONG,
+        ).show()
         return super.onUnbind(intent)
     }
 

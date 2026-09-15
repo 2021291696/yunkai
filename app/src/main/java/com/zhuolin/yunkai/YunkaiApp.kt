@@ -52,10 +52,16 @@ class YunkaiApp : Application() {
                 val svc = com.zhuolin.yunkai.service.screen.ScreenSenseService.instance
                     ?: return@exec false
                 when (action) {
-                    is com.zhuolin.yunkai.service.screen.WriteAction.Tap ->
+                    // M2c-T12：执行前在动作坐标画一次指示圈（Swipe 用终点），让用户看清 agent 要点哪。
+                    // 传入无障碍服务 context：TYPE_ACCESSIBILITY_OVERLAY 窗口需属无障碍会话，app context 会被 WMS 拒。
+                    is com.zhuolin.yunkai.service.screen.WriteAction.Tap -> {
+                        com.zhuolin.yunkai.service.screen.ClickIndicator.show(svc, action.x, action.y)
                         svc.performTap(action.x.toFloat(), action.y.toFloat())
-                    is com.zhuolin.yunkai.service.screen.WriteAction.Swipe ->
+                    }
+                    is com.zhuolin.yunkai.service.screen.WriteAction.Swipe -> {
+                        com.zhuolin.yunkai.service.screen.ClickIndicator.show(svc, action.x2, action.y2)
                         svc.performSwipe(action.x1.toFloat(), action.y1.toFloat(), action.x2.toFloat(), action.y2.toFloat(), action.durMs)
+                    }
                     is com.zhuolin.yunkai.service.screen.WriteAction.Input -> svc.setTextFocused(action.text)
                     is com.zhuolin.yunkai.service.screen.WriteAction.OpenApp -> {
                         val intent = packageManager.getLaunchIntentForPackage(action.pkg)
