@@ -19,19 +19,27 @@ class PlanTool(private val app: YunkaiApp) : AgentTool() {
         "（type: tap/swipe/input/back/home/finished；tap 带 x,y（用 read_screen 快照坐标）；" +
         "swipe 带 x1,y1,x2,y2,durMs；input 带 text（输入到用户批准后你指定的聚焦输入框，" +
         "若需先点输入框则在 plan 里前置一个 tap）；每项带 label 中文说明）。用户批准后逐步执行；" +
-        "敏感页会自动急停等你确认。计划提交后不要重复提交，等待本工具结果。"
+        "敏感页会自动急停等你确认。计划提交后不要重复提交，等待本工具结果。" +
+        "计划提交时会自动回到云开展示计划卡，批准后自动打开目标应用再执行。"
     override val parametersJson =
-        """{"type":"object","properties":{"summary":{"type":"string","description":"计划的一句话目的"},"plan":{"type":"array","items":{"type":"object"}}},"required":["summary","plan"]}"""
+        """{"type":"object","properties":{"summary":{"type":"string","description":"计划的一句话目的"},"target_pkg":{"type":"string","description":"计划将要操作的目标应用包名（从对话上下文判断）"},"plan":{"type":"array","items":{"type":"object"}}},"required":["summary","target_pkg","plan"]}"""
 
     override suspend fun execute(argsJson: String): String {
         val obj = parseObj(argsJson) ?: return BuiltinTools.err("参数不是合法 JSON 对象")
         val arr = obj["plan"] as? JsonArray ?: return BuiltinTools.err("缺少 plan 数组")
         if (arr.isEmpty()) return BuiltinTools.err("plan 为空：至少需要一个动作")
 
+        val targetPkg = ((obj["target_pkg"] as? JsonPrimitive)?.content ?: "").trim()
+        if (targetPkg.isEmpty()) return BuiltinTools.err("缺少 target_pkg：计划必须声明目标应用包名")
+
         // 逐项解析+校验：任一项非法即整体拒绝（不做「跳过坏项照跑」——计划是原子承诺）
         val dm = app.resources.displayMetrics
-        val actions = ArrayList<WriteAction>(arr.size)
-        val labels = ArrayList<String>(arr.size)
+        val actions = ArrayList<WriteAction>(arr.size + 1)
+        val labels = ArrayList<String>(arr.size + 1)
+        // 计划第一步固定「打开目标应用」：agent 提交计划时目标 app 可能不在前台，
+        // 不先切回来用户看不到执行、后序 tap 也会打偏。
+        actions.add(WriteAction.OpenApp(targetPkg))
+        labels.add("打开目标应用")
         for (i in arr.indices) {
             val item = arr[i] as? JsonObject ?: return BuiltinTools.err("plan 第 ${i + 1} 项不是对象")
             val action = WriteAction.fromObj(item)
@@ -48,6 +56,15 @@ class PlanTool(private val app: YunkaiApp) : AgentTool() {
         val planId = "p" + System.currentTimeMillis()
         if (!exec.submit(planId, actions, labels, sensitiveHint = false)) {
             return BuiltinTools.err("已有写操作计划在进行中，请等它结束（或等用户取消）后再提交")
+        }
+
+        // 提交成功立刻把云开拉回前台：计划卡必须出现在用户眼前，
+        // 否则用户停在目标 app 里看不到卡，只能等 180s 超时。
+        runCatching {
+            app.packageManager.getLaunchIntentForPackage(app.packageName)?.let { up ->
+                up.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                app.startActivity(up)
+            }
         }
 
         // 挂起等终态：非终态期间计划卡在屏幕上，用户点「执行/继续/确认发送/取消」推进状态机

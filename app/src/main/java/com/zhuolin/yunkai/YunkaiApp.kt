@@ -56,6 +56,15 @@ class YunkaiApp : Application() {
                     is com.zhuolin.yunkai.service.screen.WriteAction.Swipe ->
                         svc.performSwipe(action.x1.toFloat(), action.y1.toFloat(), action.x2.toFloat(), action.y2.toFloat(), action.durMs)
                     is com.zhuolin.yunkai.service.screen.WriteAction.Input -> svc.setTextFocused(action.text)
+                    is com.zhuolin.yunkai.service.screen.WriteAction.OpenApp -> {
+                        val intent = packageManager.getLaunchIntentForPackage(action.pkg)
+                        if (intent != null) {
+                            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            startActivity(intent)
+                            kotlinx.coroutines.delay(1500)   // 等目标 app 前台稳定
+                            true
+                        } else false
+                    }
                     is com.zhuolin.yunkai.service.screen.WriteAction.Back -> svc.pressBack()
                     is com.zhuolin.yunkai.service.screen.WriteAction.Home -> svc.pressHome()
                     is com.zhuolin.yunkai.service.screen.WriteAction.Finished -> true

@@ -11,6 +11,7 @@ sealed class WriteAction {
     data class Tap(val x: Int, val y: Int) : WriteAction()
     data class Swipe(val x1: Int, val y1: Int, val x2: Int, val y2: Int, val durMs: Long = 400) : WriteAction()
     data class Input(val text: String) : WriteAction()      // 输入到「当前聚焦的输入框」
+    data class OpenApp(val pkg: String) : WriteAction()     // 拉起目标应用（计划卡回前台后的第一步）
     object Back : WriteAction()
     object Home : WriteAction()
     object Finished : WriteAction()                          // agent 显式声明任务完成
@@ -50,6 +51,10 @@ sealed class WriteAction {
                 val t = s("text").take(MAX_TEXT)
                 return if (t.isEmpty()) null else Input(t)
             }
+            if (type == "open_app") {
+                val pkg = s("pkg").trim()
+                return if (pkg.isEmpty()) null else OpenApp(pkg)
+            }
             return when (type) {
                 "back" -> Back
                 "home" -> Home
@@ -65,5 +70,6 @@ fun WriteAction.validate(boundW: Int, boundH: Int): String? = when (this) {
     is WriteAction.Tap -> if (x in 0..boundW && y in 0..boundH) null else "tap 坐标越界 ($x,$y)"
     is WriteAction.Swipe -> if (x1 in 0..boundW && y1 in 0..boundH && x2 in 0..boundW && y2 in 0..boundH) null else "swipe 坐标越界"
     is WriteAction.Input -> if (text.isNotEmpty()) null else "input 文本为空"
+    is WriteAction.OpenApp -> if (pkg.isNotEmpty()) null else "open_app 缺少包名"
     else -> null
 }
