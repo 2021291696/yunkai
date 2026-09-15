@@ -24,6 +24,7 @@ class ScreenSenseService : AccessibilityService() {
         super.onServiceConnected()
         android.util.Log.i("yunkai", "a11y onServiceConnected")
         instance = this
+        // 悬浮球随服务存活（服务被系统回收球也随之消失，onUnbind 时 remove）
     }
 
     // 系统对同一 service 记录解绑后再绑走 onRebind（force-stop 后重授、无障碍列表翻转等场景），
@@ -37,6 +38,7 @@ class ScreenSenseService : AccessibilityService() {
     override fun onUnbind(intent: android.content.Intent?): Boolean {
         android.util.Log.i("yunkai", "a11y onUnbind")
         instance = null
+        FloatingBall.remove()
         return super.onUnbind(intent)
     }
 

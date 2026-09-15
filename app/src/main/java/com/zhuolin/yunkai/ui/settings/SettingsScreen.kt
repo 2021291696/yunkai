@@ -317,6 +317,18 @@ fun SettingsScreen(onOpenSkills: () -> Unit = {}, onOpenMemory: () -> Unit = {},
                 Switch(checked = screenSense, onCheckedChange = { on ->
                     screenSense = on
                     scope.launch(Dispatchers.IO) { app.configStore.setScreenSense(on) }
+                    if (on) {
+                        // 悬浮球随总开关出现（主战场入口，M2b）
+                        com.zhuolin.yunkai.service.screen.FloatingBall.show(context) {
+                            // 点击暂只拉起主界面（M2b-T9 面板接入点）
+                            val up = context.packageManager.getLaunchIntentForPackage("com.zhuolin.yunkai")
+                            up?.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            if (up != null) context.startActivity(up)
+                        }
+                    } else {
+                        // 开关关闭即移除悬浮球（原 ProjectionService.stop 联动已随该服务下线，此处只留悬浮球）
+                        com.zhuolin.yunkai.service.screen.FloatingBall.remove()
+                    }
                 })
             }
             Text("开启后 agent 可列出/打开应用并读取屏幕：文字走无障碍节点树，图片与自绘应用走截图视觉", fontSize = 12.sp, color = TextFaint)
