@@ -318,12 +318,9 @@ fun SettingsScreen(onOpenSkills: () -> Unit = {}, onOpenMemory: () -> Unit = {},
                     screenSense = on
                     scope.launch(Dispatchers.IO) { app.configStore.setScreenSense(on) }
                     if (on) {
-                        // 悬浮球随总开关出现（主战场入口，M2b）
+                        // 悬浮球随总开关出现（主战场入口，M2b）；点按唤起闪问面板（T9b：intent 拉前台 + open_flash）
                         com.zhuolin.yunkai.service.screen.FloatingBall.show(context) {
-                            // 点击暂只拉起主界面（M2b-T9 面板接入点）
-                            val up = context.packageManager.getLaunchIntentForPackage("com.zhuolin.yunkai")
-                            up?.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                            if (up != null) context.startActivity(up)
+                            com.zhuolin.yunkai.service.screen.FloatingBall.openFlashIntent(context)
                         }
                     } else {
                         // 开关关闭即移除悬浮球（原 ProjectionService.stop 联动已随该服务下线，此处只留悬浮球）

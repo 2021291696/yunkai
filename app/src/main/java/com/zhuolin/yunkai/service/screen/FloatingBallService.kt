@@ -2,8 +2,10 @@ package com.zhuolin.yunkai.service.screen
 
 // 悬浮球（M2b-T8）：TYPE_ACCESSIBILITY_OVERLAY 由无障碍服务添加，免悬浮窗授权。
 // 拖动贴边 + 单击回调 onBallTap；随屏幕感知总开关生灭（开关关闭即 remove，服务 onUnbind 也 remove）。
+// M2b-T9b：单击默认动作 = 唤起闪问面板（openFlashIntent），面板宿主是前台 MainActivity。
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.Intent
 import android.graphics.PixelFormat
 import android.view.Gravity
 import android.view.MotionEvent
@@ -15,6 +17,15 @@ import kotlin.math.abs
 object FloatingBall {
     private var ballView: ImageView? = null
     private var wm: WindowManager? = null
+
+    // 点按唤起闪问面板（M2b-T9b）：Service/Activity 上下文都能安全 startActivity 的唯一入口——
+    // 本侧只发 intent 把云开拉回前台并置 open_flash 旗标，面板窗口由前台 MainActivity 建（规避 Service context 建 ComposeView）
+    fun openFlashIntent(context: Context) {
+        val intent = context.packageManager.getLaunchIntentForPackage(context.packageName) ?: return
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        intent.putExtra(com.zhuolin.yunkai.MainActivity.FLASH_EXTRA, true)
+        context.startActivity(intent)
+    }
 
     fun show(context: Context, onBallTap: () -> Unit) {
         if (ballView != null) return
