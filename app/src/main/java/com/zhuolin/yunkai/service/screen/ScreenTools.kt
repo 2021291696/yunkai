@@ -113,7 +113,7 @@ class ReadScreenTool(private val app: YunkaiApp) : AgentTool() {
 class CaptureScreenTool(private val app: YunkaiApp) : AgentTool() {
     override val name = "capture_screen"
     override val description = "截取当前手机屏幕并让视觉模型转述内容（每次消耗视觉 token，非必要时优先 read_screen）。" +
-        "适用：图片/照片/视频等视觉内容；微信/抖音等自绘应用页面。需先在云开设置→屏幕感知中授权屏幕录制。" +
+        "适用：图片/照片/视频等视觉内容；微信/抖音等自绘应用页面。需先在云开设置→屏幕感知中开启无障碍读屏。" +
         "隐私黑名单应用会被拒绝。"
     override val parametersJson = """{"type":"object","properties":{}}"""
 
@@ -123,19 +123,13 @@ class CaptureScreenTool(private val app: YunkaiApp) : AgentTool() {
         // 黑名单判定 fail-closed（门0 I3）：读不到前台包名=不知道会截到什么=拒绝
         val pkg = withContext(Dispatchers.IO) { svc.readForeground() }?.first
             ?: return BuiltinTools.err("读不到当前前台应用，拒绝截屏（隐私保护）")
-        val cfg = app.configStore.load()
         if (ScreenBlacklist.isBlocked(pkg, app.configStore.getUserBlacklist())) {
             return BuiltinTools.err("应用 " + pkg + " 在隐私黑名单中，默认不截取其内容")
         }
-        if (!ProjectionService.active) {
-            return BuiltinTools.err("截屏未授权：请先在云开设置→屏幕感知中授权屏幕录制")
-        }
-        val b64 = try {
-            withContext(Dispatchers.IO) { ProjectionService.captureBase64() }
-        } catch (e: Exception) {
-            if (e is kotlinx.coroutines.CancellationException) throw e
-            return BuiltinTools.err(e.message ?: "截屏失败")
-        }
+        val bmp = withContext(Dispatchers.IO) { svc.captureScreen() }
+            ?: return BuiltinTools.err("截屏失败：设备或服务暂不支持（需 Android 11+ 且无障碍已开启）")
+        val b64 = ScreenCapture.toBase64(bmp)
+        bmp.recycle()
         // TOCTOU 收口（门0 I3）：截的是 t2 帧而包名是 t1 快照——截完复读前台，
         // 切换过（或进了黑名单 app）即丢弃，绝不把黑名单画面回传外发
         val pkgAfter = withContext(Dispatchers.IO) { svc.readForeground() }?.first ?: ""
