@@ -120,6 +120,10 @@ class ConfigStore(private val ctx: Context) {
         }
     }
 
+    suspend fun clearVisionLearned() {
+        ctx.dataStore.edit { p -> p.remove(K_VISION_LEARNED) }
+    }
+
     suspend fun getUserBlacklist(): Set<String> =
         ctx.dataStore.data.first()[K_SCREEN_BLACKLIST] ?: emptySet()
 

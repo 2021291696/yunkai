@@ -303,6 +303,7 @@ fun SettingsScreen(onOpenSkills: () -> Unit = {}, onOpenMemory: () -> Unit = {},
         // ===== 屏幕感知卡片（豆包对齐 M1）：总开关默认关 + 两项系统授权引导；写入即生效 =====
         var screenSense by remember { mutableStateOf(false) }
         var a11yReady by remember { mutableStateOf(false) }
+        var privacyOpen by remember { mutableStateOf(false) } // 屏蔽应用管理弹窗（M2b 收尾）
         LaunchedEffect(Unit) {
             screenSense = app.configStore.getScreenSense()
             // 轻量轮询：从系统设置授权回来后状态自动跟上（页面存活时 1.5s 一次，成本可忽略）
@@ -330,6 +331,13 @@ fun SettingsScreen(onOpenSkills: () -> Unit = {}, onOpenMemory: () -> Unit = {},
             }
             Text("开启后 agent 可列出/打开应用并读取屏幕：文字走无障碍节点树，图片与自绘应用走截图视觉", fontSize = 12.sp, color = TextFaint)
             Text("隐私：银行/支付类默认不读；密码框内容永不上传；截屏随无障碍自动可用", fontSize = 12.sp, color = TextFaint)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().clickable { privacyOpen = true },
+            ) {
+                Text("屏蔽应用管理", fontSize = 14.sp, modifier = Modifier.weight(1f))
+                Text("›", fontSize = 20.sp, color = MaterialTheme.colorScheme.secondary)
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     "无障碍读屏", fontSize = 14.sp, modifier = Modifier.weight(1f),
@@ -346,6 +354,8 @@ fun SettingsScreen(onOpenSkills: () -> Unit = {}, onOpenMemory: () -> Unit = {},
                 }
             }
         }
+
+        if (privacyOpen) ScreenPrivacyDialog(glass = glass, onClose = { privacyOpen = false })
 
         // ===== 记忆隐私卡片（M1c）：三挡写入即生效，不随「保存」；说明文案按协议 §5.2 挡位矩阵 =====
         GlassCard {
