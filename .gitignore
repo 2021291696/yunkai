@@ -1,0 +1,22 @@
+# macOS / IDE
+.DS_Store
+.idea/
+*.iml
+
+# Android 构建产物
+**/build/
+.gradle/
+local.properties
+.kotlin/
+.cxx/
+
+# HarmonyOS 构建产物
+**/oh_modules/
+.hvigor/
+entry/build/
+
+# 本机运行态
+.mimosa/
+.v2c/
+out/
+_dump.json
