@@ -39,6 +39,18 @@
     ],
     "extensionAbilities": [
       {
+        "name": "ScreenSenseExtension",
+        "srcEntry": "./ets/service/screen/ScreenSenseExtension.ets",
+        "type": "accessibility",
+        "exported": true,
+        "metadata": [
+          {
+            "name": "accessibility_config",
+            "resource": "$profile:accessibility_config"
+          }
+        ]
+      },
+      {
         "name": "EntryBackupAbility",
         "srcEntry": "./ets/entrybackupability/EntryBackupAbility.ets",
         "type": "backup",
