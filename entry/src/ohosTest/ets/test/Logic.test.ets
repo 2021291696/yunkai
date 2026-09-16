@@ -24,6 +24,7 @@ import { SkillRepo } from '../../../main/ets/store/SkillRepo';
 import { SkillImporter } from '../../../main/ets/service/SkillImporter';
 import { AgentTool } from '../../../main/ets/service/tools/AgentTool';
 import { BuiltinTools } from '../../../main/ets/service/tools/BuiltinTools';
+import { ScreenBlacklist, ScreenFormat, ScreenGuard, ScreenNode } from '../../../main/ets/service/screen/ScreenLogic';
 
 // ===== M5a 记忆引擎测试辅助 =====
 
@@ -881,6 +882,41 @@ export default function logicTest() {
       const out = AgentLoop.applyToolBudget('a'.repeat(100), 30000);
       expect(out === '本轮工具输出预算已耗尽，请基于已有结果作答').assertTrue();
       expect(out.includes('已截断')).assertFalse();
+    });
+
+    it('screen_guard_keyword_hits', 0, () => {
+      // 关键词命中即敏感（与 Android ScreenGuard 同表）
+      expect(ScreenGuard.hasSensitive('请输入支付密码')).assertTrue();
+      expect(ScreenGuard.hasSensitive('向对方转账 100 元')).assertTrue();
+      expect(ScreenGuard.hasSensitive('短信验证码')).assertTrue();
+      expect(ScreenGuard.hasSensitive('今天天气不错')).assertFalse();
+      expect(ScreenGuard.hasSensitive('')).assertFalse();
+    });
+
+    it('screen_blacklist_default_and_user', 0, () => {
+      // 内置鸿蒙 bundle 命中；用户增补集命中；未命中放行；空 bundle 永不放行
+      expect(ScreenBlacklist.isBlocked('com.alipay.alipayfinance', new Set<string>())).assertTrue();
+      expect(ScreenBlacklist.isBlocked('com.example.unknown', new Set<string>(['com.example.unknown']))).assertTrue();
+      expect(ScreenBlacklist.isBlocked('com.huawei.hmos.settings', new Set<string>())).assertFalse();
+      expect(ScreenBlacklist.isBlocked('', new Set<string>(['com.example.x']))).assertFalse();
+    });
+
+    it('screen_format_matches_android_schema', 0, () => {
+      // 输出格式与 Android ScreenFormat.format 逐段一致（双端模型提示词通用）
+      const nodes: ScreenNode[] = [
+        new ScreenNode('WLAN', 'Text', 660, 400, false),
+        new ScreenNode('', 'Image', 660, 500, true),
+      ];
+      const out = ScreenFormat.format('com.huawei.hmos.settings', nodes);
+      expect(out.startsWith('当前应用: com.huawei.hmos.settings（可读文本节点 1 个）')).assertTrue();
+      expect(out.includes('[1] Text "WLAN" @(660,400)')).assertTrue();
+      expect(out.includes('[2] Image "" @(660,500) 可点击')).assertTrue();
+      // 密码框只出标记不出值（isPassword 置位时；鸿蒙当前无识别来源，格式路径仍须正确）
+      const pwNode = new ScreenNode('secret', 'TextInput', 1, 2, true);
+      pwNode.isPassword = true;
+      const pw = ScreenFormat.format('x', [pwNode]);
+      expect(pw.includes('[密码框]')).assertTrue();
+      expect(pw.includes('secret')).assertFalse();
     });
   });
 }
