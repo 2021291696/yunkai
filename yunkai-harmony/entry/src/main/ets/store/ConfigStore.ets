@@ -1,0 +1,101 @@
+// 配置存取：preferences 'appConfig'，键与 AppConfig 字段同名
+import { preferences } from '@kit.ArkData';
+import { common } from '@kit.AbilityKit';
+import { AppConfig } from '../model/Types';
+
+export class ConfigStore {
+  static async load(ctx: common.UIAbilityContext): Promise<AppConfig> {
+    const p = await preferences.getPreferences(ctx, 'appConfig');
+    const c = new AppConfig();
+    c.baseUrl = (await p.get('baseUrl', '')) as string;
+    c.apiKey = (await p.get('apiKey', '')) as string;
+    c.model = (await p.get('model', '')) as string;
+    c.longModel = (await p.get('longModel', 'glm-4.7')) as string;
+    c.autoRoute = (await p.get('autoRoute', true)) as boolean;
+    c.searchMode = (await p.get('searchMode', 'auto')) as string;
+    c.searchProvider = (await p.get('searchProvider', 'bing')) as string;
+    c.searchApiKey = (await p.get('searchApiKey', '')) as string;
+    // 忆枢：隐私挡位（strict|standard|free，未知回退 strict）+ 任务步数三档（10/25/50，非法收敛 25）
+    c.memoryGear = (await p.get('memoryGear', 'strict')) as string;
+    c.maxSteps = ConfigStore.sanitizeMaxSteps((await p.get('maxSteps', 25)) as number);
+    return c;
+  }
+
+  static async save(ctx: common.UIAbilityContext, cfg: AppConfig): Promise<void> {
+    const p = await preferences.getPreferences(ctx, 'appConfig');
+    await p.put('baseUrl', cfg.baseUrl);
+    await p.put('apiKey', cfg.apiKey);
+    await p.put('model', cfg.model);
+    await p.put('longModel', cfg.longModel);
+    await p.put('autoRoute', cfg.autoRoute);
+    await p.put('searchMode', cfg.searchMode);
+    await p.put('searchProvider', cfg.searchProvider);
+    await p.put('searchApiKey', cfg.searchApiKey);
+    await p.put('memoryGear', cfg.memoryGear);
+    await p.put('maxSteps', cfg.maxSteps);
+    await p.flush();
+  }
+
+  // 同步读主题模式：EntryAbility 启动早期就要应用，异步读会先渲染错档一帧
+  static getThemeModeSync(ctx: common.UIAbilityContext): string {
+    const p: preferences.Preferences = preferences.getPreferencesSync(ctx, { name: 'appConfig' });
+    return p.getSync('themeMode', 'system') as string;
+  }
+
+  static async setThemeMode(ctx: common.UIAbilityContext, mode: string): Promise<void> {
+    const p = await preferences.getPreferences(ctx, 'appConfig');
+    await p.put('themeMode', mode);
+    await p.flush();
+  }
+
+  // 皮肤（clear|aurora）：与 themeMode 同一套「同步读/选中即写」纪律
+  static getSkinIdSync(ctx: common.UIAbilityContext): string {
+    const p: preferences.Preferences = preferences.getPreferencesSync(ctx, { name: 'appConfig' });
+    return p.getSync('skinId', 'clear') as string;
+  }
+
+  static async setSkinId(ctx: common.UIAbilityContext, skinId: string): Promise<void> {
+    const p = await preferences.getPreferences(ctx, 'appConfig');
+    await p.put('skinId', skinId);
+    await p.flush();
+  }
+
+  static async getWallpaper(ctx: common.UIAbilityContext): Promise<string> {
+    const p = await preferences.getPreferences(ctx, 'appConfig');
+    return (await p.get('wallpaper', '')) as string;
+  }
+
+  static async setWallpaper(ctx: common.UIAbilityContext, path: string): Promise<void> {
+    const p = await preferences.getPreferences(ctx, 'appConfig');
+    await p.put('wallpaper', path);
+    await p.flush();
+  }
+
+  // 忆枢 M1c/M3：隐私挡位与任务步数——选中即写独立于「保存」（写入下一轮对话即生效）
+  static async getMemoryGear(ctx: common.UIAbilityContext): Promise<string> {
+    const p = await preferences.getPreferences(ctx, 'appConfig');
+    return (await p.get('memoryGear', 'strict')) as string;
+  }
+
+  static async setMemoryGear(ctx: common.UIAbilityContext, gear: string): Promise<void> {
+    const p = await preferences.getPreferences(ctx, 'appConfig');
+    await p.put('memoryGear', gear);
+    await p.flush();
+  }
+
+  static async getMaxSteps(ctx: common.UIAbilityContext): Promise<number> {
+    const p = await preferences.getPreferences(ctx, 'appConfig');
+    return ConfigStore.sanitizeMaxSteps((await p.get('maxSteps', 25)) as number);
+  }
+
+  static async setMaxSteps(ctx: common.UIAbilityContext, steps: number): Promise<void> {
+    const p = await preferences.getPreferences(ctx, 'appConfig');
+    await p.put('maxSteps', ConfigStore.sanitizeMaxSteps(steps));
+    await p.flush();
+  }
+
+  static sanitizeMaxSteps(v: number): number {
+    return (v === 10 || v === 25 || v === 50) ? v : 25;
+  }
+}
+

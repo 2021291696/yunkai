@@ -1,0 +1,68 @@
+{
+  "color": [
+    {
+      "name": "start_window_background",
+      "value": "#000000"
+    },
+    {
+      "name": "glass_bg",
+      "value": "#19FFFFFF"
+    },
+    {
+      "name": "glass_bg_strong",
+      "value": "#24FFFFFF"
+    },
+    {
+      "name": "glass_border",
+      "value": "#47FFFFFF"
+    },
+    {
+      "name": "text_hi",
+      "value": "#F4F4F6"
+    },
+    {
+      "name": "text_mid",
+      "value": "#9EF4F4F6"
+    },
+    {
+      "name": "text_low",
+      "value": "#61F4F4F6"
+    },
+    {
+      "name": "accent",
+      "value": "#0A84FF"
+    },
+    {
+      "name": "accent_soft",
+      "value": "#380A84FF"
+    },
+    {
+      "name": "bubble_user",
+      "value": "#4D0A84FF"
+    },
+    {
+      "name": "mask_v_top",
+      "value": "#991A1820"
+    },
+    {
+      "name": "mask_v_35",
+      "value": "#1A1A1820"
+    },
+    {
+      "name": "mask_v_50",
+      "value": "#0D1A1820"
+    },
+    {
+      "name": "mask_v_70",
+      "value": "#261A1820"
+    },
+    {
+      "name": "mask_v_bot",
+      "value": "#B31A1820"
+    },
+    {
+      "name": "mask_h_edge",
+      "value": "#4D1A1820"
+    }
+  ]
+}

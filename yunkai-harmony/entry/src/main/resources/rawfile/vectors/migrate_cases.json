@@ -1,0 +1,146 @@
+{
+  "spec_version": "0.1",
+  "cases": [
+    {
+      "name": "basic_string_values",
+      "input_json": "{\"user_name\":\"张三\",\"city\":\"杭州\"}",
+      "expected_rows": [
+        {
+          "content": "user_name：张三",
+          "type": "fact",
+          "source": "legacy-m2"
+        },
+        {
+          "content": "city：杭州",
+          "type": "fact",
+          "source": "legacy-m2"
+        }
+      ]
+    },
+    {
+      "name": "nonstring_values",
+      "input_json": "{\"login_count\":42,\"is_vip\":true,\"tags\":[\"a\",\"b\"],\"profile\":{\"nick\":\"小张\",\"level\":3}}",
+      "expected_rows": [
+        {
+          "content": "login_count：42",
+          "type": "fact",
+          "source": "legacy-m2"
+        },
+        {
+          "content": "is_vip：true",
+          "type": "fact",
+          "source": "legacy-m2"
+        },
+        {
+          "content": "tags：[\"a\",\"b\"]",
+          "type": "fact",
+          "source": "legacy-m2"
+        },
+        {
+          "content": "profile：{\"nick\":\"小张\",\"level\":3}",
+          "type": "fact",
+          "source": "legacy-m2"
+        }
+      ]
+    },
+    {
+      "name": "number_bool_null",
+      "input_json": "{\"weight\":2.5,\"active\":false,\"remark\":null}",
+      "expected_rows": [
+        {
+          "content": "weight：2.5",
+          "type": "fact",
+          "source": "legacy-m2"
+        },
+        {
+          "content": "active：false",
+          "type": "fact",
+          "source": "legacy-m2"
+        },
+        {
+          "content": "remark：null",
+          "type": "fact",
+          "source": "legacy-m2"
+        }
+      ]
+    },
+    {
+      "name": "empty_object",
+      "input_json": "{}",
+      "expected_rows": []
+    },
+    {
+      "name": "broken_truncated",
+      "input_json": "{\"user_name\":\"张三\",\"city\":",
+      "expected_rows": []
+    },
+    {
+      "name": "top_level_array",
+      "input_json": "[\"a\",\"b\",\"c\"]",
+      "expected_rows": []
+    },
+    {
+      "name": "top_level_string",
+      "input_json": "\"just a string\"",
+      "expected_rows": []
+    },
+    {
+      "name": "chinese_and_special_chars",
+      "input_json": "{\"note\":\"line1\\nline2\",\"quote\":\"他说\\\"你好\\\"\",\"emoji\":\"好😊\",\"path\":\"C:\\\\Users\\\\test\"}",
+      "expected_rows": [
+        {
+          "content": "note：line1\nline2",
+          "type": "fact",
+          "source": "legacy-m2"
+        },
+        {
+          "content": "quote：他说\"你好\"",
+          "type": "fact",
+          "source": "legacy-m2"
+        },
+        {
+          "content": "emoji：好😊",
+          "type": "fact",
+          "source": "legacy-m2"
+        },
+        {
+          "content": "path：C:\\Users\\test",
+          "type": "fact",
+          "source": "legacy-m2"
+        }
+      ]
+    },
+    {
+      "name": "key_order_preserved",
+      "input_json": "{\"b_key\":1,\"a_key\":2,\"中键\":3}",
+      "expected_rows": [
+        {
+          "content": "b_key：1",
+          "type": "fact",
+          "source": "legacy-m2"
+        },
+        {
+          "content": "a_key：2",
+          "type": "fact",
+          "source": "legacy-m2"
+        },
+        {
+          "content": "中键：3",
+          "type": "fact",
+          "source": "legacy-m2"
+        }
+      ]
+    },
+    {
+      "name": "empty_key",
+      "input_json": "{\"\":\"空键名的值\"}",
+      "expected_rows": [
+        {
+          "content": "：空键名的值",
+          "type": "fact",
+          "source": "legacy-m2"
+        }
+      ]
+    }
+  ]
+}

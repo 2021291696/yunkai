@@ -1,0 +1,21 @@
+/node_modules
+/oh_modules
+/local.properties
+/.idea
+**/build
+/.hvigor
+.cxx
+/.clangd
+/.clang-format
+/.clang-tidy
+**/.test
+/.appanalyzer.mimosa/
+
+# Mimosa hook 会话状态（本机运行态，不入库）
+/.mimosa/
+_dump.json
+_hilog_send.txt
+build.sh
+entry/src/main/ets/.mimosa/
+tests/fullflow/.mimosa/
+build.sh

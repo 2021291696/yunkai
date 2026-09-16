@@ -1,0 +1,16 @@
+{
+  "accessibilityCapabilities": [
+    "retrieve",
+    "touchGuide",
+    "gesture"
+  ],
+  "accessibilityAbilityTypes": [
+    "spoken"
+  ],
+  "accessibilityCapabilityRationale": "云开屏幕感知需要读取屏幕文本，并在您逐条批准计划后执行点击、滑动等操作",
+  "settingsAbility": "EntryAbility",
+  "isImportant": false,
+  "needHide": false,
+  "readableRules": "{}",
+  "accessibilityEventConfigure": []
+}
