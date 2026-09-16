@@ -1,0 +1,13 @@
+.gradle/
+build/
+*/build/
+local.properties
+*.iml
+.idea/
+.cxx/
+.mimosa/
+.v2c/
+out/
+build_tmp/
+_dump.json
+.kotlin/

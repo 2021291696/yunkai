@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">云开</string>
+    <string name="screen_sense_desc">云开读取当前屏幕内容以辅助回答；可在系统设置中随时关闭</string>
+</resources>

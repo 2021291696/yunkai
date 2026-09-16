@@ -1,0 +1,265 @@
+{
+  "spec_version": "0.1",
+  "patterns": {
+    "secret": "(?i)(密码|口令|passwd|password|pwd|api[\\s_-]?key|secret|密钥)[^\\n]{0,20}[:：=为是]\\s*\\S+",
+    "idnum": "[1-9]\\d{5}(?:19|20)\\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\\d|3[01])\\d{3}[\\dXx]",
+    "bankcard": "\\b\\d{16,19}\\b"
+  },
+  "cases": [
+    {
+      "name": "secret_pos_cn_password",
+      "text": "我的密码是abc123",
+      "expected_hits": [
+        "secret"
+      ]
+    },
+    {
+      "name": "secret_pos_en_password",
+      "text": "Password: hunter2",
+      "expected_hits": [
+        "secret"
+      ]
+    },
+    {
+      "name": "secret_pos_pwd_eq",
+      "text": "pwd=letmein99",
+      "expected_hits": [
+        "secret"
+      ]
+    },
+    {
+      "name": "secret_pos_apikey_dash",
+      "text": "API-KEY: sk-abcdef123456",
+      "expected_hits": [
+        "secret"
+      ]
+    },
+    {
+      "name": "secret_pos_apikey_space",
+      "text": "api key = sk-xyz789",
+      "expected_hits": [
+        "secret"
+      ]
+    },
+    {
+      "name": "secret_pos_apikey_compact",
+      "text": "我的 apikey=ak-live-9f8e7d6c",
+      "expected_hits": [
+        "secret"
+      ]
+    },
+    {
+      "name": "secret_pos_miyao_colon",
+      "text": "密钥：Jd7#kQz9",
+      "expected_hits": [
+        "secret"
+      ]
+    },
+    {
+      "name": "secret_pos_kouling_shi",
+      "text": "口令是1qaz2wsx",
+      "expected_hits": [
+        "secret"
+      ]
+    },
+    {
+      "name": "secret_pos_bridge_words",
+      "text": "请记一下 secret 那串是 Tr0ub4dor&3",
+      "expected_hits": [
+        "secret"
+      ]
+    },
+    {
+      "name": "secret_pos_case_punct",
+      "text": "【重要】PassWord=Admin@2024",
+      "expected_hits": [
+        "secret"
+      ]
+    },
+    {
+      "name": "secret_pos_second_line",
+      "text": "密码不告诉你\n但是密码：q1w2e3",
+      "expected_hits": [
+        "secret"
+      ]
+    },
+    {
+      "name": "secret_neg_no_value",
+      "text": "记得改密码",
+      "expected_hits": []
+    },
+    {
+      "name": "secret_neg_word_only",
+      "text": "password",
+      "expected_hits": []
+    },
+    {
+      "name": "secret_neg_no_separator",
+      "text": "密码在便签纸上",
+      "expected_hits": []
+    },
+    {
+      "name": "secret_neg_at_sign",
+      "text": "pwd@2024",
+      "expected_hits": []
+    },
+    {
+      "name": "secret_neg_colon_eof",
+      "text": "密码：",
+      "expected_hits": []
+    },
+    {
+      "name": "secret_neg_spaces_eof",
+      "text": "password:    ",
+      "expected_hits": []
+    },
+    {
+      "name": "secret_pos_underscore_key",
+      "text": "api_key: abc123",
+      "expected_hits": [
+        "secret"
+      ]
+    },
+    {
+      "name": "secret_neg_future_tense",
+      "text": "旧密码已失效，新密码下周设置",
+      "expected_hits": []
+    },
+    {
+      "name": "idnum_pos_x",
+      "text": "身份证号是11010119900307775X",
+      "expected_hits": [
+        "idnum"
+      ]
+    },
+    {
+      "name": "idnum_pos_lower_x",
+      "text": "我妈的证件号11010119900307775x办好了",
+      "expected_hits": [
+        "idnum"
+      ]
+    },
+    {
+      "name": "idnum_pos_all_digits",
+      "text": "户口本上的号码是110101199003070011",
+      "expected_hits": [
+        "idnum"
+      ]
+    },
+    {
+      "name": "idnum_pos_2000s",
+      "text": "暂住证登记了440301200501123456",
+      "expected_hits": [
+        "idnum"
+      ]
+    },
+    {
+      "name": "idnum_neg_17_truncated",
+      "text": "号码是11010119900307775 就这样",
+      "expected_hits": []
+    },
+    {
+      "name": "idnum_neg_month_13",
+      "text": "无效号码11010119901307775X",
+      "expected_hits": []
+    },
+    {
+      "name": "idnum_neg_day_00",
+      "text": "无效日期11010119900007775X",
+      "expected_hits": []
+    },
+    {
+      "name": "idnum_neg_19th_century",
+      "text": "民国旧证11010118900307775X",
+      "expected_hits": []
+    },
+    {
+      "name": "idnum_neg_phone_11",
+      "text": "手机号13812345678，别存错了",
+      "expected_hits": []
+    },
+    {
+      "name": "bank_pos_19_luhn_ok",
+      "text": "还款卡号6222020000000000000，别忘了",
+      "expected_hits": [
+        "bankcard"
+      ]
+    },
+    {
+      "name": "bank_pos_16_luhn_ok",
+      "text": "工资打卡号6222020000000007，每月十号到账",
+      "expected_hits": [
+        "bankcard"
+      ]
+    },
+    {
+      "name": "bank_pos_18_luhn_ok",
+      "text": "房贷扣款账户621700000000000006",
+      "expected_hits": [
+        "bankcard"
+      ]
+    },
+    {
+      "name": "bank_pos_idnum_also_luhn_ok",
+      "text": "有点巧，110101199003070013 这个数两种校验都过",
+      "expected_hits": [
+        "idnum",
+        "bankcard"
+      ]
+    },
+    {
+      "name": "bank_neg_luhn_fail",
+      "text": "卡号6222020000000000001好像不对",
+      "expected_hits": []
+    },
+    {
+      "name": "bank_neg_15_digits",
+      "text": "订单号123456789012345已发货",
+      "expected_hits": []
+    },
+    {
+      "name": "bank_neg_20_digits",
+      "text": "编号12345678901234567890太长",
+      "expected_hits": []
+    },
+    {
+      "name": "bank_neg_letter_adjacent",
+      "text": "编号AB6222020000000000000X",
+      "expected_hits": []
+    },
+    {
+      "name": "multi_secret_idnum",
+      "text": "我的密码是abc123，身份证是11010119900307775X",
+      "expected_hits": [
+        "secret",
+        "idnum"
+      ]
+    },
+    {
+      "name": "multi_all_three",
+      "text": "密码：Root@2024，证件11010119900307775X，卡号6222020000000000000",
+      "expected_hits": [
+        "secret",
+        "idnum",
+        "bankcard"
+      ]
+    }
+  ],
+  "gear_matrix": {
+    "strict": {
+      "secret": "reject",
+      "idnum": "reject",
+      "bankcard": "reject"
+    },
+    "standard": {
+      "secret": "allow",
+      "idnum": "reject",
+      "bankcard": "reject"
+    },
+    "free": {
+      "secret": "allow",
+      "idnum": "allow",
+      "bankcard": "allow"
+    }
+  }
+}

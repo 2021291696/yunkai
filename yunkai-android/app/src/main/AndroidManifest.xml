@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 屏幕感知（豆包对齐 M1）：后台进度/结果通知（截屏走无障碍 takeScreenshot） -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 应用列表查询：launcher intent 声明式可见性（Android 11+ 不用 QUERY_ALL_PACKAGES 宽权限） -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+    <application
+        android:name=".YunkaiApp"
+        android:icon="@mipmap/ic_launcher"
+        android:label="云开"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar"
+        android:allowBackup="false">
+        <activity android:name=".MainActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <!-- 闪问面板宿主（透明 Activity）：悬浮球/磁贴直接拉起，不依赖主界面窗口 token（修 BadTokenException） -->
+        <activity
+            android:name=".ui.flash.FlashActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Yunkai.Flash" />
+        <!-- 无障碍读屏：只取窗口内容，不订阅按键、不做注入（M2 手势再扩） -->
+        <service
+            android:name=".service.screen.ScreenSenseService"
+            android:exported="false"
+            android:label="云开屏幕感知"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/screen_sense_config" />
+        </service>
+        <!-- 快捷设置磁贴（M2b-T10）：下拉点按 → 直接拉起透明 FlashActivity 开闪问面板 -->
+        <service
+            android:name=".service.screen.ScreenTileService"
+            android:exported="true"
+            android:icon="@android:drawable/ic_menu_compass"
+            android:label="云开闪问"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+    </application>
+</manifest>

@@ -1,0 +1,240 @@
+# ═══════════════════════════════════════════════════════════════════
+# yunkai-android v1（A0→A4 移植）全流程测试清单
+# 平台=android：门1 走 cli 步骤（Gradle 测试/构建/真 LLM 主机直连冒烟），
+# 门2 由 AI 编排层按本清单驱动模拟器（android-emulator MCP），证据落
+# tests/fullflow/reports/<时间戳>_ui/artifacts/agent-ui/<runID>/。
+# 密钥只经 DEEPSEEK_API_KEY 环境变量名引用，禁明文（铁律 2）。
+# 环境前置（AI 编排层负责，铁律 3）：JAVA_HOME 必须指完整 JDK 21（Temurin），
+#   ANDROID_HOME=D:\Android\Sdk —— 本机默认 JAVA_HOME 指向 IntelliJ 的 JBR，
+#   无 jlink.exe，会让 JdkImageTransform 直接失败（实测 gate1 RED）。
+#
+# 注（2026-09-09 首战教训）：执行器 fork 在运行时读全局变量，不按枚举路径
+# 强制分支——多分叉结构会全线 RED。故本清单摊平为单路径「base」，
+# 分叉语义（粘贴导入 vs 新建、取消 vs 跑完）已并入线性步骤，
+# llm_off 场景由门2 的 pm clear 空态护栏步骤覆盖。
+# ═══════════════════════════════════════════════════════════════════
+name: yunkai-android v2 全流程
+target:
+  platform: android
+  app:
+    package: com.zhuolin.yunkai
+    activity: com.zhuolin.yunkai/.MainActivity
+    avd: quizlens_test            # android-35 x86_64，320x640
+    apk: app/build/outputs/apk/debug/app-debug.apk
+    device_llm:                   # 注入模拟器 app 设置页的模型配置（真 LLM 路径用）
+      base_url: https://api.deepseek.com/v1
+      model: deepseek-chat
+      api_key_env: DEEPSEEK_API_KEY
+
+environment:
+  start: manual                    # AI 编排层：确认模拟器在线 + gradlew assembleDebug + adb install -r
+  # （CLI 型目标无 HTTP health；就绪由门1 的 cli 步骤复验）
+
+llm:                              # 门1 real_llm_integration_test 用（仅 env 名引用）
+  base_url: https://api.deepseek.com/v1
+  api_key_env: DEEPSEEK_API_KEY
+  model: deepseek-chat
+
+variables:
+  skill_name: "测试技能-{rand4}"
+  DEVICE_LLM_KEY: "__AI_FILL__"   # 占位声明：真值由 AI 编排层在模拟器键入（铁律2 禁明文落盘）
+
+diagnosis:
+  logs:
+    - { name: logcat, path: "_tmp/logcat_yunkai.txt", error_patterns: ["FATAL", "AndroidRuntime"] }
+
+flow:
+  steps:
+    # ─────────── 门1：CLI 层（构建/单测/LLM 主机直连） ───────────
+    - id: gradle_unit_tests
+      cli:
+        cmd: "cmd /c gradlew.bat testDebugUnitTest --no-daemon"   # cmd /c：Windows shell=False 下裸 .bat 名解析不稳（cwd 内 exe 搜索不可靠→127）
+        cwd: "../.."
+        timeout_s: 300
+      assert:
+        - { status: 0 }
+
+    - id: gradle_assemble_debug
+      cli:
+        cmd: "cmd /c gradlew.bat assembleDebug --no-daemon"
+        cwd: "../.."
+        timeout_s: 300
+      assert:
+        - { status: 0 }
+
+    - id: real_llm_integration_test   # 真 LLM 主机直连冒烟（无 key 自动 skip；环境有 key 即真连）
+      cli:
+        cmd: "cmd /c gradlew.bat cleanTestDebugUnitTest testDebugUnitTest --tests com.zhuolin.yunkai.DeepSeekChainTest --no-build-cache --no-daemon"
+        cwd: "../.."
+        timeout_s: 300
+      assert:
+        - { status: 0 }
+        - { text_contains: "LLM_CHAIN_OK" }
+
+    # ─────────── 门2：界面层（AI 驱动模拟器；gate=api 时 executor 跳过） ───────────
+    # ui 步骤按 skill 门2 映射执行：goto=启动/切页 click=tap fill=type
+    # expect_visible=ui_describe 找元素 text_contains=屏幕文本
+    - id: launch_and_guide          # ① 启动 + 引导页
+      ui:
+        - { action: goto, url: "app://launch" }
+        - { action: expect_visible, target: "text=问我任何问题" }
+        - { action: expect_visible, target: "text=@eli5 讲讲黑洞是怎么形成的" }
+
+    - id: chat_guard_unconfigured   # ② 未配置护栏（pm clear 空态下先跑）
+      ui:
+        - { action: fill, target: "聊天输入框", value: "你好" }
+        - { action: click, target: "text=发送" }
+        - { action: expect_visible, target: "text=请先在设置页配置 API 地址/密钥/模型" }
+
+    - id: config_save_restore       # ③ 配置保存 + 杀进程重进恢复
+      ui:
+        - { action: click, target: "左上角侧边栏按钮 ☰" }
+        - { action: click, target: "抽屉内齿轮设置钮 ⚙" }
+        - { action: fill, target: "API 地址输入框", value: "https://api.deepseek.com/v1" }
+        - { action: fill, target: "API 密钥输入框", value: "${DEVICE_LLM_KEY}" }
+        - { action: fill, target: "模型名输入框", value: "deepseek-chat" }
+        - { action: click, target: "text=保存" }
+        - { action: goto, url: "app://restart" }          # 杀进程重启
+        - { action: click, target: "左上角侧边栏按钮 ☰" }
+        - { action: click, target: "抽屉内齿轮设置钮 ⚙" }
+        - { action: expect_visible, target: "text=https://api.deepseek.com/v1" }
+
+    - id: skill_create_form         # ④ 自建技能（新建表单）
+      ui:
+        - { action: click, target: "text=技能库" }
+        - { action: click, target: "text=＋ 新建" }
+        - { action: fill, target: "技能名输入框", value: "{skill_name}" }
+        - { action: fill, target: "技能内容输入框", value: "全流程测试技能正文：请回答「测试通过」四个字。" }
+        - { action: click, target: "text=保存" }
+        - { action: expect_visible, target: "text={skill_name}" }
+
+    - id: skill_import_paste        # ④b 自建技能（粘贴导入）
+      ui:
+        - { action: click, target: "text=粘贴导入" }
+        - { action: fill, target: "导入文本框", value: "---\nname: 导入技能\ndescription: 粘贴导入测试\n---\n正文：请回答「导入成功」。"}
+        - { action: click, target: "text=解析并导入" }
+        - { action: expect_visible, target: "text=导入技能" }
+
+    - id: chat_bare_llm             # ⑤ 裸对话（真 LLM 回复；内容级断言）
+      ui:
+        - { action: goto, url: "app://chat" }
+        - { action: fill, target: "聊天输入框", value: "用一句话回答：1+1等于几？" }
+        - { action: click, target: "text=发送" }
+        - { action: expect_visible, target: "text=2" }
+      # 内容级断言：回复须含「2」且不含失败自述（「出错了」「无法」等判 FAIL）
+
+    - id: chat_search_and_canvas    # ⑥ 联网搜索问答（web_search 时间线可见；内容级断言）
+      ui:
+        - { action: fill, target: "聊天输入框", value: "今天有什么科技新闻？" }
+        - { action: click, target: "text=发送" }
+        - { action: expect_visible, target: "text=🔍 调用 web_search…" }
+        - { action: expect_visible, target: "text=✓ 完成" }
+
+    - id: chat_cancel_then_finish   # ⑦ 取消中断（发送进行中点停止，发送键即刻恢复）
+      ui:
+        - { action: fill, target: "聊天输入框", value: "详细介绍一下人工智能的历史" }
+        - { action: click, target: "text=发送" }
+        - { action: click, target: "text=停止" }
+        - { action: expect_visible, target: "text=发送" }
+        # 净空语义复核：取消轮不落库 assistant 消息（AI 驱动层读屏+重进会话取证）
+
+    - id: chat_eli5_canvas          # ⑧ @eli5 整页画布
+      ui:
+        - { action: fill, target: "聊天输入框", value: "@eli5 讲讲黑洞是怎么形成的" }
+        - { action: click, target: "text=发送" }
+        - { action: expect_visible, target: "text=画布 · 点此全屏查看" }
+        - { action: click, target: "text=画布 · 点此全屏查看" }
+        - { action: expect_visible, target: "text=‹ 返回" }
+
+    - id: history_and_delete        # ⑨ 历史抽屉（恢复/新对话）
+      ui:
+        - { action: click, target: "text=‹ 返回" }
+        - { action: click, target: "左上角侧边栏按钮 ☰" }
+        - { action: expect_visible, target: "text=会话" }
+        - { action: click, target: "text=＋ 新对话" }
+        - { action: expect_visible, target: "text=新对话" }
+
+    - id: drawer_dismiss          # ⑩ 抽屉收起：系统返回键 / 点面板外区域（09-10 改版已删 ✕ 钮）
+      ui:
+        - { action: click, target: "左上角侧边栏按钮 ☰" }
+        - { action: expect_visible, target: "text=会话" }
+        - { action: click, target: "系统返回键（keyevent 4，收抽屉不退 app）" }
+        - { action: click, target: "左上角侧边栏按钮 ☰" }
+        - { action: click, target: "屏幕右侧非抽屉区域（面板外空白）" }
+        - { action: fill, target: "聊天输入框", value: "抽屉已收起" }
+        - { action: expect_visible, target: "text=抽屉已收起" }
+
+    - id: chat_switch_during_loading  # ⑮ 探针：在途轮换会话（门0 blocking 回归——load() 须作废在途 send）
+      ui:
+        - { action: fill, target: "聊天输入框", value: "用一句话回答：1+1等于几？" }
+        - { action: click, target: "text=发送" }
+        - { action: click, target: "左上角侧边栏按钮 ☰" }
+        - { action: click, target: "text=＋ 新对话" }
+        - { action: expect_visible, target: "text=问我任何问题" }
+        - { action: wait, seconds: 25 }
+        - { action: expect_visible, target: "text=问我任何问题" }
+      # 判据（内容级）：被作废那轮在后台跑完后，新会话必须仍是空态引导页——
+      # 出现 AI 气泡 = 跨会话写入（FAIL）；app 不得崩（旧行为：nextId 归 1
+      # 与 loadTurns 写回的 id 撞车 → LazyColumn 重复 key 崩）。
+      # wait = AI 驱动层 sleep（非 run.py 动作）：等足够时间让废轮在后台跑完。
+    - id: chat_image_question      # ⑯ 一期图片链路：＋→相册→选图→chip→发送（纯图）→视觉回答
+      ui:
+        - { action: click, target: "输入坞左侧 ＋ 附件钮" }
+        - { action: expect_visible, target: "text=相册" }      # 附件面板文案已去 emoji
+        - { action: click, target: "text=相册" }
+        - { action: click, target: "系统相册首张图片" }
+        - { action: click, target: "text=Add（含 Add (N) 多选态）" }
+        - { action: expect_visible, target: "text=✕" }          # chip 就绪（缩略图+删除钮）
+        - { action: click, target: "发送钮 ↑" }
+        - { action: expect_visible, target: "text=图片提问" }     # 纯图发送的标题兜底
+      # 内容级断言（AI 驱动层读屏）：回答须真实描述图片内容（图形/颜色）；出现
+      # 「请先在设置页配置」= 设备未配视觉端点（智谱 glm-5.3-flash），FAIL；出现自述失败文案 FAIL。
+      # 前置：设备需配智谱端点（glm-5.3-flash 支持图片输入，已实测）；相册需有测试图。
+      # 收起判据（内容级，AI 驱动层读屏复核）：点 ✕ 与点面板外后抽屉面板均须消失；
+      # 面板未消失时输入框仍被遮罩/面板覆盖，fill 打不进去 → 文案不可见 → 本步 RED
+
+    # ─────────── 屏幕感知 M1（豆包对齐，2026-09-14） ───────────
+    # 前置（AI 编排层）：adb settings put secure enabled_accessibility_services=
+    #   com.zhuolin.yunkai/com.zhuolin.yunkai.service.screen.ScreenSenseService 且 accessibility_enabled=1
+    - id: screen_sense_enable       # ⑰ 设置页屏幕感知卡片：总开关开 + 无障碍状态行（M1.5：截屏随无障碍，无独立授权）
+      ui:
+        - { action: click, target: "左上角侧边栏按钮 ☰" }
+        - { action: click, target: "抽屉内齿轮设置钮 ⚙" }
+        - { action: click, target: "屏幕感知卡片右侧 Switch（滚到卡片可见后）" }
+        - { action: expect_visible, target: "text=屏幕感知" }
+        - { action: expect_visible, target: "text=无障碍读屏" }
+      # 判据：无障碍读屏状态行变「已开启」（adb 已授权 + 1.5s 轮询刷新）；
+      # M1.5 后无「屏幕录制」行——截屏能力随无障碍服务直接生效
+
+    - id: screen_open_and_read      # ⑱ 打开应用并读屏（list_apps/open_app/read_screen 链）
+      ui:
+        - { action: click, target: "左上角返回钮 ‹" }
+        - { action: fill, target: "聊天输入框", value: "打开设置应用，看看它的当前页面上有什么内容" }
+        - { action: click, target: "发送钮 ↑" }
+        - { action: expect_visible, target: "text=调用 list_apps" }
+        - { action: expect_visible, target: "text=调用 open_app" }
+        - { action: expect_visible, target: "text=调用 read_screen" }
+      # 内容级断言（AI 驱动层读屏）：回答须描述设置页真实条目（Network/网络 或 Settings 字样）；
+      # 出现 route=vision 提示或「无障碍服务未开启」= FAIL
+
+    - id: screen_capture_vision     # ⑲ 截屏视觉转述（capture_screen；无障碍 takeScreenshot 链）
+      ui:
+        - { action: fill, target: "聊天输入框", value: "截取当前手机屏幕，看看上面是什么内容" }
+        - { action: click, target: "发送钮 ↑" }
+        - { action: expect_visible, target: "text=调用 capture_screen" }
+        - { action: expect_visible, target: "text=✓ 完成" }
+      # 内容级断言：回答为画面描述（含时间/应用名/布局要素之一）；出现「视觉转述失败」「截屏未授权」「截屏失败」= FAIL
+
+    - id: screen_write_plan         # ⑳ 写操作安全靶（propose_plan 计划卡→批准→真实切页；M2a 临时验收固化，09-16）
+      ui:
+        - { action: click, target: "左上角返回钮 ‹" }
+        - { action: fill, target: "聊天输入框", value: "帮我在设置应用里打开 Network & internet 这一页" }
+        - { action: click, target: "发送钮 ↑" }
+        - { action: expect_visible, target: "text=调用 propose_plan" }
+        - { action: expect_visible, target: "text=写操作计划" }
+        - { action: click, target: "计划卡内「执行」钮" }
+        - { action: expect_visible, target: "text=Airplane mode" }
+      # 判据：计划卡出现（Pending 态，标题「写操作计划」+执行/取消钮）；点执行后 Done 态卡片自动消失、
+      # 前台切到设置子页——「Airplane mode」仅存在于该子页（主页条目同名 Network & internet 不可作判据）。
+      # 模型直答不调 propose_plan=FAIL；中途敏感暂停=按 ScreenGuard 语义判 PASS 但须记录暂停原因。
+      # 前置：⑰ 的无障碍授权已开（写操作经无障碍手势，授权即手势授权）。
