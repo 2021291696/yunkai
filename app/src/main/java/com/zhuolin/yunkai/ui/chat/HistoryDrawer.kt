@@ -198,16 +198,46 @@ fun HistoryDrawer(
     if (flashOpen) FlashHistoryDialog(glass = glass, onClose = { flashOpen = false })
 }
 
-// 闪问历史弹窗（M2b）：只读列出 flash_sessions 最近条目（一问一答+时间），可一键清空。
-// 数据源与闪问面板同表（YunkaiApp.flashDao）；recent()/clearAll() 是 suspend，走 LaunchedEffect/scope。
+// 闪问历史弹窗（M2b）：列出 flash_sessions 最近条目（一问一答+时间），可一键清空；
+// 收尾深化（09-16）：条目可点开全文回看，单条删除（删完刷新列表，弹窗不关）。
+// 数据源与闪问面板同表（YunkaiApp.flashDao）；recent()/deleteById()/clearAll() 是 suspend，走 LaunchedEffect/scope。
 @Composable
 private fun FlashHistoryDialog(glass: GlassScheme, onClose: () -> Unit) {
     val app = LocalContext.current.applicationContext as? YunkaiApp
     var rows by remember { mutableStateOf<List<FlashEntity>?>(null) }
     var reload by remember { mutableStateOf(0) }
+    // 全文回看：null=列表视图，非空=该条全文视图（两视图互斥渲染，避免 AlertDialog 叠显）
+    var openId by remember { mutableStateOf<Long?>(null) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(reload) { rows = app?.flashDao?.recent() ?: emptyList() }
 
+    val open = openId?.let { id -> rows?.firstOrNull { it.id == id } }
+    if (open != null) {
+        AlertDialog(
+            onDismissRequest = { openId = null },
+            title = { Text("闪问", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = TextDark) },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(open.question, fontSize = 14.sp, color = TextDark)
+                    Text(open.answer, fontSize = 12.sp, color = TextFaint)
+                    Text(timeLabel(open.created_at), fontSize = 11.sp, color = TextFaint)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    scope.launch {
+                        app?.flashDao?.deleteById(open.id)
+                        openId = null
+                        reload++
+                    }
+                }) { Text("删除", color = WarmOrange) }
+            },
+            dismissButton = { TextButton(onClick = { openId = null }) { Text("返回") } },
+        )
+    } else {
     AlertDialog(
         onDismissRequest = onClose,
         title = { Text("闪问历史", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = TextDark) },
@@ -226,11 +256,20 @@ private fun FlashHistoryDialog(glass: GlassScheme, onClose: () -> Unit) {
                                 .fillMaxWidth()
                                 .background(glass.glassBg, RoundedCornerShape(12.dp))
                                 .border(GlassTokens.BORDER_W.dp, glass.glassBorder, RoundedCornerShape(12.dp))
+                                .clickable { openId = f.id }
                                 .padding(10.dp),
                         ) {
                             Text(f.question, fontSize = 14.sp, color = TextDark, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Text(f.answer, fontSize = 12.sp, color = TextFaint, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                            Text(timeLabel(f.created_at), fontSize = 11.sp, color = TextFaint)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(timeLabel(f.created_at), fontSize = 11.sp, color = TextFaint, modifier = Modifier.weight(1f))
+                                Text("删除", fontSize = 12.sp, color = WarmOrange, modifier = Modifier.clickable {
+                                    scope.launch {
+                                        app?.flashDao?.deleteById(f.id)
+                                        reload++
+                                    }
+                                })
+                            }
                         }
                     }
                 }
@@ -246,6 +285,7 @@ private fun FlashHistoryDialog(glass: GlassScheme, onClose: () -> Unit) {
         },
         dismissButton = { TextButton(onClick = onClose) { Text("关闭") } },
     )
+    }
 }
 
 // 会话时间标签：刚刚 / N分钟前 / N小时前 / 月-日（与鸿蒙版口径一致）

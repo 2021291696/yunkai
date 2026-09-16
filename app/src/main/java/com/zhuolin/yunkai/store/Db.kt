@@ -126,6 +126,9 @@ interface FlashDao {
     @Insert
     suspend fun insert(e: FlashEntity): Long
 
+    @Query("DELETE FROM flash_sessions WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
     @Query("DELETE FROM flash_sessions")
     suspend fun clearAll()
 }
