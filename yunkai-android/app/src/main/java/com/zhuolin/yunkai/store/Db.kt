@@ -196,8 +196,8 @@ interface SkillDao {
     @Delete
     suspend fun delete(e: SkillEntity)
 
-    @Query("SELECT COUNT(*) FROM skills WHERE name = 'eli5'")
-    suspend fun countEli5(): Int
+    @Query("SELECT COUNT(*) FROM skills WHERE name = :name")
+    suspend fun countByName(name: String): Int
 }
 
 @Dao
