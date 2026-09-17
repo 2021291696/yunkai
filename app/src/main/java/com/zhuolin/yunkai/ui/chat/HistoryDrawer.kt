@@ -112,14 +112,14 @@ fun HistoryDrawer(
         Column(
             modifier = Modifier
                 .fillMaxHeight()
-                .fillMaxWidth(0.86f)
+                .fillMaxWidth(0.80f) // 收窄给拉头留外部空间：展开时拉头停在抽屉右缘之外
                 .background(glass.glassBgStrong) // 玻璃面板，透出壁纸
                 .background(glass.glassBgStrong) // 双层同色叠加：玻璃提实（遮罩+玻璃组合）
                 .statusBarsPadding() // 抽屉头部避让状态栏
                 .navigationBarsPadding()
                 .padding(top = 16.dp),
         ) {
-            // 标题行让位 58 给常驻 ☰；右侧让位 50 给拉头（开态挂右缘），✕ 已由拉头取代
+            // 标题行让位 58 给常驻拉头；右侧让位 50 给拉头（开态停抽屉外），✕ 已由拉头取代
             Row(
                 modifier = Modifier.fillMaxWidth().padding(start = 58.dp, end = 50.dp),
                 verticalAlignment = Alignment.CenterVertically,

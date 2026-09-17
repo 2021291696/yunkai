@@ -153,7 +153,7 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Spacer(Modifier.size(34.dp)) // 左侧占位：标题保持视觉居中（☰ 常驻最上层）
+                Spacer(Modifier.size(34.dp)) // 左侧占位：标题保持视觉居中（拉头常驻最上层）
                 Text(
                     vm.title.value,
                     fontSize = 15.sp,
@@ -462,10 +462,10 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
         onDeleteConversation = { c -> deleteTarget = c },
     )
 
-    // 拉头 ☰：全 app 只此一颗，挂在抽屉右缘随其滑动（收起时停在屏幕左缘）
-    val drawerW = (LocalConfiguration.current.screenWidthDp * 0.86f).dp
+    // 拉头（上长下短双横线）：全 app 只此一颗，展开时停在抽屉右缘之外（收起时停在屏幕左缘）
+    val drawerW = (LocalConfiguration.current.screenWidthDp * 0.80f).dp
     val handleX by animateDpAsState(
-        targetValue = if (vm.showHistory.value) drawerW - 34.dp else 0.dp,
+        targetValue = if (vm.showHistory.value) drawerW + 6.dp else 0.dp,
         animationSpec = tween(260),
         label = "handleX",
     )
@@ -488,7 +488,12 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
                     }
                 },
             contentAlignment = Alignment.Center,
-        ) { Text("☰", fontSize = 15.sp, color = glass.textHi) }
+        ) {
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Box(Modifier.width(13.dp).height(1.8.dp).clip(RoundedCornerShape(1.dp)).background(glass.textHi))
+                Box(Modifier.width(8.dp).height(1.8.dp).clip(RoundedCornerShape(1.dp)).background(glass.textHi))
+            }
+        }
     }
 }
 
