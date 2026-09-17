@@ -14,9 +14,9 @@ const DOMAIN = 0x0000;
 export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onCreate');
-    // 首启播种内置 eli5 技能（幂等：list 非空即返回；失败不影响启动）
-    SkillRepo.seedIfEmpty(this.context).catch((err: Error) => {
-      hilog.error(DOMAIN, 'testTag', 'seedIfEmpty failed: %{public}s', err.message);
+    // 首启播种内置技能 eli5 / 狗头军师（幂等：无同名行才插；失败不影响启动）
+    SkillRepo.seedBuiltins(this.context).catch((err: Error) => {
+      hilog.error(DOMAIN, 'testTag', 'seedBuiltins failed: %{public}s', err.message);
     });
     // 忆枢旧数据迁移（协议 §1.5，一次性）：filesDir/agent_memory.json 存在且无 .bak →
     // KV 迁入 archival（source=legacy-m2）→ 原文件改名 .bak（损坏文件也改名，视为空库）。
