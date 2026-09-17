@@ -37,11 +37,10 @@ class SkillRepo(private val dao: SkillDao) : SkillSource {
         dao.delete(SkillEntity(id = id, name = "", description = null, content = null))
     }
 
-    // 首启播种内置技能（幂等：无同名行才插，重复启动不重插；失败不向上抛）。
-    // expectedName 由调用方给定（与 raw 文件 frontmatter 一致），防 parse 失败导致重复插。
-    // 内置多技能共用本入口（eli5 / 狗头军师）。
-    suspend fun ensureBuiltin(expectedName: String, text: String) {
-        if (dao.countByName(expectedName) > 0) return
+    // 首启播种内置 eli5：skills 表无 name='eli5' 行才插入 builtin=1（幂等，重复启动不重插）。
+    // 失败不向上抛（与鸿蒙版 seedIfEmpty 容错一致），调用方 log 即可
+    suspend fun ensureBuiltin(text: String) {
+        if (dao.countEli5() > 0) return
         val skill = com.zhuolin.yunkai.service.SkillImporter.parse(text) ?: return
         insert(skill.name, skill.description, skill.content, true)
     }

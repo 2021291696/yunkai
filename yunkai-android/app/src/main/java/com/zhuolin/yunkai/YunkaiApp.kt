@@ -84,17 +84,11 @@ class YunkaiApp : Application() {
         super.onCreate()
         // 二期 PDF 抽取：PdfBox-Android 需要初始化资源加载器（字体/编码表），否则抽文本抛错
         com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(applicationContext)
-        // 首启播种内置技能（幂等：无同名行才插；失败不影响启动）
+        // 首启播种内置 eli5 技能（幂等：无 eli5 行才插；失败不影响启动）
         appScope.launch {
             try {
-                val builtins = listOf(
-                    R.raw.skill_eli5 to "eli5",
-                    R.raw.skill_goutoujunshi to "狗头军师",
-                )
-                for ((resId, name) in builtins) {
-                    val text = resources.openRawResource(resId).readBytes().decodeToString()
-                    skillRepo.ensureBuiltin(name, text)
-                }
+                val text = resources.openRawResource(R.raw.skill_eli5).readBytes().decodeToString()
+                skillRepo.ensureBuiltin(text)
             } catch (e: Exception) {
                 Log.e(TAG, "seedIfEmpty failed: ${e.message}")
             }

@@ -52,14 +52,4 @@ class SkillImporterTest {
     fun `空白输入返回null`() {
         assertNull(SkillImporter.parse("   "))
     }
-
-    @Test
-    fun `中文名多行description解析`() {
-        // 狗头军师内置技能同构：中文 name + 多行 frontmatter（末行 description 之后闭栅栏）
-        val md = "---\nname: 狗头军师\ndescription: 恋爱军师与情绪支持。先接住情绪，再分清事实，最后给能执行的选择。\n---\n# 狗头军师\n先接住情绪。"
-        val s = SkillImporter.parse(md)!!
-        assertEquals("狗头军师", s.name)
-        assertTrue(s.description.startsWith("恋爱军师"))
-        assertTrue(s.content.contains("先接住情绪"))
-    }
 }
