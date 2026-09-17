@@ -225,7 +225,7 @@ export default function logicTest() {
       // 必须升到 ApplicationContext 才能建库。
       const ctx = AbilityDelegatorRegistry.getAbilityDelegator().getAppContext().getApplicationContext();
       await Db.get(ctx); // 建表
-      await SkillRepo.seedBuiltins(ctx);
+      await SkillRepo.seedIfEmpty(ctx);
       // 上轮用例若中途中断会残留「测试技能」行，先清掉避免撞 UNIQUE
       const leftover = await SkillRepo.getByName(ctx, '测试技能');
       if (leftover !== null) {
@@ -257,12 +257,6 @@ export default function logicTest() {
       const s = SkillImporter.parse(md);
       expect(s !== null && s!.name === '翻译' && s!.description === '中英互译' && s!.content.includes('翻译官')).assertTrue();
     });
-    it('importer_parses_chinese_name_multiline_frontmatter', 0, () => {
-      // 狗头军师内置技能同构：中文 name + 多行 frontmatter
-      const md = '---\nname: 狗头军师\ndescription: 恋爱军师与情绪支持。先接住情绪，再分清事实，最后给能执行的选择。\n---\n先接住情绪。';
-      const s = SkillImporter.parse(md);
-      expect(s !== null && s!.name === '狗头军师' && s!.description.startsWith('恋爱军师') && s!.content.includes('先接住情绪')).assertTrue();
-    });
     it('importer_fallback_no_frontmatter', 0, () => {
       const s = SkillImporter.parse('# 写作助手\n帮你写文章。');
       expect(s !== null && s!.name === '写作助手' && s!.content.length > 0).assertTrue();
@@ -274,15 +268,12 @@ export default function logicTest() {
       // 注：getAppContext() 返回的模块级 Context 会被 getRdbStore 原生校验拒绝(401)，
       // 必须升到 ApplicationContext 才能建库。
       const ctx = AbilityDelegatorRegistry.getAbilityDelegator().getAppContext().getApplicationContext();
-      await Db.get(ctx); await SkillRepo.seedBuiltins(ctx);
+      await Db.get(ctx); await SkillRepo.seedIfEmpty(ctx);
       const tools = BuiltinTools.createAll(ctx, new AppConfig(), null);
       let eli5Tool: AgentTool | null = null;
       for (const t of tools) { if (t.name === 'use_skill') { eli5Tool = t; } }
       const out = await eli5Tool!.execute('{"name":"eli5"}');
       expect(out.includes('章节')).assertTrue();
-      // 第二内置技能：狗头军师按名可取（seedBuiltins 双技能播种回归）
-      const gt = await SkillRepo.getByName(ctx, '狗头军师');
-      expect(gt !== null && gt!.content.includes('先接住情绪')).assertTrue();
     });
     it('tool_error_becomes_error_json', 0, async () => {
       const ctx = AbilityDelegatorRegistry.getAbilityDelegator().getAppContext().getApplicationContext();

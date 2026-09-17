@@ -1,4 +1,4 @@
-// 技能仓库：skills 表增删查 + 首启从 rawfile 播种内置技能（eli5 / 狗头军师）
+// 技能仓库：skills 表增删查 + 首启从 rawfile 播种内置 eli5 配方
 import { relationalStore } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
 import { util } from '@kit.ArkTS';
@@ -68,18 +68,11 @@ export class SkillRepo {
     await store.delete(predicates);
   }
 
-  // 首启播种内置技能（幂等：无同名行才插，重复启动不重插）。内置多技能共用本入口。
-  static async seedBuiltins(ctx: common.Context): Promise<void> {
-    await SkillRepo.seedOne(ctx, 'skill_eli5.md', 'eli5');
-    await SkillRepo.seedOne(ctx, 'skill_goutoujunshi.md', '狗头军师');
-  }
-
-  private static async seedOne(ctx: common.Context, rawFile: string,
-    expectedName: string): Promise<void> {
-    if (await SkillRepo.getByName(ctx, expectedName) !== null) {
-      return;
-    }
-    const raw: Uint8Array = await ctx.resourceManager.getRawFileContent(rawFile);
+  // skills 表为空时，读 rawfile/skill_eli5.md 插入 builtin=1 的内置配方（幂等）
+  static async seedIfEmpty(ctx: common.Context): Promise<void> {
+    const existing: AgentSkill[] = await SkillRepo.list(ctx);
+    if (existing.length > 0) { return; }
+    const raw: Uint8Array = await ctx.resourceManager.getRawFileContent('skill_eli5.md');
     const text: string = util.TextDecoder.create('utf-8').decodeToString(raw);
     const skill = SkillRepo.parseMarkdown(text);
     await SkillRepo.insert(ctx, skill.name, skill.description, skill.content, true);
