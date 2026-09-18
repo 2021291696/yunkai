@@ -11,6 +11,7 @@ import com.zhuolin.yunkai.YunkaiApp
 import com.zhuolin.yunkai.model.AgentSkill
 import com.zhuolin.yunkai.model.ChatMsg
 import com.zhuolin.yunkai.model.Msg
+import com.zhuolin.yunkai.memory.PrivacyGate
 import com.zhuolin.yunkai.service.AgentLoop
 import com.zhuolin.yunkai.service.HtmlGuard
 import com.zhuolin.yunkai.service.LoopEvent
@@ -264,7 +265,7 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
                     content = safe
                     kind = ReplyKind.HTML
                 }
-                app.messageRepo.add(convId, "assistant", content, kind)
+                app.messageRepo.add(convId, "assistant", PrivacyGate.redact(content, app.configStore.load().memoryGear), kind)
                 app.conversationRepo.touch(convId)
                 refreshConvs()
                 if (r.hitLimit && r.trace != null) {
@@ -514,8 +515,8 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
                 if (convId <= 0) {
                     convId = app.conversationRepo.create("新对话")
                 }
-                app.messageRepo.add(convId, "user", userText, ReplyKind.TEXT)
-                app.messageRepo.add(convId, "assistant", content, kind)
+                app.messageRepo.add(convId, "user", PrivacyGate.redact(userText, app.configStore.load().memoryGear), ReplyKind.TEXT)
+                app.messageRepo.add(convId, "assistant", PrivacyGate.redact(content, app.configStore.load().memoryGear), kind)
                 app.conversationRepo.setTitleIfPlaceholder(convId, q0.ifEmpty { "图片提问" })
                 app.conversationRepo.touch(convId)
                 refreshConvs()

@@ -108,4 +108,31 @@ class PrivacyVectorTest {
         assertTrue(!PrivacyGate.luhnValid("123456789012345"))
         assertTrue(!PrivacyGate.luhnValid(""))
     }
+
+    @Test
+    fun `转录脱敏 strict 三类全替换`() {
+        val text = "密码是abc123\n身份证号110101199003077758\n银行卡号4111111111111111"
+        val out = PrivacyGate.redact(text, "strict")
+        assertTrue(out.contains("[redacted-secret]"))
+        assertTrue(out.contains("[redacted-idnum]"))
+        assertTrue(out.contains("[redacted-bankcard]"))
+        assertTrue(!out.contains("abc123"))
+        assertTrue(!out.contains("110101199003077758"))
+        assertTrue(!out.contains("4111111111111111"))
+    }
+
+    @Test
+    fun `转录脱敏 standard 留secret 拒证件 Luhn不过不替换`() {
+        val out = PrivacyGate.redact("密码是abc123，证件110101199003077758，卡号1234567890123456", "standard")
+        assertTrue(out.contains("密码是abc123"))
+        assertTrue(out.contains("[redacted-idnum]"))
+        assertTrue(out.contains("1234567890123456"))
+        assertTrue(!out.contains("110101199003077758"))
+    }
+
+    @Test
+    fun `转录脱敏 free 原样保留`() {
+        val text = "密码是abc123"
+        assertEquals(text, PrivacyGate.redact(text, "free"))
+    }
 }
