@@ -69,9 +69,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.lifecycle.viewmodel.initializer
-import androidx.lifecycle.viewmodel.viewModelFactory
 import com.zhuolin.yunkai.YunkaiApp
 import com.zhuolin.yunkai.model.Conv
 import com.zhuolin.yunkai.service.ReplyKind

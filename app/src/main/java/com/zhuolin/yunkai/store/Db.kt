@@ -265,10 +265,11 @@ private val MIGRATION_3_4 = object : Migration(3, 4) {
         )
     }
 }
-// schema version 5：闪问旁路下线（悬浮球=主对话入口重构），顺手清残留表
+// schema version 5：闪问旁路下线（悬浮球=主对话入口重构）。空迁移：只推进版本号，
+// flash_sessions 表与旧记录按 D4 定案保留在用户设备上（不清不迁，Room 不校验多余表，无害残留）。
 private val MIGRATION_4_5 = object : Migration(4, 5) {
     override fun migrate(db: SupportSQLiteDatabase) {
-        db.execSQL("DROP TABLE IF EXISTS flash_sessions")
+        // intentionally empty — keep legacy flash_sessions table & rows
     }
 }
 

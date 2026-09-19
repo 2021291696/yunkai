@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -54,6 +55,13 @@ import com.zhuolin.yunkai.ui.theme.LocalGlassScheme
 import com.zhuolin.yunkai.ui.theme.YunkaiTheme
 import com.zhuolin.yunkai.store.ConfigStore
 
+// 面板高度形态常量（拖拽阈值与缺省，均按屏幕高度占比）
+private const val PANEL_DEFAULT_FRACTION = 0.6f
+private const val PANEL_MIN_FRACTION = 0.45f
+private const val PANEL_FULL_ENTER = 0.85f   // 松手 ≥ 此值切全屏
+private const val PANEL_COLLAPSE = 0.5f      // 松手 ≤ 此值收起面板
+private const val PANEL_FULL = 1f
+
 // 入口统一（悬浮球/磁贴等非 Activity 上下文）
 object FlashPanelLauncher {
     fun launch(context: android.content.Context) {
@@ -80,19 +88,19 @@ class FlashActivity : ComponentActivity() {
             }
             val skin by store.skinFlow.collectAsState(initial = ConfigStore.SKIN_CLEAR)
             YunkaiTheme(darkTheme = dark, skin = skin) {
-                FlashPanelHost(vm = vm, onFinish = { finish() })
+                FlashPanelHost(onFinish = { finish() })
             }
         }
     }
 }
 
 @Composable
-private fun FlashPanelHost(vm: com.zhuolin.yunkai.ui.chat.ChatViewModel, onFinish: () -> Unit) {
+private fun FlashPanelHost(onFinish: () -> Unit) {
     val glass = LocalGlassScheme.current
     val context = LocalContext.current
     val screenH = LocalConfiguration.current.screenHeightDp.toFloat()
     var showCanvas by remember { mutableStateOf(false) }
-    var fraction by remember { mutableStateOf(0.6f) }
+    var fraction by remember { mutableStateOf(PANEL_DEFAULT_FRACTION) }
     val cardShape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
 
     // 回前台清后台进度通知（对齐 MainActivity.onResume）
@@ -116,22 +124,22 @@ private fun FlashPanelHost(vm: com.zhuolin.yunkai.ui.chat.ChatViewModel, onFinis
                 .clip(cardShape)
                 .background(glass.glassBgStrong)
                 .border(GlassTokens.BORDER_W.dp, glass.glassBorder, cardShape)
-                .imePadding()
         ) {
             // ===== 拉头：拖动调高（≥70% 松手全屏，<50% 松手收起面板）=====
             Row(
                 Modifier
                     .fillMaxWidth()
+                    .then(if (fraction >= PANEL_FULL) Modifier.statusBarsPadding() else Modifier)
                     .padding(top = 10.dp, bottom = 4.dp)
                     .pointerInput(Unit) {
                         detectVerticalDragGestures(
                             onVerticalDrag = { change, amount ->
                                 change.consume()
-                                fraction = (fraction - amount / screenH).coerceIn(0.45f, 1f)
+                                fraction = (fraction - amount / screenH).coerceIn(PANEL_MIN_FRACTION, PANEL_FULL)
                             },
                             onDragEnd = {
-                                if (fraction <= 0.5f) onFinish()
-                                else fraction = if (fraction >= 0.85f) 1f else 0.6f
+                                if (fraction <= PANEL_COLLAPSE) onFinish()
+                                else fraction = if (fraction >= PANEL_FULL_ENTER) PANEL_FULL else PANEL_DEFAULT_FRACTION
                             }
                         )
                     },
@@ -149,6 +157,7 @@ private fun FlashPanelHost(vm: com.zhuolin.yunkai.ui.chat.ChatViewModel, onFinis
             Row(
                 Modifier
                     .fillMaxWidth()
+                    .then(if (fraction >= PANEL_FULL) Modifier.statusBarsPadding() else Modifier)
                     .padding(horizontal = 14.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
