@@ -26,6 +26,7 @@
         <activity
             android:name=".ui.flash.FlashActivity"
             android:exported="false"
+            android:launchMode="singleTask"
             android:theme="@style/Theme.Yunkai.Flash" />
         <!-- 无障碍读屏：只取窗口内容，不订阅按键、不做注入（M2 手势再扩） -->
         <service

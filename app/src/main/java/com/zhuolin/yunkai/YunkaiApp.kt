@@ -10,6 +10,7 @@ import com.zhuolin.yunkai.store.ConversationRepo
 import com.zhuolin.yunkai.store.MessageRepo
 import com.zhuolin.yunkai.store.SkillRepo
 import com.zhuolin.yunkai.store.YunkaiDb
+import com.zhuolin.yunkai.ui.chat.ChatViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -25,7 +26,7 @@ class YunkaiApp : Application() {
     val messageRepo: MessageRepo by lazy { MessageRepo(db.msgDao()) }
     val memoryStore: MemoryStore by lazy { RoomMemoryStore(db) }
     val taskStateDao by lazy { db.taskStateDao() }   // M3 继续任务：到顶轨迹存取
-    val flashDao by lazy { db.flashDao() }           // M2b 闪问：独立存档表（不写 conversations/messages）
+    val chatViewModel: ChatViewModel by lazy { ChatViewModel(this) }   // 全局共享对话大脑（悬浮球面板与主界面同一实例）
 
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 

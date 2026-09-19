@@ -86,9 +86,9 @@ import kotlinx.coroutines.launch
 // 视觉：方向 A 通透系玻璃——页面透明底透出壁纸层，悬浮玻璃圆钮 + 玻璃气泡 + 胶囊输入坞
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
+fun ChatScreen(embedded: Boolean = false, onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
     val app = LocalContext.current.applicationContext as YunkaiApp
-    val vm: ChatViewModel = viewModel(factory = viewModelFactory { initializer { ChatViewModel(app) } })
+    val vm: ChatViewModel = app.chatViewModel   // 全局共享大脑（悬浮球面板与主界面同一实例）
     val context = LocalContext.current
     val glass = LocalGlassScheme.current
     val listState = rememberLazyListState()
@@ -148,7 +148,7 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .statusBarsPadding()
+                    .then(if (embedded) Modifier else Modifier.statusBarsPadding())
                     .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -473,7 +473,7 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
         Box(
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .statusBarsPadding()
+                .then(if (embedded) Modifier else Modifier.statusBarsPadding())
                 .offset(x = handleX)
                 .padding(top = 12.dp)
                 .size(34.dp)

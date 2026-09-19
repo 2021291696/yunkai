@@ -108,30 +108,8 @@ interface TaskStateDao {
     suspend fun delete(convId: Long)
 }
 
-// 闪问独立存档表（M2b）：闪问会话不落 conversations/messages，只在这里留一问一答；
-// 画布形态的 HTML 正文不进本表（写 filesDir/flash_canvas_last.html），answer 只存提示文案。
-@Entity(tableName = "flash_sessions")
-data class FlashEntity(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val question: String,
-    val answer: String,
-    val created_at: Long,
-)
-
-@Dao
-interface FlashDao {
-    @Query("SELECT * FROM flash_sessions ORDER BY id DESC LIMIT 100")
-    suspend fun recent(): List<FlashEntity>
-
-    @Insert
-    suspend fun insert(e: FlashEntity): Long
-
-    @Query("DELETE FROM flash_sessions WHERE id = :id")
-    suspend fun deleteById(id: Long)
-
-    @Query("DELETE FROM flash_sessions")
-    suspend fun clearAll()
-}
+// 闪问旁路已下线（2026-09-19 重构：悬浮球=主对话入口，见 design-explorations 重构计划）。
+// flash_sessions 表随 Migration 3→4 保留在存量用户设备上（不清不迁，无害残留）。
 
 @Dao
 interface ConvDao {
@@ -287,14 +265,20 @@ private val MIGRATION_3_4 = object : Migration(3, 4) {
         )
     }
 }
+// schema version 5：闪问旁路下线（悬浮球=主对话入口重构），顺手清残留表
+private val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("DROP TABLE IF EXISTS flash_sessions")
+    }
+}
+
 
 @Database(
     entities = [
         ConvEntity::class, MsgEntity::class, SkillEntity::class,
         CoreBlockEntity::class, ArchivalEntity::class, TaskStateEntity::class,
-        FlashEntity::class,
     ],
-    version = 4,
+    version = 5,
 )
 abstract class YunkaiDb : RoomDatabase() {
     abstract fun convDao(): ConvDao
@@ -303,7 +287,6 @@ abstract class YunkaiDb : RoomDatabase() {
     abstract fun coreBlockDao(): CoreBlockDao
     abstract fun archivalDao(): ArchivalDao
     abstract fun taskStateDao(): TaskStateDao
-    abstract fun flashDao(): FlashDao
 
     companion object {
         @Volatile
@@ -311,7 +294,7 @@ abstract class YunkaiDb : RoomDatabase() {
 
         fun instance(ctx: Context): YunkaiDb = inst ?: synchronized(this) {
             inst ?: Room.databaseBuilder(ctx.applicationContext, YunkaiDb::class.java, "yunkai.db")
-                .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .fallbackToDestructiveMigration()
                 .build().also { inst = it }
         }
