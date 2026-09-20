@@ -85,4 +85,31 @@ object PrivacyGate {
     }
 
     fun check(content: String, gear: String): GearResult = check(content, Gear.fromWire(gear))
+
+    /** 转录脱敏（协议 §5.3）：命中该挡位拒绝类别的片段以占位符整体替换，顺序 [secret, idnum, bankcard]；
+     *  bankcard 仅替换过 Luhn 的数字段；未知挡位回退 strict。占位符不含数字与关键词，不连锁触发。 */
+    fun redact(text: String, gear: Gear): String {
+        val rejected = when (gear) {
+            Gear.STRICT -> Category.entries
+            Gear.STANDARD -> listOf(Category.IDNUM, Category.BANKCARD)
+            Gear.FREE -> emptyList()
+        }
+        var t = text
+        if (Category.SECRET in rejected) t = secretPattern.replace(t, "[redacted-secret]")
+        if (Category.IDNUM in rejected) t = idnumPattern.replace(t, "[redacted-idnum]")
+        if (Category.BANKCARD in rejected) {
+            val sb = StringBuilder()
+            var last = 0
+            bankcardPattern.findAll(t).forEach { m ->
+                sb.append(t, last, m.range.first)
+                sb.append(if (luhnValid(m.value)) "[redacted-bankcard]" else m.value)
+                last = m.range.last + 1
+            }
+            sb.append(t, last, t.length)
+            t = sb.toString()
+        }
+        return t
+    }
+
+    fun redact(text: String, gear: String): String = redact(text, Gear.fromWire(gear))
 }

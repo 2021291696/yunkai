@@ -69,9 +69,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.lifecycle.viewmodel.initializer
-import androidx.lifecycle.viewmodel.viewModelFactory
 import com.zhuolin.yunkai.YunkaiApp
 import com.zhuolin.yunkai.model.Conv
 import com.zhuolin.yunkai.service.ReplyKind
@@ -86,9 +83,9 @@ import kotlinx.coroutines.launch
 // 视觉：方向 A 通透系玻璃——页面透明底透出壁纸层，悬浮玻璃圆钮 + 玻璃气泡 + 胶囊输入坞
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
+fun ChatScreen(embedded: Boolean = false, onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
     val app = LocalContext.current.applicationContext as YunkaiApp
-    val vm: ChatViewModel = viewModel(factory = viewModelFactory { initializer { ChatViewModel(app) } })
+    val vm: ChatViewModel = app.chatViewModel   // 全局共享大脑（悬浮球面板与主界面同一实例）
     val context = LocalContext.current
     val glass = LocalGlassScheme.current
     val listState = rememberLazyListState()
@@ -148,12 +145,12 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .statusBarsPadding()
+                    .then(if (embedded) Modifier else Modifier.statusBarsPadding())
                     .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Spacer(Modifier.size(34.dp)) // 左侧占位：标题保持视觉居中（☰ 常驻最上层）
+                Spacer(Modifier.size(34.dp)) // 左侧占位：标题保持视觉居中（拉头常驻最上层）
                 Text(
                     vm.title.value,
                     fontSize = 15.sp,
@@ -462,10 +459,10 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
         onDeleteConversation = { c -> deleteTarget = c },
     )
 
-    // 拉头 ☰：全 app 只此一颗，挂在抽屉右缘随其滑动（收起时停在屏幕左缘）
-    val drawerW = (LocalConfiguration.current.screenWidthDp * 0.86f).dp
+    // 拉头（上长下短双横线）：全 app 只此一颗，展开时停在抽屉右缘之外（收起时停在屏幕左缘）
+    val drawerW = (LocalConfiguration.current.screenWidthDp * 0.80f).dp
     val handleX by animateDpAsState(
-        targetValue = if (vm.showHistory.value) drawerW - 34.dp else 0.dp,
+        targetValue = if (vm.showHistory.value) drawerW + 6.dp else 0.dp,
         animationSpec = tween(260),
         label = "handleX",
     )
@@ -473,7 +470,7 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
         Box(
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .statusBarsPadding()
+                .then(if (embedded) Modifier else Modifier.statusBarsPadding())
                 .offset(x = handleX)
                 .padding(top = 12.dp)
                 .size(34.dp)
@@ -488,7 +485,12 @@ fun ChatScreen(onOpenSettings: () -> Unit, onOpenCanvas: () -> Unit = {}) {
                     }
                 },
             contentAlignment = Alignment.Center,
-        ) { Text("☰", fontSize = 15.sp, color = glass.textHi) }
+        ) {
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Box(Modifier.width(13.dp).height(1.8.dp).clip(RoundedCornerShape(1.dp)).background(glass.textHi))
+                Box(Modifier.width(8.dp).height(1.8.dp).clip(RoundedCornerShape(1.dp)).background(glass.textHi))
+            }
+        }
     }
 }
 

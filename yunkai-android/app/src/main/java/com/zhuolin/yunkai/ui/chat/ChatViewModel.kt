@@ -11,6 +11,7 @@ import com.zhuolin.yunkai.YunkaiApp
 import com.zhuolin.yunkai.model.AgentSkill
 import com.zhuolin.yunkai.model.ChatMsg
 import com.zhuolin.yunkai.model.Msg
+import com.zhuolin.yunkai.memory.PrivacyGate
 import com.zhuolin.yunkai.service.AgentLoop
 import com.zhuolin.yunkai.service.HtmlGuard
 import com.zhuolin.yunkai.service.LoopEvent
@@ -77,7 +78,17 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
         load(id)
     }
 
-    private fun load(id: Long) {
+    /** 悬浮球面板等外部入口：共享大脑从未初始化时加载最近活跃会话（无则新对话草稿）；
+     *  已初始化则不动——面板呈现主界面当前状态（含生成中的流式输出）。 */
+    fun ensureStarted() {
+        if (initialized) return
+        viewModelScope.launch {
+            refreshConvs()
+            load(convs.firstOrNull()?.id ?: -1L)
+        }
+    }
+
+    fun load(id: Long) {
         initialized = true
         // 换会话即作废在途 send（genId 失配 → 该轮 return）：否则旧轮回来后会把回答写进新会话，
         // 且 nextId 已归 1 会和 loadTurns 写回的 id 撞车 → LazyColumn("重复 key") 崩。
@@ -264,7 +275,7 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
                     content = safe
                     kind = ReplyKind.HTML
                 }
-                app.messageRepo.add(convId, "assistant", content, kind)
+                app.messageRepo.add(convId, "assistant", PrivacyGate.redact(content, app.configStore.load().memoryGear), kind)
                 app.conversationRepo.touch(convId)
                 refreshConvs()
                 if (r.hitLimit && r.trace != null) {
@@ -514,8 +525,8 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
                 if (convId <= 0) {
                     convId = app.conversationRepo.create("新对话")
                 }
-                app.messageRepo.add(convId, "user", userText, ReplyKind.TEXT)
-                app.messageRepo.add(convId, "assistant", content, kind)
+                app.messageRepo.add(convId, "user", PrivacyGate.redact(userText, app.configStore.load().memoryGear), ReplyKind.TEXT)
+                app.messageRepo.add(convId, "assistant", PrivacyGate.redact(content, app.configStore.load().memoryGear), kind)
                 app.conversationRepo.setTitleIfPlaceholder(convId, q0.ifEmpty { "图片提问" })
                 app.conversationRepo.touch(convId)
                 refreshConvs()
