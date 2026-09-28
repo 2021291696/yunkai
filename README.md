@@ -1,4 +1,4 @@
-# 云开 Yunkai · 双端手机 AI Agent
+# 云开 Yunkai · 本地手机 AI Agent
 
 <p align="center">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-green">
@@ -8,42 +8,73 @@
   <img alt="arkts" src="https://img.shields.io/badge/ArkTS-DevEco-0EA5E9">
 </p>
 
-打开即对话的本地优先移动端 AI 助手：**agent loop 多步工具调用 + 屏幕感知与写操作三层安全 + 忆枢持久记忆 + 技能系统**，Android（Kotlin / Compose）与 HarmonyOS NEXT（ArkTS）双端同构实现。
-
-> 设计目标：手机上的"数字助理"——能看屏幕、能动手操作、能记住你的偏好，
-> 但每一步写操作都要经你逐条批准。
-
-**Yunkai** is a local-first mobile AI agent: an agent loop with multi-step tool calling,
-accessibility-based screen perception gated by a three-layer safety model, a persistent
-memory engine, and a skill system — implemented twice, in Kotlin/Compose (Android) and
-ArkTS (HarmonyOS NEXT). Model access is OpenAI-compatible: bring your own endpoint and
-key, stored on-device only.
+<p align="center">
+  简体中文 &nbsp;|&nbsp; <a href="README_EN.md">English</a>
+</p>
 
 ---
 
-## 它能做什么
+## 这是什么？
 
-- **点开悬浮球，半屏面板直接对话**——不用切出当前应用；面板可拖拽在半屏 / 全屏（70% 阈值）间切换，与主界面共享同一个大脑（会话、记忆、任务状态），底色三档可调。
-- **"帮我把这条消息发给张三"**——模型不能直接操作手机：它只能通过计划卡提交动作计划（点击 / 滑动 / 输入 / 返回 / Home），你逐条批准后状态机才逐步执行并回显。
-- **记住你的偏好**——内置「忆枢」记忆引擎：摘要、BM25 检索、隐私挡位三级可控，strict 挡下说出口的敏感信息不入库。
-- **技能系统**——`@技能` 显式调用或自动路由；内置 eli5 讲解（画布渲染）与狗头军师两个技能，也可导入自己的技能说明书。
-- **文档附件问答**——图片 / txt / docx / xlsx / PDF，双端自研 zip+XML 抽取，不依赖第三方解析服务。
+> **云开是一个装在你手机里的 AI 助手：能看懂屏幕、替你动手操作、长期记住你的偏好——所有数据只存在你的手机上。**
+
+和网页版 AI 聊天不同，云开不是一个聊天窗口，而是一个能"看"和"做"的助手：
+
+- **看** —— 读取当前屏幕上正在显示的内容，知道你在哪个页面；
+- **做** —— 替你执行点击、滑动、输入等操作，**每一步都要你确认后才会执行**；
+- **记** —— 把你的偏好和重要信息存成本地记忆，越用越懂你；
+- **本地** —— API Key、对话记录、记忆全部保存在设备本地，不经手任何中间服务器。
+
+支持 **Android 11+** 与 **HarmonyOS NEXT**，两端界面与能力保持一致。
+
+## 效果演示
+
+![云开演示](docs/screenshots/demo.gif)
+
+## 界面截图
+
+| 主对话 | 写操作确认卡 |
+|---|---|
+| ![主对话](docs/screenshots/harmony_dark.png) | ![计划卡](docs/screenshots/android_plan_card.png) |
+
+| 悬浮球对话面板 | 屏蔽应用管理 |
+|---|---|
+| ![闪问面板](docs/screenshots/android_flash_answer.png) | ![黑名单](docs/screenshots/android_blacklist.png) |
+
+## 它能帮你做什么？
+
+| 场景 | 云开的行为 |
+|------|-----------|
+| 在任何 App 里随手提问 | 点开悬浮球，半屏对话面板直接问，不用切出当前应用 |
+| "帮我把这条消息发给张三" | 云开列出将要执行的操作步骤，你逐条确认后它才动手 |
+| 不想重复自我介绍 | 它记住你的偏好与常用信息，新对话自动带上 |
+| 长文档看不完 | 丢给它 docx / PDF / xlsx / txt / 图片，直接问内容 |
+| 想让 AI 更懂某个领域 | 导入自定义"技能"说明书，或使用内置的讲解、军师技能 |
 
 ## 功能总览
 
 | 能力 | Android | HarmonyOS NEXT |
 |------|:---:|:---:|
-| Agent loop（多步工具调用 / 取消 / SSE 事件流） | ✅ | ✅ |
+| Agent loop（多步工具调用 / 取消 / 流式输出） | ✅ | ✅ |
 | 屏幕感知：无障碍读屏 → 结构化控件清单 | ✅ | ✅ |
 | 写操作：计划卡预览 → 逐条批准 → 手势执行 | ✅ | ✅ |
 | 三层安全：敏感页护栏 / 每步回显 / 外发二次确认 | ✅ | ✅ |
 | 隐私黑名单（银行 / 支付类默认拒绝读屏） | ✅ | ✅ |
 | 悬浮球 + 半屏 / 全屏对话面板（底色三档） | ✅ | ✅ |
-| QS 磁贴快捷入口 | ✅ | ✅ |
-| 忆枢记忆引擎（摘要 / BM25 检索 / 隐私挡位） | ✅ | ✅ |
-| 技能系统（@技能 / 自动路由 / eli5 画布，双内置） | ✅ | ✅ |
+| 快捷设置磁贴入口 | ✅ | ✅ |
+| 忆枢记忆引擎（摘要 / 检索 / 隐私挡位） | ✅ | ✅ |
+| 技能系统（@技能 / 自动路由 / 讲解画布，双内置） | ✅ | ✅ |
 | 文档附件问答（图片 / txt / docx / xlsx / PDF） | ✅ | ✅ |
 | 主题三档 + 双皮肤 | ✅ | ✅ |
+
+## 技术亮点
+
+- **双端原生同构** —— Android（Kotlin 2.0 / Compose）与 HarmonyOS NEXT（ArkTS）各自原生实现同一套 Agent 能力，能力与交互保持一致，不是跨端框架套壳。
+- **屏幕感知安全模型** —— 模型永远不能"直接操作手机"：它只能提交动作计划（点击 / 滑动 / 输入 / 返回），用户在计划卡中逐条批准，执行过程逐步回显。
+- **忆枢记忆引擎** —— 本地 BM25 检索 + 会话摘要 + 三级隐私挡位；严格挡位下，说出口的敏感信息不会进入可检索的记录。
+- **提示注入防御** —— 工具返回的一切外部内容（网页 / 搜索结果 / 文档）统一标注为"不可信数据"，其中出现的指令性文字不会被执行，阻断"网页里藏指令操纵助手"一类攻击链。
+- **零依赖文档解析** —— docx / xlsx 用 zip + XML 自研抽取，PDF 本地直读，文档内容不出设备、不经第三方服务。
+- **全链路可测** —— Android 200+ JVM 单测、HarmonyOS 81 用例，外加模拟器上 AI 驱动的端到端验收路径。
 
 ## 架构
 
@@ -59,39 +90,29 @@ flowchart LR
         Memory["忆枢记忆\n摘要 / 检索 / 归档"]
         Skill["技能系统\n@技能 / 自动路由 / 画布"]
     end
-    Loop --> LLM["LlmClient\nOpenAI 兼容协议 / SSE 流式"]
+    Loop --> LLM["LlmClient\nOpenAI 兼容协议 / 流式输出"]
     Tools --> Store[("本地存储\nRoom (Android)\nRDB + Preferences (HarmonyOS)")]
     Memory --> Store
 ```
 
 - **Android**：Kotlin 2.0 / Compose / Room / DataStore / AccessibilityService（`takeScreenshot` 需 API 30+，故 minSdk 30）
-- **HarmonyOS**：ArkTS / API 26 / RDB / Preferences / 无障碍扩展（独立进程 `:accessibility`）
+- **HarmonyOS**：ArkTS / API 26 / RDB / Preferences / 无障碍扩展（独立进程）
 
-## 安全模型：只看不动，除非逐条批准
+## 安全与隐私
 
-屏幕感知是本项目的核心差异点，安全设计围绕"模型不直接碰手机"展开：
+云开的设计原则是"**只看不动，除非逐条批准**"，围绕这条原则有七道防线：
 
-1. **计划卡**：写操作只能经 `propose_plan` 提交，聊天界面内嵌计划卡逐步展示，用户点「执行」后状态机推进并逐步回显；
-2. **敏感护栏**：节点树文本命中敏感关键词（支付 / 转账 / 验证码等）即进入暂停态，写操作止步；
-3. **外发确认**：含文本输入的动作单独走二段确认位；
-4. **黑名单默认不信**：银行 / 支付类应用直接拒绝读屏，用户可增补；读屏内容按隐私挡位脱敏，strict 挡下转录不入库；
-5. **注入防御**：工具返回的一切外部内容（网页 / 搜索 / 技能 / 附件）统一加"不可信数据"前缀并写入系统守则——其中出现的指令性文字不构成指令，阻断间接提示注入 → 记忆投毒链；
-6. **取消即断连**：生成中途取消会真正中断 SSE 流，在途响应不再计费；
-7. **附件防线**：docx / xlsx 解压设 5MB 上限、组装截断 30k 字符，防 zip 炸弹与上下文撑爆。
-
-## 截图
-
-| 悬浮球 + 闪问面板 | 写操作计划卡 |
-|---|---|
-| ![闪问面板](docs/screenshots/android_flash_answer.png) | ![计划卡](docs/screenshots/android_plan_card.png) |
-
-| 鸿蒙端（深色） | 屏蔽应用管理 |
-|---|---|
-| ![鸿蒙端](docs/screenshots/harmony_dark.png) | ![黑名单](docs/screenshots/android_blacklist.png) |
+1. **计划卡**：写操作只能以"计划"形式提交，聊天界面内嵌计划卡逐步展示，用户点「执行」后状态机才推进；
+2. **敏感护栏**：屏幕内容命中敏感关键词（支付 / 转账 / 验证码等）即进入暂停态，写操作止步；
+3. **外发确认**：包含文字输入的动作单独走二次确认；
+4. **黑名单默认不信**：银行 / 支付类应用直接拒绝读屏，用户可自行增补；
+5. **隐私挡位**：读屏与对话内容按挡位脱敏，严格挡位下转录不入库；
+6. **注入防御**：外部内容一律视为数据而非指令（见技术亮点）；
+7. **附件防线**：文档解析设大小上限与内容截断，防资源耗尽。
 
 ## 构建与运行
 
-两端的模型接入均为 **OpenAI 兼容协议**：自备 base URL 与 API key，仅存设备本地（Preferences / DataStore），不经过任何中间服务器。
+两端的模型接入均为 **OpenAI 兼容协议**：自备 base URL 与 API key，仅存设备本地，不经过任何中间服务器。
 
 ### Android
 
@@ -99,7 +120,7 @@ flowchart LR
 cd yunkai-android
 # Android Studio 打开，或命令行：
 ./gradlew assembleDebug          # 产物 app/build/outputs/apk/
-./gradlew testDebugUnitTest      # JVM 单测（200+ 用例）
+./gradlew testDebugUnitTest      # JVM 单测
 ```
 
 minSdk 30（无障碍截图 `takeScreenshot` 需 API 30+）。已在 MIUI 真机完成验证。
@@ -110,39 +131,19 @@ minSdk 30（无障碍截图 `takeScreenshot` 需 API 30+）。已在 MIUI 真机
 cd yunkai-harmony
 # DevEco Studio 打开（API 26），或命令行：
 hvigorw --mode module -p product=default assembleHap
-# 设备单测（模拟器/真机在线时）：
-hdc shell aa test -b com.zhuolin.yunkai -m entry_test -s unittest OpenHarmonyTestRunner -s class logicTest
 ```
 
 首次使用：设置页填入端点与 API key → 开启屏幕感知总开关 → 系统设置里授权无障碍服务。
 
-## 测试体系
+## 测试
 
 | 层 | 内容 |
 |---|---|
 | 代码审查 | 提交前按 checklist 逐项走查 |
 | 单元测试 | Android JVM **200+** 用例 / HarmonyOS **81** 用例 |
-| 端到端验收 | 模拟器上 AI 驱动的全链路路径：`tests/fullflow/manifest.yaml` 声明式定义，ADB / HDC + UI 自动化执行，截图留证 |
+| 端到端验收 | 模拟器上 AI 驱动的全链路路径，ADB / HDC + UI 自动化执行，截图留证 |
 
-双端共享同一组忆枢测试向量（BM25 / 迁移 / 隐私闸门），逐字节一致。
-
-## 目录结构
-
-```
-yunkai/
-├── yunkai-android/     # Android 端（Kotlin 2.0 / Compose / Room / DataStore / AccessibilityService）
-│   └── app/src/main/java/com/zhuolin/yunkai/
-│       ├── service/        # AgentLoop / LlmClient / screen/(感知服务+工具+写操作状态机) / memory/
-│       ├── store/          # Room + DataStore（会话 / 配置）
-│       └── ui/             # Chat / Settings / 悬浮球面板 / 计划卡 / 记忆管理
-├── yunkai-harmony/     # HarmonyOS 端（ArkTS API 26 / RDB / Preferences）
-│   └── entry/src/main/ets/
-│       ├── service/        # AgentLoop / LlmClient / tools/ / screen/(无障碍扩展+纯逻辑层)
-│       ├── store/          # RDB + Preferences
-│       ├── memory/         # 忆枢记忆引擎
-│       └── pages/          # Chat / Settings / Canvas
-└── docs/               # 截图
-```
+双端共享同一组忆枢测试向量（检索 / 迁移 / 隐私闸门），逐字节一致。
 
 ## License
 
