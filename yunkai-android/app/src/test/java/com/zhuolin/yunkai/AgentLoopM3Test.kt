@@ -78,7 +78,8 @@ class AgentLoopM3Test {
             extraTools = listOf(small),
         )
         val toolMsg = seen.last().first { it.role == "tool" }
-        assertEquals(100, toolMsg.content.length)
+        // 安全审计 F-1 后：tool 消息带不可信前缀，长度断言按前缀宽减
+        assertEquals(100 + AgentLoop.UNTRUSTED_TOOL_PREFIX.length, toolMsg.content.length)
         assertFalse(toolMsg.content.contains("已截断"))
     }
 
@@ -100,10 +101,11 @@ class AgentLoopM3Test {
         )
         val toolMsgs = seen.last().filter { it.role == "tool" }
         assertEquals(2, toolMsgs.size)
-        // 首条恰好等于预算上限，原样回传不截断
-        assertEquals(AgentLoop.TOOL_OUTPUT_BUDGET, toolMsgs[0].content.length)
-        // 第二次工具调用：预算已耗尽 → 固定短提示文案
-        assertEquals("本轮工具输出预算已耗尽，请基于已有结果作答", toolMsgs[1].content)
+        // 首条恰好等于预算上限，原样回传不截断（安全审计 F-1 后含不可信前缀，长度按前缀宽加）
+        assertEquals(AgentLoop.TOOL_OUTPUT_BUDGET + AgentLoop.UNTRUSTED_TOOL_PREFIX.length, toolMsgs[0].content.length)
+        // 第二次工具调用：预算已耗尽 → 固定短提示文案（安全审计 F-1 后带不可信前缀）
+        assertTrue(toolMsgs[1].content.startsWith(AgentLoop.UNTRUSTED_TOOL_PREFIX))
+        assertTrue(toolMsgs[1].content.endsWith("本轮工具输出预算已耗尽，请基于已有结果作答"))
     }
 
     // ===== 到顶轨迹（继续按钮引擎侧）=====

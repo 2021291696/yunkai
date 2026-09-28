@@ -45,7 +45,7 @@ flow:
     # 故先唤醒 + 解锁屏幕（harmonyos 模拟器 UI 自动化已知坑）
     - id: device_wake_screen
       cli:
-        cmd: ["D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe", shell, power-shell, wakeup]
+        cmd: ["D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe", "-t", "127.0.0.1:5555", shell, power-shell, wakeup]
         cwd: "../.."
         timeout_s: 60
       assert:
@@ -53,7 +53,7 @@ flow:
 
     - id: device_unlock_screen
       cli:
-        cmd: ["D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe", shell, power-shell, setmode, "602"]
+        cmd: ["D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe", "-t", "127.0.0.1:5555", shell, power-shell, setmode, "602"]
         cwd: "../.."
         timeout_s: 60
       assert:
@@ -69,10 +69,10 @@ flow:
         - { text_contains: "127.0.0.1:555" }
 
     # java 需在 PATH（hap-sign-tool 是 jar；本机 Temurin 21 已在 PATH）
-    - id: hvigor_clean_assemble       # ① clean 全量构建主包
+    - id: hvigor_clean_assemble       # ① 全量构建主包（本仓 hvigor 无 clean 任务，直接 assemble）
       cli:
         cmd: [node, "D:/Huawei/DevEcoStudio/tools/hvigor/bin/hvigorw.js",
-              clean, "--mode", module, "-p", "product=default", assembleHap]
+              "--mode", "module", "-p", "product=default", assembleHap]
         cwd: "../.."
         timeout_s: 900
       assert:
@@ -91,7 +91,7 @@ flow:
 
     - id: hdc_install_app             # ③ 装机：主包（签名）
       cli:
-        cmd: ["D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe", install, "-r", "entry/build/default/outputs/default/entry-default-signed.hap"]
+        cmd: ["D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe", "-t", "127.0.0.1:5555", install, "-r", "entry/build/default/outputs/default/entry-default-signed.hap"]
         cwd: "../.."
         timeout_s: 300
       assert:
@@ -99,21 +99,21 @@ flow:
 
     - id: hdc_install_test            # ④ 装机：单测包（签名）
       cli:
-        cmd: ["D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe", install, "-r", "entry/build/default/outputs/ohosTest/entry-ohosTest-signed.hap"]
+        cmd: ["D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe", "-t", "127.0.0.1:5555", install, "-r", "entry/build/default/outputs/ohosTest/entry-ohosTest-signed.hap"]
         cwd: "../.."
         timeout_s: 300
       assert:
         - { status: 0 }
 
-    - id: aa_test_logic               # ⑤ 模拟器实跑单测（72 用例；加用例时同步改计数断言）
+    - id: aa_test_logic               # ⑤ 模拟器实跑单测（84 用例；加用例时同步改计数断言）
       cli:
-        cmd: ["D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe", shell, aa, test, "-b", com.zhuolin.yunkai, "-m", entry_test,
+        cmd: ["D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe", "-t", "127.0.0.1:5555", shell, aa, test, "-b", com.zhuolin.yunkai, "-m", entry_test,
               "-s", unittest, OpenHarmonyTestRunner, "-s", class, logicTest]
         cwd: "../.."
         timeout_s: 600
       assert:
         - { status: 0 }
-        - { text_contains: "Tests run: 72, Failure: 0, Error: 0" }
+        - { text_contains: "Tests run: 84, Failure: 0, Error: 0" }
 
     # ─────────── 门2：界面层（AI 驱动模拟器；动作映射 goto→启动/切页、click→tap、
     # fill→uitest uiInput inputText、expect_visible→dumpLayout 找节点、text_contains→屏上文本）───────────

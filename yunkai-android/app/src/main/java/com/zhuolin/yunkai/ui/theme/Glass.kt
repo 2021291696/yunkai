@@ -149,6 +149,14 @@ val DarkAurora = GlassScheme(
 const val SKIN_CLEAR = "clear"
 const val SKIN_AURORA = "aurora"
 
+// 面板底色档位（ConfigStore.PANEL_OPACITY_*，默认 soft）→ paperBase 遮罩 alpha。
+// 悬浮面板浮在任意 app 上，深色通透皮肤玻璃只有 14% 白，背景干扰难读（真机 2026-09-25 用户反馈）
+fun panelScrimAlpha(level: String): Float = when (level) {
+    "solid" -> 0.85f
+    "soft" -> 0.5f
+    else -> 0f
+}
+
 // skin × 生效明暗 → scheme 实例（未知 skin 回退 clear）
 fun schemeFor(skin: String, isDark: Boolean): GlassScheme = when {
     skin == SKIN_AURORA -> if (isDark) DarkAurora else LightAurora

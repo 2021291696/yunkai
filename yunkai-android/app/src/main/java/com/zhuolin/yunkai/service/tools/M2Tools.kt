@@ -25,6 +25,15 @@ private fun m2Err(msg: String): String = m2Enc.encodeToString(M2Error.serializer
 // 旧 KV 记忆工具（memory_save/memory_search + 文件版 MemoryStore）已随忆枢 M1b 下线：
 // 五工具替代（memory/MemoryTools.kt），旧数据由启动钩子经 Migrator 迁入 archival（协议 §1.5）。
 
+// 沙盒包含判定（安全审计 run-1 F-5）：canonical 后必须等于根或位于根目录之下。
+// 旧实现是裸 startsWith(root.canonicalPath)，同名前缀的兄弟目录（如 agent_files2）会被放行
+// 逃出沙盒；补 File.separator 边界后兄弟目录一律拒绝。
+internal fun insideSandbox(f: File, root: File): Boolean {
+    val canon = f.canonicalPath
+    val rootCanon = root.canonicalPath
+    return canon == rootCanon || canon.startsWith(rootCanon + File.separator)
+}
+
 class ReadFileTool(private val root: File) : AgentTool() {
     override val name = "read_file"
     override val description = "读取沙箱内文件。参数：path。"
@@ -33,7 +42,7 @@ class ReadFileTool(private val root: File) : AgentTool() {
         val obj = m2Parse(argsJson) ?: return m2Err("参数格式非法")
         val path = m2Str(obj, "path") ?: return m2Err("缺少 path")
         val f = File(root, path)
-        if (!f.canonicalPath.startsWith(root.canonicalPath)) return m2Err("路径越界")
+        if (!insideSandbox(f, root)) return m2Err("路径越界")
         if (!f.exists()) return m2Err("文件不存在: $path")
         return f.readText()
     }
@@ -48,7 +57,7 @@ class WriteFileTool(private val root: File) : AgentTool() {
         val path = m2Str(obj, "path") ?: return m2Err("缺少 path")
         val content = m2Str(obj, "content") ?: return m2Err("缺少 content")
         val f = File(root, path)
-        if (!f.canonicalPath.startsWith(root.canonicalPath)) return m2Err("路径越界")
+        if (!insideSandbox(f, root)) return m2Err("路径越界")
         f.parentFile?.mkdirs()
         f.writeText(content)
         return m2Enc.encodeToString(M2WriteResult.serializer(), M2WriteResult(true, path))

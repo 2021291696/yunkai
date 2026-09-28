@@ -35,7 +35,7 @@ class YunkaiApp : Application() {
     val writePlanExecutor: com.zhuolin.yunkai.service.screen.WritePlanExecutor by lazy {
         com.zhuolin.yunkai.service.screen.WritePlanExecutor(
             scope = appScope,
-            sensitiveChecker = sens@{ _ ->
+            sensitiveChecker = sens@{ action ->
                 val svc = com.zhuolin.yunkai.service.screen.ScreenSenseService.instance
                     ?: return@sens "读不到当前页面（无障碍未开启），保守视为敏感"
                 val cur = svc.readForeground()
@@ -47,7 +47,15 @@ class YunkaiApp : Application() {
                 val hit = cur.second.firstOrNull {
                     it.isPassword || com.zhuolin.yunkai.service.screen.ScreenGuard.hasSensitive(it.text)
                 }
-                hit?.let { "当前页面命中敏感内容（${if (it.isPassword) "密码框" else "敏感词"}）" }
+                if (hit != null) {
+                    return@sens "当前页面命中敏感内容（${if (hit.isPassword) "密码框" else "敏感词"}）"
+                }
+                // 安全审计（run-1 F-3）：外发文本本身也要过敏感词——页面干净不代表要注入的文本干净
+                if (action is com.zhuolin.yunkai.service.screen.WriteAction.Input &&
+                    com.zhuolin.yunkai.service.screen.ScreenGuard.hasSensitive(action.text)) {
+                    return@sens "待输入文本命中敏感词"
+                }
+                null
             },
             executor = exec@{ action ->
                 val svc = com.zhuolin.yunkai.service.screen.ScreenSenseService.instance
@@ -85,11 +93,17 @@ class YunkaiApp : Application() {
         super.onCreate()
         // 二期 PDF 抽取：PdfBox-Android 需要初始化资源加载器（字体/编码表），否则抽文本抛错
         com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(applicationContext)
-        // 首启播种内置 eli5 技能（幂等：无 eli5 行才插；失败不影响启动）
+        // 首启播种内置技能（幂等：无同名行才插；失败不影响启动）
         appScope.launch {
             try {
-                val text = resources.openRawResource(R.raw.skill_eli5).readBytes().decodeToString()
-                skillRepo.ensureBuiltin(text)
+                val builtins = listOf(
+                    R.raw.skill_eli5 to "eli5",
+                    R.raw.skill_goutoujunshi to "狗头军师",
+                )
+                for ((resId, name) in builtins) {
+                    val text = resources.openRawResource(resId).readBytes().decodeToString()
+                    skillRepo.ensureBuiltin(name, text)
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "seedIfEmpty failed: ${e.message}")
             }

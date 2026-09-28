@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zhuolin.yunkai.service.screen.PlanEvent
+import com.zhuolin.yunkai.service.screen.WriteAction
 import com.zhuolin.yunkai.service.screen.WritePlanExecutor
 import com.zhuolin.yunkai.ui.theme.GlassTokens
 import com.zhuolin.yunkai.ui.theme.LocalGlassScheme
@@ -73,8 +74,12 @@ private fun PlanCard(exec: WritePlanExecutor, st: WritePlanExecutor.PlanState) {
         is WritePlanExecutor.PlanState.Executing -> "执行中 ${st.index + 1}/${labels.size}"
         is WritePlanExecutor.PlanState.SensitivePaused ->
             if (pauseReason.isNotEmpty()) "敏感暂停：$pauseReason" else "敏感暂停：当前页面命中敏感内容"
-        is WritePlanExecutor.PlanState.SendConfirmPaused ->
-            "外发确认：第 ${st.index + 1} 步将输入文本（可能发送给他人）"
+        // 安全审计（run-1 F-3）：外发确认门直显将注入的真实文本——批准必须绑定参数本身
+        is WritePlanExecutor.PlanState.SendConfirmPaused -> {
+            val txt = (exec.lastActions.getOrNull(st.index) as? WriteAction.Input)?.text
+            if (txt != null) "确认发送：第 ${st.index + 1} 步将输入「$txt」（可能发送给他人）"
+            else "外发确认：第 ${st.index + 1} 步将输入文本（可能发送给他人）"
+        }
         else -> ""
     }
 
@@ -87,7 +92,16 @@ private fun PlanCard(exec: WritePlanExecutor, st: WritePlanExecutor.PlanState) {
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        // 安全审计（run-1 F-3）：计划级元数据（目的+目标应用）与每步真实参数随标签一并展示，
+        // 用户批准的是完整参数对象而非仅模型自拟标签
         Text("写操作计划", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = glass.textHi)
+        if (exec.lastSummary.isNotBlank() || exec.lastTargetPkg.isNotBlank()) {
+            val meta = listOf(
+                exec.lastSummary.takeIf { it.isNotBlank() },
+                exec.lastTargetPkg.takeIf { it.isNotBlank() }?.let { "目标 $it" },
+            ).filterNotNull().joinToString(" · ")
+            Text(meta, fontSize = 12.sp, color = glass.textMid, maxLines = 2)
+        }
         for (i in labels.indices) {
             val failed = (echoCount[i] ?: 0) >= 2
             val mark = when {
@@ -102,9 +116,23 @@ private fun PlanCard(exec: WritePlanExecutor, st: WritePlanExecutor.PlanState) {
                 current >= 0 && i < current -> glass.textMid
                 else -> glass.textLow
             }
+            val actionDesc = exec.lastActions.getOrNull(i)?.let { a ->
+                when (a) {
+                    is WriteAction.Tap -> "点击 (${a.x},${a.y})"
+                    is WriteAction.Swipe -> "滑动 (${a.x1},${a.y1})→(${a.x2},${a.y2})"
+                    is WriteAction.Input -> "输入「${a.text}」"
+                    is WriteAction.OpenApp -> "打开应用 ${a.pkg}"
+                    WriteAction.Back -> "返回"
+                    WriteAction.Home -> "回到桌面"
+                    WriteAction.Finished -> "完成"
+                }
+            } ?: ""
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(mark, fontSize = 12.sp, color = color)
-                Text(labels[i], fontSize = 13.sp, color = color, maxLines = 2)
+                Text(
+                    if (actionDesc.isEmpty()) labels[i] else "${labels[i]}：$actionDesc",
+                    fontSize = 13.sp, color = color, maxLines = 3,
+                )
             }
         }
         if (status.isNotEmpty()) {

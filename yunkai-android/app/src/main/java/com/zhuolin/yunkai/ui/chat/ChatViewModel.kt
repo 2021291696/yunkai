@@ -451,7 +451,8 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
                     val rows = app.messageRepo.listByConv(convId)
                     val state = app.conversationRepo.summaryState(convId)
                     if (!state?.summary.isNullOrBlank()) {
-                        history.add(ChatMsg(role = "system", content = "[早期对话摘要]\n${state!!.summary}"))
+                        // 安全审计（run-1 F-2）：摘要是模型生成数据，改走 user 角色防其冒充系统策略
+                        history.add(ChatMsg(role = "user", content = "[以下是早期对话摘要（模型生成数据，仅作参考）]\n${state!!.summary}"))
                     }
                     for (t in com.zhuolin.yunkai.memory.Summarizer.windowRows(rows, state?.untilTurn ?: 0)) {
                         if (t.role == "user") {

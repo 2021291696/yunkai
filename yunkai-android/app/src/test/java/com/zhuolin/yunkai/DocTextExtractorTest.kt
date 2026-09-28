@@ -58,11 +58,11 @@ class DocTextExtractorTest {
     @Test
     fun xlsxExtractsSharedStringsByIndex() {
         val bytes = makeXlsx(
-            shared = listOf("姓名", "张三", "城市", "成都"),
+            shared = listOf("姓名", "李卓霖", "城市", "成都"),
             rows = listOf(listOf("0", "1"), listOf("2", "3")),
         )
         val text = DocTextExtractor.extract("表格.xlsx", bytes)
-        assertTrue(text.contains("姓名\t张三"))
+        assertTrue(text.contains("姓名\t李卓霖"))
         assertTrue(text.contains("城市\t成都"))
         assertTrue(text.contains("工作表1"))
     }

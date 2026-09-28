@@ -225,7 +225,7 @@ export default function logicTest() {
       // 必须升到 ApplicationContext 才能建库。
       const ctx = AbilityDelegatorRegistry.getAbilityDelegator().getAppContext().getApplicationContext();
       await Db.get(ctx); // 建表
-      await SkillRepo.seedIfEmpty(ctx);
+      await SkillRepo.seedBuiltins(ctx);
       // 上轮用例若中途中断会残留「测试技能」行，先清掉避免撞 UNIQUE
       const leftover = await SkillRepo.getByName(ctx, '测试技能');
       if (leftover !== null) {
@@ -257,6 +257,12 @@ export default function logicTest() {
       const s = SkillImporter.parse(md);
       expect(s !== null && s!.name === '翻译' && s!.description === '中英互译' && s!.content.includes('翻译官')).assertTrue();
     });
+    it('importer_parses_chinese_name_multiline_frontmatter', 0, () => {
+      // 狗头军师内置技能同构：中文 name + 多行 frontmatter
+      const md = '---\nname: 狗头军师\ndescription: 恋爱军师与情绪支持。先接住情绪，再分清事实，最后给能执行的选择。\n---\n先接住情绪。';
+      const s = SkillImporter.parse(md);
+      expect(s !== null && s!.name === '狗头军师' && s!.description.startsWith('恋爱军师') && s!.content.includes('先接住情绪')).assertTrue();
+    });
     it('importer_fallback_no_frontmatter', 0, () => {
       const s = SkillImporter.parse('# 写作助手\n帮你写文章。');
       expect(s !== null && s!.name === '写作助手' && s!.content.length > 0).assertTrue();
@@ -268,12 +274,15 @@ export default function logicTest() {
       // 注：getAppContext() 返回的模块级 Context 会被 getRdbStore 原生校验拒绝(401)，
       // 必须升到 ApplicationContext 才能建库。
       const ctx = AbilityDelegatorRegistry.getAbilityDelegator().getAppContext().getApplicationContext();
-      await Db.get(ctx); await SkillRepo.seedIfEmpty(ctx);
+      await Db.get(ctx); await SkillRepo.seedBuiltins(ctx);
       const tools = BuiltinTools.createAll(ctx, new AppConfig(), null);
       let eli5Tool: AgentTool | null = null;
       for (const t of tools) { if (t.name === 'use_skill') { eli5Tool = t; } }
       const out = await eli5Tool!.execute('{"name":"eli5"}');
       expect(out.includes('章节')).assertTrue();
+      // 第二内置技能：狗头军师按名可取（seedBuiltins 双技能播种回归）
+      const gt = await SkillRepo.getByName(ctx, '狗头军师');
+      expect(gt !== null && gt!.content.includes('先接住情绪')).assertTrue();
     });
     it('tool_error_becomes_error_json', 0, async () => {
       const ctx = AbilityDelegatorRegistry.getAbilityDelegator().getAppContext().getApplicationContext();
@@ -586,7 +595,7 @@ export default function logicTest() {
       if (fs.accessSync(dir + '.zip')) { fs.unlinkSync(dir + '.zip'); }
       fs.mkdirSync(dir + '/xl/worksheets', true);
       const ss: string = '<?xml version="1.0"?><sst>'
-        + '<si><t>姓名</t></si><si><t>张三</t></si><si><t>城市</t></si><si><t>成都</t></si></sst>';
+        + '<si><t>姓名</t></si><si><t>李卓霖</t></si><si><t>城市</t></si><si><t>成都</t></si></sst>';
       const sheet: string = '<?xml version="1.0"?><worksheet><sheetData>'
         + '<row><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c></row>'
         + '<row><c r="A2" t="s"><v>2</v></c><c r="B2" t="s"><v>3</v></c></row>'
@@ -599,7 +608,7 @@ export default function logicTest() {
       const copt: zlib.Options = { level: zlib.CompressLevel.COMPRESS_LEVEL_DEFAULT_COMPRESSION };
       await zlib.compressFile(dir, zip, copt);
       const text: string = await DocTextExtractor.extract(ctx, '表格.xlsx', fileUri.getUriFromPath(zip));
-      expect(text.includes('姓名	张三')).assertTrue();
+      expect(text.includes('姓名	李卓霖')).assertTrue();
       expect(text.includes('城市	成都')).assertTrue();
       expect(text.includes('工作表1')).assertTrue();
       fs.unlinkSync(zip);
@@ -917,6 +926,26 @@ export default function logicTest() {
       const pw = ScreenFormat.format('x', [pwNode]);
       expect(pw.includes('[密码框]')).assertTrue();
       expect(pw.includes('secret')).assertFalse();
+    });
+    it('privacy_redact_strict_all_three', 0, () => {
+      const t = '密码是abc123\n身份证号110101199003077758\n银行卡号4111111111111111';
+      const out = PrivacyGate.redact(t, 'strict');
+      expect(out.includes('[redacted-secret]')).assertTrue();
+      expect(out.includes('[redacted-idnum]')).assertTrue();
+      expect(out.includes('[redacted-bankcard]')).assertTrue();
+      expect(out.includes('abc123')).assertFalse();
+      expect(out.includes('110101199003077758')).assertFalse();
+      expect(out.includes('4111111111111111')).assertFalse();
+    });
+    it('privacy_redact_standard_keeps_secret_skips_non_luhn', 0, () => {
+      const out = PrivacyGate.redact('密码是abc123，证件110101199003077758，卡号1234567890123456', 'standard');
+      expect(out.includes('密码是abc123')).assertTrue();
+      expect(out.includes('[redacted-idnum]')).assertTrue();
+      expect(out.includes('1234567890123456')).assertTrue();
+      expect(out.includes('110101199003077758')).assertFalse();
+    });
+    it('privacy_redact_free_passthrough', 0, () => {
+      expect(PrivacyGate.redact('密码是abc123', 'free')).assertEqual('密码是abc123');
     });
   });
 }

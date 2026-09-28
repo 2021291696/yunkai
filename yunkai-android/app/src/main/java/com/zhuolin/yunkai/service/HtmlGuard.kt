@@ -37,6 +37,14 @@ object HtmlGuard {
         // iframe 整块剥（嵌套的外部页面不可控）
         t = t.replace(Regex("<iframe[\\s\\S]*?</iframe\\s*>", RegexOption.IGNORE_CASE), "")
         t = t.replace(Regex("<iframe[^>]*/?>", RegexOption.IGNORE_CASE), "")
+        // 安全审计（run-1 NV-3 配套）：剥导航类原语。meta refresh 可零交互把画布跳到任意
+        // 远端页；object/embed 是 iframe 等价物；base 可整体重定向相对 URL。剥 charset 类
+        // meta 无影响（data: URL 默认 UTF-8，viewport 由本守卫统一注入）。
+        t = t.replace(Regex("<meta[^>]*http-equiv\\s*=\\s*[\"']?refresh[\"']?[^>]*/?>", RegexOption.IGNORE_CASE), "")
+        t = t.replace(Regex("<object[\\s\\S]*?</object\\s*>", RegexOption.IGNORE_CASE), "")
+        t = t.replace(Regex("<object[^>]*/?>", RegexOption.IGNORE_CASE), "")
+        t = t.replace(Regex("<embed[^>]*/?>", RegexOption.IGNORE_CASE), "")
+        t = t.replace(Regex("<base\\s[^>]*/?>", RegexOption.IGNORE_CASE), "")
         if (!lower.contains("name=\"viewport\"")) {
             t = t.replace(Regex("<head([^>]*)>", RegexOption.IGNORE_CASE)) { m ->
                 "<head${m.groupValues[1]}><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">"

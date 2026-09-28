@@ -164,8 +164,9 @@ export class LlmClient {
   // index 组装（id/name 取首片，arguments 顺序拼接）；dataEnd 时 resolve 完整 message
   // （与 chatMessage 同构，AgentLoop 分派逻辑零改动）。
   // SSE 分片会切断行——用 TextDecoder(stream 模式) 增量解码 + 手动按 \n 切行保留残行。
-  // 取消：调用方 isCancelled 在 onDelta 里检查（本类不管取消，与 Android 端对称）。
-  async chatStream(messages: ChatMsg[], tools: ToolDef[] | null, onDelta: (partial: string) => void, model?: string, onThinking?: (partial: string) => void): Promise<OpenAiMessage> {
+  // 取消（安全审计 run-1 F-4）：isCancelled 轮询在 dataReceive 首行检查，命中即置专用
+  // 取消串并 finish()（destroy 断连）——取消后不再为在途响应计费，与 Android 端对称。
+  async chatStream(messages: ChatMsg[], tools: ToolDef[] | null, onDelta: (partial: string) => void, model?: string, onThinking?: (partial: string) => void, isCancelled?: () => boolean): Promise<OpenAiMessage> {
     return new Promise<OpenAiMessage>((resolve: (v: OpenAiMessage) => void, reject: (e: Error) => void) => {
       const hr = http.createHttp();
       const useModel = (model !== undefined && model !== '') ? model : this.cfg.model;
@@ -175,6 +176,7 @@ export class LlmClient {
       let think = '';            // reasoning_content 累计（思考流）
       let done = false;          // dataEnd 已处理（防双 resolve）
       let httpErr = '';
+      let firstChunkLogged = false;
       // tool_calls 分片组装：index → (id/name/arguments)
       const tcIds: Map<number, string> = new Map();
       const tcNames: Map<number, string> = new Map();
@@ -185,6 +187,8 @@ export class LlmClient {
         if (done) { return; }
         done = true;
         hr.destroy();
+        // 诊断锚点：content 为空=流中断/空回答（真机排障 09-19 锁屏挂账的实测入口）
+        console.info('yunkai_stream_done', `content=${content.length} think=${think.length} tools=${tcOrder.length} err=${httpErr}`);
         if (httpErr !== '') {
           reject(new Error(httpErr));
           return;
@@ -242,6 +246,19 @@ export class LlmClient {
 
       const feedLines = (chunk: string): void => {
         pending += chunk;
+        // 非 SSE 错误体（网关/端点对 401/429 等回 HTTP 200 + JSON error，真机智谱过期 key 实测）：
+        // 无 data: 行可解析，须显式识别为失败，否则空 content 会被当成功回答落库
+        if (pending.trim().startsWith('{') && pending.includes('"error"') && !pending.includes('data:')) {
+          try {
+            const eo = JSON.parse(pending) as Record<string, Object>;
+            const errObj = eo['error'] as Record<string, Object> | undefined;
+            const code = errObj !== undefined && errObj !== null ? String(errObj['code'] ?? '') : '';
+            const msg = errObj !== undefined && errObj !== null ? String(errObj['message'] ?? '') : '';
+            httpErr = `LLM ${code}: ${msg}`;
+            finish();
+            return;
+          } catch (e) { /* 非 JSON 整体（分片未到齐）继续走常规解析 */ }
+        }
         // SSE 事件以 \n 分隔；\r 容错（部分端点用 \r\n）
         let nl = pending.indexOf('\n');
         while (nl >= 0) {
@@ -271,9 +288,22 @@ export class LlmClient {
       });
       hr.on('dataReceive', (data: ArrayBuffer) => {
         if (done) { return; }
+        // 安全审计（run-1 F-4）：取消轮询在读流中生效——命中即以专用串收敛（AgentLoop/Chat
+        // 按此串静默吞），finish() 内 destroy() 断连，不再消费在途响应
+        if (isCancelled !== undefined && isCancelled()) {
+          httpErr = 'AGENT_LOOP_CANCELLED';
+          finish();
+          return;
+        }
         try {
           // stream:true 必传——跨分片切开的多字节 UTF-8（中文必中）要靠解码器缓存残字节
           const chunk = decoder.decodeToString(new Uint8Array(data), { stream: true });
+          if (!firstChunkLogged) {
+            firstChunkLogged = true;
+            // 安全审计（run-1 NV-6）：首块内容不进日志（原 400 字原文会带对话/密钥类文本），
+            // 只记长度；完整诊断保留在 finish 的 yunkai_stream_done 行
+            console.info('yunkai_stream_first', `bytes=${chunk.length}`);
+          }
           feedLines(chunk);
         } catch (e) {
           httpErr = `流式解码失败: ${e instanceof Error ? e.message : String(e)}`;

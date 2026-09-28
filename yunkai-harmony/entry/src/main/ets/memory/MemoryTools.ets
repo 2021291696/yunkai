@@ -107,7 +107,7 @@ export class MemoryTools {
         }
         const rejected = PrivacyGate.check(content, gear);
         if (rejected !== null) {
-          return memErr(`[隐私闸门-${gear}] 检测到疑似${rejected}，已拒存；该挡位可在设置中调整`);
+          return memErr(`[隐私闸门-${gear === 'standard' || gear === 'free' ? gear : 'strict'}] 检测到疑似${rejected}，已拒存；该挡位可在设置中调整`);
         }
         const cur = await store.getCoreBlock(block);
         const existing = cur !== null ? cur.content : '';
@@ -119,7 +119,7 @@ export class MemoryTools {
         await store.putCoreBlock(block, merged);
         return JSON.stringify({ appended: true, block: block, chars: merged.length, limit: limit });
       } catch (e) {
-        return memErr(`核心记忆追加失败: ${(e as Error).message}`);
+        return memErr('核心记忆追加失败');
       }
     };
     return tool;
@@ -161,7 +161,7 @@ export class MemoryTools {
         await store.putCoreBlock(block, merged);
         return JSON.stringify({ replaced: true, block: block, chars: merged.length, limit: limit });
       } catch (e) {
-        return memErr(`核心记忆替换失败: ${(e as Error).message}`);
+        return memErr('核心记忆替换失败');
       }
     };
     return tool;
@@ -184,12 +184,12 @@ export class MemoryTools {
         }
         const rejected = PrivacyGate.check(content, gear);
         if (rejected !== null) {
-          return memErr(`[隐私闸门-${gear}] 检测到疑似${rejected}，已拒存；该挡位可在设置中调整`);
+          return memErr(`[隐私闸门-${gear === 'standard' || gear === 'free' ? gear : 'strict'}] 检测到疑似${rejected}，已拒存；该挡位可在设置中调整`);
         }
         const id = await store.insertArchival(content, type, 'agent');
         return JSON.stringify({ saved: true, id: id });
       } catch (e) {
-        return memErr(`归档保存失败: ${(e as Error).message}`);
+        return memErr('归档保存失败');
       }
     };
     return tool;
@@ -214,7 +214,7 @@ export class MemoryTools {
         }
         return JSON.stringify({ results: results, count: results.length });
       } catch (e) {
-        return memErr(`归档检索失败: ${(e as Error).message}`);
+        return memErr('归档检索失败');
       }
     };
     return tool;
@@ -239,7 +239,7 @@ export class MemoryTools {
         }
         return JSON.stringify({ results: results, count: results.length });
       } catch (e) {
-        return memErr(`对话检索失败: ${(e as Error).message}`);
+        return memErr('对话检索失败');
       }
     };
     return tool;

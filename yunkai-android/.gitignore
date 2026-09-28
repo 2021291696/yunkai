@@ -11,3 +11,6 @@ out/
 build_tmp/
 _dump.json
 .kotlin/
+_tmp/
+tests/fullflow/reports/**/artifacts/*.preferences_pb
+*.preferences_pb

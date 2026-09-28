@@ -8,9 +8,11 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.zhuolin.yunkai.model.AppConfig
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 
 // 配置存取：DataStore preferences 'yunkai_cfg'，键与 AppConfig 字段同名。
 // searchMode 是鸿蒙版保留字段（UI 三选已下线），Android 全新安装无存量 schema 负担，
@@ -18,6 +20,13 @@ import kotlinx.coroutines.flow.map
 private val Context.dataStore by preferencesDataStore(name = "yunkai_cfg")
 
 class ConfigStore(private val ctx: Context) {
+    // 所有写入统一走这里：NonCancellable 保证即使调用方协程被取消（如设置页即时写入挂在
+    // rememberCoroutineScope 上，退出页面即取消 scope），写入也完整落盘——
+    // 即时写入被静默丢弃是实测过的真 bug（拨开关后立刻退出=设置回退）
+    private suspend fun editStore(transform: (androidx.datastore.preferences.core.MutablePreferences) -> Unit) {
+        withContext(NonCancellable) { ctx.dataStore.edit(transform) }
+    }
+
     suspend fun load(): AppConfig {
         val p = ctx.dataStore.data.first()
         return AppConfig(
@@ -37,7 +46,7 @@ class ConfigStore(private val ctx: Context) {
     }
 
     suspend fun save(cfg: AppConfig) {
-        ctx.dataStore.edit { p ->
+        editStore { p ->
             p[K_BASE_URL] = cfg.baseUrl
             p[K_API_KEY] = cfg.apiKey
             p[K_MODEL] = cfg.model
@@ -57,7 +66,7 @@ class ConfigStore(private val ctx: Context) {
     suspend fun getThemeMode(): String = ctx.dataStore.data.first()[K_THEME_MODE] ?: THEME_SYSTEM
 
     suspend fun setThemeMode(mode: String) {
-        ctx.dataStore.edit { p -> p[K_THEME_MODE] = mode }
+        editStore { p -> p[K_THEME_MODE] = mode }
     }
 
     // 皮肤（clear 通透 | aurora 极光）：与 themeMode 同理选中即写，
@@ -67,7 +76,18 @@ class ConfigStore(private val ctx: Context) {
     suspend fun getSkin(): String = ctx.dataStore.data.first()[K_SKIN] ?: SKIN_CLEAR
 
     suspend fun setSkin(skin: String) {
-        ctx.dataStore.edit { p -> p[K_SKIN] = skin }
+        editStore { p -> p[K_SKIN] = skin }
+    }
+
+    // 面板底色（悬浮面板可读性）：透明面板浮在任意 app 上，深色通透皮肤玻璃只有 14% 白，
+    // 背景干扰实测难读（真机 2026-09-25 用户反馈）。三档：clear 通透（现状玻璃）/
+    // soft 适中（默认，加半层实底）/ solid 实底（近不透明）。写入即生效（FlashPanelHost 订阅本 flow）
+    val panelOpacityFlow: Flow<String> = ctx.dataStore.data.map { sanitizePanelOpacity(it[K_PANEL_OPACITY]) }
+
+    suspend fun getPanelOpacity(): String = sanitizePanelOpacity(ctx.dataStore.data.first()[K_PANEL_OPACITY])
+
+    suspend fun setPanelOpacity(opacity: String) {
+        editStore { p -> p[K_PANEL_OPACITY] = sanitizePanelOpacity(opacity) }
     }
 
     // 自定义壁纸（file 绝对路径），空串 = 默认壁纸。独立于 AppConfig，与鸿蒙版 ConfigStore.getWallpaper 同语义。
@@ -76,7 +96,7 @@ class ConfigStore(private val ctx: Context) {
     suspend fun getWallpaper(): String = ctx.dataStore.data.first()[K_WALLPAPER] ?: ""
 
     suspend fun setWallpaper(path: String) {
-        ctx.dataStore.edit { p ->
+        editStore { p ->
             if (path.isEmpty()) p.remove(K_WALLPAPER) else p[K_WALLPAPER] = path
         }
     }
@@ -87,7 +107,7 @@ class ConfigStore(private val ctx: Context) {
         ctx.dataStore.data.first()[K_MEMORY_GEAR] ?: PRIVACY_GEAR_DEFAULT
 
     suspend fun setMemoryGear(gear: String) {
-        ctx.dataStore.edit { p -> p[K_MEMORY_GEAR] = gear }
+        editStore { p -> p[K_MEMORY_GEAR] = gear }
     }
 
     // 忆枢任务步数三选（M3 设置页）：10 省流 / 25 标准（默认）/ 50 深度。与隐私挡位同理
@@ -96,7 +116,7 @@ class ConfigStore(private val ctx: Context) {
         sanitizeMaxSteps(ctx.dataStore.data.first()[K_MAX_STEPS])
 
     suspend fun setMaxSteps(steps: Int) {
-        ctx.dataStore.edit { p -> p[K_MAX_STEPS] = sanitizeMaxSteps(steps) }
+        editStore { p -> p[K_MAX_STEPS] = sanitizeMaxSteps(steps) }
     }
 
     // ── 屏幕感知（豆包对齐 M1，设计简报 §五）：总开关默认关=彻底不接线；
@@ -107,7 +127,7 @@ class ConfigStore(private val ctx: Context) {
     suspend fun getScreenSense(): Boolean = ctx.dataStore.data.first()[K_SCREEN_SENSE] ?: false
 
     suspend fun setScreenSense(on: Boolean) {
-        ctx.dataStore.edit { p -> p[K_SCREEN_SENSE] = on }
+        editStore { p -> p[K_SCREEN_SENSE] = on }
     }
 
     suspend fun getVisionLearned(): Set<String> =
@@ -115,13 +135,13 @@ class ConfigStore(private val ctx: Context) {
 
     suspend fun addVisionLearnedPkg(pkg: String) {
         if (pkg.isEmpty()) return
-        ctx.dataStore.edit { p ->
+        editStore { p ->
             p[K_VISION_LEARNED] = (p[K_VISION_LEARNED] ?: emptySet()) + pkg
         }
     }
 
     suspend fun clearVisionLearned() {
-        ctx.dataStore.edit { p -> p.remove(K_VISION_LEARNED) }
+        editStore { p -> p.remove(K_VISION_LEARNED) }
     }
 
     suspend fun getUserBlacklist(): Set<String> =
@@ -129,13 +149,13 @@ class ConfigStore(private val ctx: Context) {
 
     suspend fun addUserBlacklist(pkg: String) {
         if (pkg.isEmpty()) return
-        ctx.dataStore.edit { p ->
+        editStore { p ->
             p[K_SCREEN_BLACKLIST] = (p[K_SCREEN_BLACKLIST] ?: emptySet()) + pkg
         }
     }
 
     suspend fun removeUserBlacklist(pkg: String) {
-        ctx.dataStore.edit { p ->
+        editStore { p ->
             p[K_SCREEN_BLACKLIST] = (p[K_SCREEN_BLACKLIST] ?: emptySet()) - pkg
         }
     }
@@ -156,6 +176,16 @@ class ConfigStore(private val ctx: Context) {
         const val MAX_STEPS_DEFAULT = 25
         val MAX_STEPS_OPTIONS = intArrayOf(10, 25, 50)
 
+        /** 面板底色档位：clear 通透（现状玻璃）/ soft 适中（默认，加半层实底）/ solid 实底（近不透明） */
+        const val PANEL_OPACITY_CLEAR = "clear"
+        const val PANEL_OPACITY_SOFT = "soft"
+        const val PANEL_OPACITY_SOLID = "solid"
+        const val PANEL_OPACITY_DEFAULT = PANEL_OPACITY_SOFT
+
+        fun sanitizePanelOpacity(raw: String?): String =
+            if (raw == PANEL_OPACITY_CLEAR || raw == PANEL_OPACITY_SOFT || raw == PANEL_OPACITY_SOLID) raw
+            else PANEL_OPACITY_DEFAULT
+
         fun sanitizeMaxSteps(raw: Int?): Int {
             return if (raw != null && MAX_STEPS_OPTIONS.contains(raw)) raw else MAX_STEPS_DEFAULT
         }
@@ -175,5 +205,6 @@ class ConfigStore(private val ctx: Context) {
         private val K_SCREEN_SENSE = booleanPreferencesKey("screenSense")
         private val K_VISION_LEARNED = stringSetPreferencesKey("visionLearnedPkgs")
         private val K_SCREEN_BLACKLIST = stringSetPreferencesKey("screenBlacklistUser")
+        private val K_PANEL_OPACITY = stringPreferencesKey("panelOpacity")
     }
 }

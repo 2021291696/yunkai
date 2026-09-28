@@ -86,6 +86,12 @@ fun HtmlCanvas(html: String, modifier: Modifier = Modifier) {
     val webView = remember {
         WebView(context).apply {
             settings.javaScriptEnabled = false
+            // 安全审计（run-1 NV-3 配套）：画布禁止任何页面级跳转（meta refresh/链接/表单提交），
+            // 只允许本 WebView 的初始 data: 内容；shouldOverrideUrlLoading 不拦子资源（https 图片照常加载）。
+            // 初始 loadUrl 是程序化加载，不走此回调，画布渲染不受影响。
+            webViewClient = object : android.webkit.WebViewClient() {
+                override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean = true
+            }
         }
     }
     DisposableEffect(Unit) {

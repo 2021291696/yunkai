@@ -3,7 +3,22 @@
     // 签名配置待重新生成：bundleName 已改为 com.zhuolin.yunkai，
     // 旧 Profile（default_eli5_harmony_*）绑定旧包名已删除；
     // 在 DevEco「Project Structure > Signing Configs」重新勾选自动签名后会自动写回此段
-    "    "products": [
+    "signingConfigs": [
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "C:\\Users\\20212\\.ohos\\config\\default_yunkai-harmony_rtgegj_qanfRK45thsKOkhIl6hTuiq9ZicHVyf_s2hw=.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "0000001BEFC55D556A1E8B05BD45A813CA4350DEA271653DB4B1DDB642F366E918B3E9668E297B42E3B7EC",
+          "profile": "C:\\Users\\20212\\.ohos\\config\\default_yunkai-harmony_rtgegj_qanfRK45thsKOkhIl6hTuiq9ZicHVyf_s2hw=.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "C:\\Users\\20212\\.ohos\\config\\default_yunkai-harmony_rtgegj_qanfRK45thsKOkhIl6hTuiq9ZicHVyf_s2hw=.p12",
+          "storePassword": "0000001BB0CDC1FCAC6362288411300CF0F98F431B408C6EEAFFAC50BE28FF37276B8F0C063141C0E5FF4B"
+        }
+      }
+    ],
+    "products": [
       {
         "name": "default",
         "signingConfig": "default",

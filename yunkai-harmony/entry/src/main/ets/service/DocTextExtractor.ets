@@ -49,6 +49,13 @@ export class DocTextExtractor {
       fs.copyFileSync(src.fd, dst.fd);
       fs.closeSync(src);
       fs.closeSync(dst);
+      // 安全审计（run-1 F-6 配套）：docx/xlsx 分支原是无界路径——解压前补 5MB 输入上限，
+      // 与 AttachUtil 文本分支（:48）及 Android 端（ChatViewModel:190）口径对齐，
+      // 防超大/高膨胀压缩包先落盘再撑爆内存
+      const st = fs.statSync(dst.fd);
+      if (st.size > 5 * 1024 * 1024) {
+        throw new Error('文件超过 5MB 上限');
+      }
       if (fs.accessSync(destDir)) { fs.rmdirSync(destDir); }
       fs.mkdirSync(destDir, true);   // zlib.decompressFile 要求目标目录已存在（900002：destination path is not an existing directory）
       await zlib.decompressFile(zipPath, destDir);

@@ -55,6 +55,36 @@ class HtmlGuardHardeningTest {
         assertTrue(out.contains("pic.png"))
     }
 
+    // 安全审计 run-1 NV-3 配套回归：导航类原语剥离（meta refresh / object / embed / base）
+    @Test
+    fun `guard 剥meta_refresh防画布跳转`() {
+        val out = HtmlGuard.sanitize(doc("""<meta http-equiv="refresh" content="0;url=https://evil.example"><p>正文</p>"""))
+        assertNotNull(out)
+        assertFalse(out!!.contains("http-equiv"))
+        assertFalse(out.contains("evil.example"))
+        assertTrue(out.contains("<p>正文</p>"))
+    }
+
+    @Test
+    fun `guard 剥object_embed_base`() {
+        val out = HtmlGuard.sanitize(doc(
+            """<object data="https://evil.example/x.html"></object><embed src="https://evil.example/y">""" +
+                """<base href="https://evil.example/"><p>正文</p>"""))
+        assertNotNull(out)
+        assertFalse(out!!.contains("<object"))
+        assertFalse(out.contains("<embed"))
+        assertFalse(out.contains("<base"))
+        assertFalse(out.contains("evil.example"))
+        assertTrue(out.contains("<p>正文</p>"))
+    }
+
+    @Test
+    fun `guard 保留普通meta不误伤`() {
+        val out = HtmlGuard.sanitize(doc("""<meta name="author" content="someone"><p>正文</p>"""))
+        assertNotNull(out)
+        assertTrue(out!!.contains("meta name=\"author\""))
+    }
+
     @Test
     fun `replykind 存量口径不变`() {
         org.junit.Assert.assertEquals(HtmlGuardReplyCompat.HTML, ReplyKindCompat.detect("<!doctype html><p>x</p>"))

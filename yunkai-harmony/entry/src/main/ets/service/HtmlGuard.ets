@@ -35,6 +35,14 @@ export class HtmlGuard {
     // iframe 整块剥（嵌套的外部页面不可控）
     t = t.replace(/<iframe[\s\S]*?<\/iframe\s*>/gi, '');
     t = t.replace(/<iframe[^>]*\/?>/gi, '');
+    // 安全审计（run-1 NV-3 配套）：剥导航类原语。meta refresh 可零交互把画布跳到任意
+    // 远端页；object/embed 是 iframe 等价物；base 可整体重定向相对 URL。剥 charset 类
+    // meta 无影响（data: URL 默认 UTF-8，viewport 由本守卫统一注入）。与 Android 同步。
+    t = t.replace(/<meta[^>]*http-equiv\s*=\s*["']?refresh["']?[^>]*\/?>/gi, '');
+    t = t.replace(/<object[\s\S]*?<\/object\s*>/gi, '');
+    t = t.replace(/<object[^>]*\/?>/gi, '');
+    t = t.replace(/<embed[^>]*\/?>/gi, '');
+    t = t.replace(/<base\s[^>]*\/?>/gi, '');
     if (!lower.includes('name="viewport"')) {
       t = t.replace(/<head([^>]*)>/i, '<head$1><meta name="viewport" content="width=device-width, initial-scale=1.0">');
       if (!t.toLowerCase().includes('<head')) {

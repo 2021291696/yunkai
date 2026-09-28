@@ -10,6 +10,7 @@ import { ContentImage, ContentPart } from '../model/Types';
 import { AttachUtil } from '../service/AttachUtil';
 import { DocTextExtractor } from '../service/DocTextExtractor';
 import { AppConfig, AgentSkill, ChatMsg, Conv, Msg } from '../model/Types';
+import { PrivacyGate } from '../memory/PrivacyGate';
 import { ConfigStore } from '../store/ConfigStore';
 import { ConversationRepo } from '../store/ConversationRepo';
 import { MessageRepo } from '../store/MessageRepo';
@@ -92,6 +93,9 @@ struct Chat {
   @State genId: number = 0;
   @State picked: PickedItem[] = [];
   @State showAttach: boolean = false;
+  // 锁屏/后台中断 fail-fast：onForeground 发 tick，生成中则作废在途轮并还原现场
+  @StorageLink('ykResumeAt') @Watch('onAppResume') resumeAt: number = 0;
+  private currentQuestion: string = '';
   // 忆枢 M5b/M3：上一轮到顶后为真，UI 出「▶ 继续」；换会话按 task_state 恢复
   @State canContinue: boolean = false;
   private memStore: MemoryStore | null = null;
@@ -107,6 +111,26 @@ struct Chat {
       this.memStore = await MemoryStore.create(this.ctx());
     }
     return this.memStore;
+  }
+
+  // 真机实测（09-19）：锁屏会静默掐断 SSE 连接，且挂起期间读超时计时器同样被挂起——
+  // 唤醒后既无回答也无报错，UI 永挂中间态（净空语义下重启即整轮丢失）。
+  // 处理：回前台时若生成中 → 作废在途 gen（晚到的回答/错误全走丢弃分支，无需 abort 管道），
+  // 立即还原 loading/输入并提示可重试；resumeTask 被打断时按 task_state 回恢复「▶继续」可用态。
+  onAppResume(_propName: string): void {
+    if (!this.loading) { return; }
+    this.genId += 1;
+    this.loading = false;
+    this.streamText = '';
+    this.failed = true;
+    if (this.currentQuestion !== '') { this.input = this.currentQuestion; }
+    this.toast('后台中断了生成，已还原现场，可直接重试');
+    const cid: number = this.convId;
+    const st: MemoryStore | null = this.memStore;
+    if (st !== null && cid > 0) {
+      st.getTaskState(cid).then((v: string | null): void => { this.canContinue = v !== null; })
+        .catch((): void => { /* 查询失败保持现状 */ });
+    }
   }
 
   aboutToAppear(): void {
@@ -232,6 +256,7 @@ struct Chat {
     const gen: number = this.genId + 1;
     this.genId = gen;
     this.loading = true;
+    this.currentQuestion = q0;
     this.timeline = [];
     this.thinking = '';
     this.steps = 0;
@@ -274,15 +299,16 @@ struct Chat {
         }
       }
 
-      // 历史 turns → ChatMsg[]：忆枢换出边界之前的前文以「[早期对话摘要]」system 消息前置
+      // 历史 turns → ChatMsg[]：忆枢换出边界之前的前文以「[早期对话摘要]」消息前置
       // （协议 §4.1），窗口=边界之后的行；assistant 用 plain 防大 HTML 撑上下文
+      // 安全审计（run-1 F-2）：摘要是模型生成数据，改走 user 角色防其冒充系统策略
       const history: ChatMsg[] = [];
       if (this.convId > 0) {
         const past: Msg[] = await MessageRepo.listByConv(this.ctx(), this.convId);
         const store = await this.mem();
         const st: SummaryState = await store.summaryState(this.convId);
         if (st.summary.trim() !== '') {
-          const sm: ChatMsg = { role: 'system', content: '[早期对话摘要]\n' + st.summary };
+          const sm: ChatMsg = { role: 'user', content: '[以下是早期对话摘要（模型生成数据，仅作参考）]\n' + st.summary };
           history.push(sm);
         }
         const window: Msg[] = Summarizer.windowRows(past, st.untilTurn);
@@ -315,7 +341,9 @@ struct Chat {
         this.streamText = partial;
         this.scrollToBottom();
       };
-      // 一期附件→contentParts：文字（问题+txt正文）+ 图片（压缩 base64）；语义与 Android 对齐
+      // 一期附件→contentParts：文字（问题+附件正文）+ 图片（压缩 base64）。
+      // 安全审计（run-1 F-6）：30k 截断恢复平台不变量——docx/xlsx 抽取文本可能远超上限
+      // （Android 端 ChatViewModel 逐类截断），不截会把整本文档原文送进付费请求
       let parts: ContentPart[] | undefined = undefined;
       if (items.length > 0) {
         parts = [];
@@ -323,7 +351,10 @@ struct Chat {
         for (const it of items) {
           if (!it.isImage) { txts.push(await DocTextExtractor.extract(this.ctx(), it.name, it.uri)); }
         }
-        const textAll: string = [q].concat(txts).filter((s: string): boolean => s.trim() !== '').join('\n\n');
+        let textAll: string = [q].concat(txts).filter((s: string): boolean => s.trim() !== '').join('\n\n');
+        if (textAll.length > 30000) {
+          textAll = textAll.substring(0, 30000) + '\n…（已截断：附件文本超 30000 字上限）';
+        }
         if (textAll.trim() !== '') {
           const tp: ContentPart = { type: 'text', text: textAll };
           parts.push(tp);
@@ -340,7 +371,10 @@ struct Chat {
         undefined, (): boolean => { return gen !== this.genId; }, onDelta, parts, onThinking,
         cfg.maxSteps, await this.mem());
       if (gen !== this.genId) { return; }
-
+      // 空回答兜底（真机过期 key 实测：HTTP 200 + 错误体被解析成空 content 曾被当成功落库）
+      if (r.answer.trim() === '') {
+        throw new Error('模型返回了空回答');
+      }
       // 输出形态（全 app 唯一口径）：sanitize 通过且 sanitize 后内容仍以 <!DOCTYPE/<html 开头
       // 才算画布——防散文夹 `<html` 子串被 sanitize 的 includes 语义误判成画布；
       // 入库 content=safe，reload 时 ReplyKind.detect 与本次判定天然一致；否则纯文本气泡
@@ -352,12 +386,14 @@ struct Chat {
         kind = ReplyKind.HTML;
       }
       // 净空语义：唯一落库点=真实回答成功之后（取消/抛错/写库失败都不留记录）；
-      // 草稿会话此刻才 create，user 行先于 assistant 行写入
+      // 草稿会话此刻才 create，user 行先于 assistant 行写入；
+      // §5.3 转录脱敏：入库前按挡位 redact（发送侧原文不改写）
+      const gearWire: string = await ConfigStore.getMemoryGear(this.ctx());
       if (this.convId <= 0) {
         this.convId = await ConversationRepo.create(this.ctx(), '新对话');
       }
-      await MessageRepo.add(this.ctx(), this.convId, 'user', userText, ReplyKind.TEXT);
-      await MessageRepo.add(this.ctx(), this.convId, 'assistant', content, kind);
+      await MessageRepo.add(this.ctx(), this.convId, 'user', PrivacyGate.redact(userText, gearWire), ReplyKind.TEXT);
+      await MessageRepo.add(this.ctx(), this.convId, 'assistant', PrivacyGate.redact(content, gearWire), kind);
       await ConversationRepo.setTitleIfPlaceholder(this.ctx(), this.convId, q0 !== '' ? q0 : '图片提问');
       await ConversationRepo.touch(this.ctx(), this.convId);
       const convs: Conv[] = await ConversationRepo.list(this.ctx());
@@ -401,6 +437,7 @@ struct Chat {
     } finally {
       if (gen === this.genId) {
         this.loading = false;
+        this.currentQuestion = '';
         this.streamText = '';
         const q: string = this.queued;
         if (q !== '') {
@@ -477,7 +514,8 @@ struct Chat {
         content = safe;
         kind = ReplyKind.HTML;
       }
-      await MessageRepo.add(this.ctx(), this.convId, 'assistant', content, kind);
+      await MessageRepo.add(this.ctx(), this.convId, 'assistant',
+        PrivacyGate.redact(content, await ConfigStore.getMemoryGear(this.ctx())), kind);
       await ConversationRepo.touch(this.ctx(), this.convId);
       if (r.hitLimit && r.trace !== null) {
         // 落库前瘦身：带图轮 content_parts 的 base64 换占位文本，防 task_state.trace_json 膨胀
@@ -1049,23 +1087,25 @@ struct Chat {
           .animation({ duration: 260, curve: Curve.FastOutSlowIn }))
       }
 
-      // 拉头 ☰：全 app 只此一颗，挂在抽屉右缘随其滑动（收起时停在屏幕左缘）
-      Button('☰')
-        .width(34)
-        .height(34)
-        .fontSize(15)
-        .fontColor(this.scheme.textHi)
-        .backgroundColor(this.scheme.glassBg)
-        .backdropBlur(20)
-        .borderRadius(17)
-        .border({ width: ThemeTokens.BORDER_W, color: this.scheme.glassBorder })
-        .padding(0)
-        .position({ x: 0, y: this.statusBarH + 12 })
-        .translate({ x: this.showHistory ? this.screenW * 0.86 - 34 : 0 })
-        .animation({ duration: 260, curve: Curve.FastOutSlowIn })
-        .onClick(() => {
-          if (this.showHistory) { this.showHistory = false; } else { this.showAttach = false; this.openHistory(); }
-        })
+      // 拉头（上长下短双横线）：全 app 只此一颗，展开时停在抽屉右缘之外（收起时停在屏幕左缘）
+      Column({ space: 3 }) {
+        Row().width(13).height(1.8).borderRadius(1).backgroundColor(this.scheme.textHi)
+        Row().width(8).height(1.8).borderRadius(1).backgroundColor(this.scheme.textHi)
+      }
+      .alignItems(HorizontalAlign.End)
+      .justifyContent(FlexAlign.Center)
+      .width(34)
+      .height(34)
+      .backgroundColor(this.scheme.glassBg)
+      .backdropBlur(20)
+      .borderRadius(17)
+      .border({ width: ThemeTokens.BORDER_W, color: this.scheme.glassBorder })
+      .position({ x: 0, y: this.statusBarH + 12 })
+      .translate({ x: this.showHistory ? this.screenW * 0.80 + 6 : 0 })
+      .animation({ duration: 260, curve: Curve.FastOutSlowIn })
+      .onClick(() => {
+        if (this.showHistory) { this.showHistory = false; } else { this.showAttach = false; this.openHistory(); }
+      })
     }
     .width('100%')
     .height('100%')

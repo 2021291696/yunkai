@@ -79,7 +79,9 @@ fun SettingsScreen(onOpenSkills: () -> Unit = {}, onOpenMemory: () -> Unit = {},
     var themeMode by remember { mutableStateOf(ConfigStore.THEME_SYSTEM) }
     val pickTheme: (String) -> Unit = { mode ->
         themeMode = mode
-        scope.launch(Dispatchers.IO) { app.configStore.setThemeMode(mode) }
+        // 写入挂 appScope（app 级存活）：rememberCoroutineScope 随页面退出取消，
+        // 未落盘的写入会静默丢失（真 bug：拨开关后立刻退出=设置回退）
+        app.appScope.launch { app.configStore.setThemeMode(mode) }
     }
     LaunchedEffect(Unit) { themeMode = app.configStore.getThemeMode() }
 
@@ -87,15 +89,29 @@ fun SettingsScreen(onOpenSkills: () -> Unit = {}, onOpenMemory: () -> Unit = {},
     var skin by remember { mutableStateOf(ConfigStore.SKIN_CLEAR) }
     val pickSkin: (String) -> Unit = { s ->
         skin = s
-        scope.launch(Dispatchers.IO) { app.configStore.setSkin(s) }
+        // 写入挂 appScope（app 级存活）：rememberCoroutineScope 随页面退出取消，
+        // 未落盘的写入会静默丢失（真 bug：拨开关后立刻退出=设置回退）
+        app.appScope.launch { app.configStore.setSkin(s) }
     }
     LaunchedEffect(Unit) { skin = app.configStore.getSkin() }
+
+    // 面板底色：clear 通透 / soft 适中（默认）/ solid 实底。写入即生效（FlashPanelHost 订阅本 flow）
+    var panelOpacity by remember { mutableStateOf(ConfigStore.PANEL_OPACITY_DEFAULT) }
+    val pickPanelOpacity: (String) -> Unit = { v ->
+        panelOpacity = v
+        // 写入挂 appScope（app 级存活）：rememberCoroutineScope 随页面退出取消，
+        // 未落盘的写入会静默丢失（真 bug：拨开关后立刻退出=设置回退）
+        app.appScope.launch { app.configStore.setPanelOpacity(v) }
+    }
+    LaunchedEffect(Unit) { panelOpacity = app.configStore.getPanelOpacity() }
 
     // M3 任务步数三档：写入即生效（下一轮 send 走 cfg.maxSteps），不随「保存」
     var maxSteps by remember { mutableStateOf(ConfigStore.MAX_STEPS_DEFAULT) }
     val pickSteps: (Int) -> Unit = { v ->
         maxSteps = v
-        scope.launch(Dispatchers.IO) { app.configStore.setMaxSteps(v) }
+        // 写入挂 appScope（app 级存活）：rememberCoroutineScope 随页面退出取消，
+        // 未落盘的写入会静默丢失（真 bug：拨开关后立刻退出=设置回退）
+        app.appScope.launch { app.configStore.setMaxSteps(v) }
     }
     LaunchedEffect(Unit) { maxSteps = app.configStore.getMaxSteps() }
 
@@ -165,6 +181,13 @@ fun SettingsScreen(onOpenSkills: () -> Unit = {}, onOpenMemory: () -> Unit = {},
             if (skin == ConfigStore.SKIN_AURORA) {
                 Text("极光皮肤自带背景光，壁纸仅在「通透」皮肤显示", fontSize = 10.sp, color = TextFaint)
             }
+            FieldLabel("面板底色")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ThemeOption(ConfigStore.PANEL_OPACITY_CLEAR, "通透", panelOpacity, pickPanelOpacity)
+                ThemeOption(ConfigStore.PANEL_OPACITY_SOFT, "适中", panelOpacity, pickPanelOpacity)
+                ThemeOption(ConfigStore.PANEL_OPACITY_SOLID, "实底", panelOpacity, pickPanelOpacity)
+            }
+            Text("悬浮面板的底色浓度，实底最易读；默认「适中」。写入即生效", fontSize = 10.sp, color = TextFaint)
         }
 
         // ===== 任务卡片：步数三档（M3，忆枢协议 §2 MAX_STEPS_OPTIONS） =====
@@ -317,7 +340,9 @@ fun SettingsScreen(onOpenSkills: () -> Unit = {}, onOpenMemory: () -> Unit = {},
                 Text("屏幕感知", fontSize = 15.sp, modifier = Modifier.weight(1f))
                 Switch(checked = screenSense, onCheckedChange = { on ->
                     screenSense = on
-                    scope.launch(Dispatchers.IO) { app.configStore.setScreenSense(on) }
+                    // 写入挂 appScope（app 级存活）：rememberCoroutineScope 随页面退出取消，
+        // 未落盘的写入会静默丢失（真 bug：拨开关后立刻退出=设置回退）
+        app.appScope.launch { app.configStore.setScreenSense(on) }
                     if (on) {
                         // 悬浮球随总开关出现（主战场入口，M2b）；点按唤起闪问面板（T9b：拉起透明 FlashActivity）
                         com.zhuolin.yunkai.service.screen.FloatingBall.show(context) {
@@ -361,13 +386,19 @@ fun SettingsScreen(onOpenSkills: () -> Unit = {}, onOpenMemory: () -> Unit = {},
         GlassCard {
             Text("记忆隐私", fontSize = 16.sp, color = TextMuted)
             GearOption("strict", "严格", "拒存密码、证件号、卡号", vm) { gear ->
-                scope.launch(Dispatchers.IO) { app.configStore.setMemoryGear(gear) }
+                // 写入挂 appScope（app 级存活）：rememberCoroutineScope 随页面退出取消，
+        // 未落盘的写入会静默丢失（真 bug：拨开关后立刻退出=设置回退）
+        app.appScope.launch { app.configStore.setMemoryGear(gear) }
             }
             GearOption("standard", "标准", "拒存证件号、卡号", vm) { gear ->
-                scope.launch(Dispatchers.IO) { app.configStore.setMemoryGear(gear) }
+                // 写入挂 appScope（app 级存活）：rememberCoroutineScope 随页面退出取消，
+        // 未落盘的写入会静默丢失（真 bug：拨开关后立刻退出=设置回退）
+        app.appScope.launch { app.configStore.setMemoryGear(gear) }
             }
             GearOption("free", "自由", "不拦截", vm) { gear ->
-                scope.launch(Dispatchers.IO) { app.configStore.setMemoryGear(gear) }
+                // 写入挂 appScope（app 级存活）：rememberCoroutineScope 随页面退出取消，
+        // 未落盘的写入会静默丢失（真 bug：拨开关后立刻退出=设置回退）
+        app.appScope.launch { app.configStore.setMemoryGear(gear) }
             }
         }
 

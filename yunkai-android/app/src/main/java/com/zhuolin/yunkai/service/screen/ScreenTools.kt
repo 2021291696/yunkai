@@ -91,16 +91,30 @@ class ReadScreenTool(private val app: YunkaiApp) : AgentTool() {
             ?: return BuiltinTools.err("无障碍服务未开启：请在云开设置→屏幕感知中开启无障碍读屏")
         // DFS 逐节点 binder IPC，600 节点预算在巨型页面耗时可观——必须离开主线程（门0 I1）
         val cur = withContext(Dispatchers.IO) { svc.readForeground() }
-            ?: return BuiltinTools.err("读不到当前屏幕：请确认目标应用在前台")
-        val pkg = cur.first
-        val nodes = cur.second
+        var pkg = cur?.first ?: ""
+        var nodes = cur?.second
+        // 面板遮蔽修正（模拟器 2026-09-25 实测）：透明面板 Activity 会把底下 app 挤出
+        // 无障碍窗口列表，此时前台判定回退到最近一次非自身窗口状态事件；节点树拿不到
+        // 就走视觉路线（capture_screen 截的是真实屏幕，不受面板遮蔽影响）
+        if (com.zhuolin.yunkai.ui.flash.FlashActivity.panelForeground &&
+            (pkg.isEmpty() || pkg == app.packageName)
+        ) {
+            pkg = svc.panelTargetPkg() ?: ""
+            nodes = null
+        }
+        // 安全审计（run-1 NV-2）fail-closed：包名读出为空 = 前台身份不可判定 = 拒绝
+        // （isBlocked("") 恒为 false，不拦空串会让黑名单门失效）
+        if (pkg.isEmpty()) return BuiltinTools.err("读不到当前前台应用，拒绝读取（隐私保护）")
         if (ScreenBlacklist.isBlocked(pkg, app.configStore.getUserBlacklist())) {
             return BuiltinTools.err("应用 " + pkg + " 在隐私黑名单中，默认不读取其内容（如需放行请在设置中调整）")
         }
         if (ScreenRouteTable.isVisionRoute(pkg, app.configStore.getVisionLearned())) {
             return "{\"route\":\"vision\",\"pkg\":\"" + pkg + "\",\"hint\":\"该应用为自绘界面，节点树无有效文本，请改用 capture_screen\"}"
         }
-        val textCount = nodes.count { it.text.isNotEmpty() }
+        val textCount = nodes?.count { it.text.isNotEmpty() } ?: 0
+        if (nodes == null) {
+            return "{\"route\":\"vision\",\"pkg\":\"" + pkg + "\",\"hint\":\"当前从面板发起读取，节点树不可得，请改用 capture_screen\"}"
+        }
         if (textCount < ScreenFormat.MIN_TEXT_NODES) {
             app.configStore.addVisionLearnedPkg(pkg)
             return "{\"route\":\"vision\",\"pkg\":\"" + pkg + "\",\"hint\":\"节点树仅 " + textCount +
@@ -117,12 +131,25 @@ class CaptureScreenTool(private val app: YunkaiApp) : AgentTool() {
         "隐私黑名单应用会被拒绝。"
     override val parametersJson = """{"type":"object","properties":{}}"""
 
+    // 前台包名判定：面板(FlashActivity)在前台时透明面板窗口会把底下 app 挤出
+    // 无障碍窗口列表，回退到最近一次非自身窗口状态事件记录的包名（面板遮蔽修正）
+    private suspend fun foregroundPkg(svc: ScreenSenseService, app: YunkaiApp): String {
+        val p = withContext(Dispatchers.IO) { svc.readForeground() }?.first ?: ""
+        if (com.zhuolin.yunkai.ui.flash.FlashActivity.panelForeground &&
+            (p.isEmpty() || p == app.packageName)
+        ) {
+            return svc.panelTargetPkg() ?: ""
+        }
+        return p
+    }
+
     override suspend fun execute(argsJson: String): String {
         val svc = ScreenSenseService.instance
             ?: return BuiltinTools.err("无障碍服务未开启：请在云开设置→屏幕感知中开启无障碍读屏")
         // 黑名单判定 fail-closed（门0 I3）：读不到前台包名=不知道会截到什么=拒绝
-        val pkg = withContext(Dispatchers.IO) { svc.readForeground() }?.first
-            ?: return BuiltinTools.err("读不到当前前台应用，拒绝截屏（隐私保护）")
+        // 安全审计（run-1 NV-2）：空串包名同样视为「读不到」，与 null 同款拒绝
+        val pkg = foregroundPkg(svc, app)
+        if (pkg.isEmpty()) return BuiltinTools.err("读不到当前前台应用，拒绝截屏（隐私保护）")
         if (ScreenBlacklist.isBlocked(pkg, app.configStore.getUserBlacklist())) {
             return BuiltinTools.err("应用 " + pkg + " 在隐私黑名单中，默认不截取其内容")
         }
@@ -132,7 +159,7 @@ class CaptureScreenTool(private val app: YunkaiApp) : AgentTool() {
         bmp.recycle()
         // TOCTOU 收口（门0 I3）：截的是 t2 帧而包名是 t1 快照——截完复读前台，
         // 切换过（或进了黑名单 app）即丢弃，绝不把黑名单画面回传外发
-        val pkgAfter = withContext(Dispatchers.IO) { svc.readForeground() }?.first ?: ""
+        val pkgAfter = foregroundPkg(svc, app)
         if (pkgAfter != pkg || ScreenBlacklist.isBlocked(pkgAfter, app.configStore.getUserBlacklist())) {
             return BuiltinTools.err("截屏期间前台应用发生切换，已丢弃本次截图，请重试")
         }

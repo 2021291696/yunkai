@@ -113,7 +113,7 @@ export struct HistoryDrawer {
       .backgroundColor(this.scheme.glassBgStrong)
       .alignItems(HorizontalAlign.Start)
     }
-    .width('86%')
+    .width('80%')
     .height('100%')
     .backgroundColor(this.scheme.glassBgStrong)
     .backdropBlur(ThemeTokens.BLUR_DOCK)

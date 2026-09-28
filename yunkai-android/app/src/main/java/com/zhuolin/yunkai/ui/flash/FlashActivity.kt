@@ -53,6 +53,7 @@ import com.zhuolin.yunkai.ui.chat.ChatScreen
 import com.zhuolin.yunkai.ui.theme.GlassTokens
 import com.zhuolin.yunkai.ui.theme.LocalGlassScheme
 import com.zhuolin.yunkai.ui.theme.YunkaiTheme
+import com.zhuolin.yunkai.ui.theme.panelScrimAlpha
 import com.zhuolin.yunkai.store.ConfigStore
 
 // 面板高度形态常量（拖拽阈值与缺省，均按屏幕高度占比）
@@ -72,6 +73,23 @@ object FlashPanelLauncher {
 }
 
 class FlashActivity : ComponentActivity() {
+    companion object {
+        /** 面板是否在前台：read_screen/capture_screen 据此改读面板底下的 app（面板窗口会占住 rootInActiveWindow） */
+        @Volatile
+        var panelForeground = false
+            private set
+    }
+
+    override fun onResume() {
+        super.onResume()
+        panelForeground = true
+    }
+
+    override fun onPause() {
+        super.onPause()
+        panelForeground = false
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -88,20 +106,24 @@ class FlashActivity : ComponentActivity() {
             }
             val skin by store.skinFlow.collectAsState(initial = ConfigStore.SKIN_CLEAR)
             YunkaiTheme(darkTheme = dark, skin = skin) {
-                FlashPanelHost(onFinish = { finish() })
+                FlashPanelHost(store, onFinish = { finish() })
             }
         }
     }
 }
 
 @Composable
-private fun FlashPanelHost(onFinish: () -> Unit) {
+private fun FlashPanelHost(store: ConfigStore, onFinish: () -> Unit) {
     val glass = LocalGlassScheme.current
     val context = LocalContext.current
     val screenH = LocalConfiguration.current.screenHeightDp.toFloat()
     var showCanvas by remember { mutableStateOf(false) }
     var fraction by remember { mutableStateOf(PANEL_DEFAULT_FRACTION) }
     val cardShape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
+    // 面板底色浓度（设置→外观→面板底色）：paperBase 实底遮罩叠在玻璃上，默认 soft
+    // 保证浮在任意 app 上时可读（真机 2026-09-25 用户反馈）
+    val panelOpacity by store.panelOpacityFlow.collectAsState(initial = ConfigStore.PANEL_OPACITY_DEFAULT)
+    val panelScrim = glass.paperBase.copy(alpha = panelScrimAlpha(panelOpacity))
 
     // 回前台清后台进度通知（对齐 MainActivity.onResume）
     LaunchedEffect(Unit) {
@@ -121,8 +143,12 @@ private fun FlashPanelHost(onFinish: () -> Unit) {
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .fillMaxHeight(fraction)
+                // 面板区域吞掉点击：否则面板内非按钮区（列表空白/拉头/标签）的 tap
+                // 会透传到遮罩层 detectTapGestures 误关面板（真机 2026-09-25 用户实测）
+                .pointerInput(Unit) { detectTapGestures { } }
                 .clip(cardShape)
                 .background(glass.glassBgStrong)
+                .background(panelScrim)
                 .border(GlassTokens.BORDER_W.dp, glass.glassBorder, cardShape)
         ) {
             // ===== 拉头：拖动调高（≥70% 松手全屏，<50% 松手收起面板）=====

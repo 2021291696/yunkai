@@ -57,6 +57,15 @@ class WritePlanExecutor(
     @Volatile var lastPlanId: String = ""
         private set
 
+    // 安全审计（run-1 F-3）批准绑定：与 lastLabels 同源暴露完整参数对象与计划级元数据，
+    // 计划卡据此渲染每步真实动作（坐标/输入文本/目标应用）——用户批准的必须是参数本身而非标签。
+    @Volatile var lastActions: List<WriteAction> = emptyList()
+        private set
+    @Volatile var lastSummary: String = ""
+        private set
+    @Volatile var lastTargetPkg: String = ""
+        private set
+
     private val lock = Any()
     private var planId: String = ""
     private var actions: List<WriteAction> = emptyList()
@@ -67,7 +76,16 @@ class WritePlanExecutor(
 
     // 提交计划：置 Pending 并发 Submitted；已有活跃计划时返回 false。
     // 执行循环在 scope 上起独立 Job，先挂在初始闸门上等 approve。
-    fun submit(planId: String, actions: List<WriteAction>, labels: List<String>, sensitiveHint: Boolean): Boolean {
+    // summary/targetPkg（安全审计 run-1 F-3）：计划级元数据与动作对象同源落快照供 UI 渲染，
+    // 旧调用方不传时退化为空串（计划卡自行降级为只显示标签）。
+    fun submit(
+        planId: String,
+        actions: List<WriteAction>,
+        labels: List<String>,
+        sensitiveHint: Boolean,
+        summary: String = "",
+        targetPkg: String = "",
+    ): Boolean {
         synchronized(lock) {
             if (isActive(_state.value)) return false
             this.planId = planId
@@ -75,6 +93,9 @@ class WritePlanExecutor(
             this.labels = labels
             this.lastLabels = labels
             this.lastPlanId = planId
+            this.lastActions = actions
+            this.lastSummary = summary
+            this.lastTargetPkg = targetPkg
             this.sensitiveHint = sensitiveHint
             this.cancelRequested = false
             this.gate = CompletableDeferred()

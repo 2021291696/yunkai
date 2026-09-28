@@ -89,4 +89,34 @@ export class PrivacyGate {
     }
     return null;
   }
+
+  // 转录脱敏（协议 §5.3）：命中该挡位拒绝类别的片段以占位符整体替换；
+  // 顺序固定 [secret, idnum, bankcard]，bankcard 仅替换过 Luhn 的数字段；未知挡位回退 strict。
+  // 每次用新鲜 RegExp（规避 /g 的 lastIndex 状态）；非全局 replace 只换首个匹配，故带 g 重构。
+  static redact(text: string, gear: string): string {
+    const rejected: string[] =
+      (gear === 'standard') ? [PrivacyGate.IDNUM, PrivacyGate.BANKCARD]
+        : (gear === 'free') ? [] : PrivacyGate.CATEGORIES;
+    let t = text;
+    if (rejected.indexOf(PrivacyGate.SECRET) >= 0) {
+      t = t.replace(new RegExp(PrivacyGate.SECRET_PATTERN.source, 'gi'), '[redacted-secret]');
+    }
+    if (rejected.indexOf(PrivacyGate.IDNUM) >= 0) {
+      t = t.replace(new RegExp(PrivacyGate.IDNUM_PATTERN.source, 'g'), '[redacted-idnum]');
+    }
+    if (rejected.indexOf(PrivacyGate.BANKCARD) >= 0) {
+      const re = new RegExp(PrivacyGate.BANKCARD_PATTERN.source, 'g');
+      let out = '';
+      let last = 0;
+      let m: RegExpExecArray | null = re.exec(t);
+      while (m !== null) {
+        out += t.slice(last, m.index);
+        out += PrivacyGate.luhnValid(m[0]) ? '[redacted-bankcard]' : m[0];
+        last = m.index + m[0].length;
+        m = re.exec(t);
+      }
+      t = out + t.slice(last);
+    }
+    return t;
+  }
 }

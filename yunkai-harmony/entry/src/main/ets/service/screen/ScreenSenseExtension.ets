@@ -15,7 +15,8 @@ const DOMAIN = 0x0000;
 export default class ScreenSenseExtension extends AccessibilityExtensionAbility {
   onConnect(): void {
     hilog.info(DOMAIN, TAG, 'scr: onConnect pid=%{public}d', process.pid);
-    this.probeRoot();
+    // 安全审计（run-1 NV-6 配套）：原 probeRoot 会把前台窗口根节点文本以 %{public} 打进 hilog
+    // 且不经黑名单/密码掩码——接入正式读屏工具前，探针不再读取任何屏幕内容
   }
 
   onDisconnect(): void {
@@ -24,19 +25,5 @@ export default class ScreenSenseExtension extends AccessibilityExtensionAbility 
 
   onAccessibilityEvent(event: AccessibilityEvent): void {
     hilog.info(DOMAIN, TAG, 'scr: event type=%{public}d', event.eventType);
-  }
-
-  private async probeRoot(): Promise<void> {
-    try {
-      const root = await this.context.getWindowRootElement();
-      const text: string = String(await root.attributeValue('text') ?? '');
-      const bundle: string = String(await root.attributeValue('bundleName') ?? '');
-      const actions: string[] = await root.actionNames();
-      hilog.info(DOMAIN, TAG,
-        'scr: probe root text=%{public}s bundle=%{public}s actions=%{public}s',
-        text, bundle, actions.join(','));
-    } catch (e) {
-      hilog.error(DOMAIN, TAG, 'scr: probe root fail %{public}s', JSON.stringify(e));
-    }
   }
 }

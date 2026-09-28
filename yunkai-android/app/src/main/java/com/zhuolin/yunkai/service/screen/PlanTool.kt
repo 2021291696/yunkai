@@ -31,6 +31,8 @@ class PlanTool(private val app: YunkaiApp) : AgentTool() {
 
         val targetPkg = ((obj["target_pkg"] as? JsonPrimitive)?.content ?: "").trim()
         if (targetPkg.isEmpty()) return BuiltinTools.err("缺少 target_pkg：计划必须声明目标应用包名")
+        // 安全审计（run-1 F-3）：summary 供计划卡向用户展示计划目的——批准绑定的是参数而非仅标签
+        val summary = ((obj["summary"] as? JsonPrimitive)?.content ?: "").trim()
 
         // 逐项解析+校验：任一项非法即整体拒绝（不做「跳过坏项照跑」——计划是原子承诺）
         val dm = app.resources.displayMetrics
@@ -54,7 +56,7 @@ class PlanTool(private val app: YunkaiApp) : AgentTool() {
 
         val exec = app.writePlanExecutor
         val planId = "p" + System.currentTimeMillis()
-        if (!exec.submit(planId, actions, labels, sensitiveHint = false)) {
+        if (!exec.submit(planId, actions, labels, sensitiveHint = false, summary = summary, targetPkg = targetPkg)) {
             return BuiltinTools.err("已有写操作计划在进行中，请等它结束（或等用户取消）后再提交")
         }
 
