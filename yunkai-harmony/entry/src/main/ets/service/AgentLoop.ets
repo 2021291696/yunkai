@@ -53,6 +53,10 @@ const MAX_STEPS: number = 10;
 // M3 工具输出软预算（协议 §2 TOOL_OUTPUT_BUDGET）：单轮累计超限即截断并标记
 export const TOOL_OUTPUT_BUDGET: number = 30000;
 
+// 门0 P6（双端同构收口，对齐 Android 35c803f）：use_skill 说明书单独硬上限
+// （软预算豁免后的兜底），4 倍软预算防病态大导入撑爆上下文
+export const SKILL_OUTPUT_BUDGET: number = 120000;
+
 // 安全审计（run-1 F-1）：工具结果统一加不可信数据前缀。网页/搜索/技能/附件文本都经 tool 通道
 // 进入上下文，不带标记时其中的指令性文字会被模型当成系统级指令（间接提示注入 → 记忆投毒链）。
 export const UNTRUSTED_TOOL_PREFIX: string =
@@ -215,9 +219,18 @@ export class AgentLoop {
           let out = await AgentLoop.execTool(tools, tc, longFormActive);
           hilog.info(0x0000, 'yunkai', 'tool %{public}s %{public}dms outLen=%{public}d', tc.function.name, Date.now() - ts, out.length);
           // M3 软预算（协议 §2 TOOL_OUTPUT_BUDGET=30000）：累计超限即截断本条并标记；
-          // 预算已被前序工具耗尽（keep==0）时以固定短文案替代（分支细节见 applyToolBudget）
-          out = AgentLoop.applyToolBudget(out, toolBudgetUsed);
-          toolBudgetUsed += out.length;
+          // 预算已被前序工具耗尽（keep==0）时以固定短文案替代（分支细节见 applyToolBudget）。
+          // 门0 P6（双端同构收口，对齐 Android 35c803f）：use_skill 豁免软预算——说明书全文是
+          // 讲解长文的正粮，30000 字软预算会把 eli5 手册拦腰截断、占位文案顶掉长文正文；
+          // 以 SKILL_OUTPUT_BUDGET 硬上限单独兜底，不占软预算累计
+          if (tc.function.name === 'use_skill') {
+            if (out.length > SKILL_OUTPUT_BUDGET) {
+              out = out.substring(0, SKILL_OUTPUT_BUDGET) + `\n…[已截断：说明书超 ${SKILL_OUTPUT_BUDGET} 字硬上限]`;
+            }
+          } else {
+            out = AgentLoop.applyToolBudget(out, toolBudgetUsed);
+            toolBudgetUsed += out.length;
+          }
           // use_skill 成功返回说明书（非 '{"error"' 开头）→ 本轮余下调用切长文模型；
           // 失败/error 回传不切换，模型仍用主模型自行调整策略
           if (tc.function.name === 'use_skill' && !out.startsWith('{"error"')) {
