@@ -136,6 +136,16 @@ fun HistoryDrawer(
                                     }
                                 }
                             },
+                            // 门0 W-B1：手势被父级/系统截走（onDragCancel）时把位移收敛回与状态一致的
+                            // 目标位——否则面板卡在半开位、遮罩点击与返回键的状态语义失同步
+                            onDragCancel = {
+                                scope.launch {
+                                    offsetX.animateTo(
+                                        if (visible) 0f else hiddenXf,
+                                        tween(GlassTokens.MS_STD, easing = GlassTokens.EASE),
+                                    )
+                                }
+                            },
                         )
                     },
             ) {

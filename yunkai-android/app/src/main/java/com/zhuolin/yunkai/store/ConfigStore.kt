@@ -140,6 +140,15 @@ class ConfigStore(private val ctx: Context) {
         editStore { p -> p[K_BALL_ENABLED] = on }
     }
 
+    // ── 执行确认模式（2026-10-02 计划确认分级，与 themeMode 同理选中即写，下一轮 propose_plan 生效）：
+    // full 完全访问（全自动不询问）| smart AI 自审（默认：模型标记+敏感底线）| strict 事事过问（除低危都问）。
+    // 无 Flow 暴露：消费方（PlanTool）按次读取即可，无响应式订阅场景（审查 W4 收口）──
+    suspend fun getConfirmMode(): String = sanitizeConfirmMode(ctx.dataStore.data.first()[K_CONFIRM_MODE])
+
+    suspend fun setConfirmMode(mode: String) {
+        editStore { p -> p[K_CONFIRM_MODE] = sanitizeConfirmMode(mode) }
+    }
+
     suspend fun getVisionLearned(): Set<String> =
         ctx.dataStore.data.first()[K_VISION_LEARNED] ?: emptySet()
 
@@ -147,6 +156,14 @@ class ConfigStore(private val ctx: Context) {
         if (pkg.isEmpty()) return
         editStore { p ->
             p[K_VISION_LEARNED] = (p[K_VISION_LEARNED] ?: emptySet()) + pkg
+        }
+    }
+
+    // 门0 W-A3：单项移除——splash 页误记会永久退化纯视觉路线，此前只能整清
+    suspend fun removeVisionLearnedPkg(pkg: String) {
+        if (pkg.isEmpty()) return
+        editStore { p ->
+            p[K_VISION_LEARNED] = (p[K_VISION_LEARNED] ?: emptySet()) - pkg
         }
     }
 
@@ -192,6 +209,16 @@ class ConfigStore(private val ctx: Context) {
         const val PANEL_OPACITY_SOLID = "solid"
         const val PANEL_OPACITY_DEFAULT = PANEL_OPACITY_SOFT
 
+        /** 执行确认档位：full 完全访问（全自动不询问）/ smart AI 自审（默认）/ strict 事事过问（除低危都问） */
+        const val CONFIRM_FULL = "full"
+        const val CONFIRM_SMART = "smart"
+        const val CONFIRM_STRICT = "strict"
+        const val CONFIRM_MODE_DEFAULT = CONFIRM_SMART
+
+        fun sanitizeConfirmMode(raw: String?): String =
+            if (raw == CONFIRM_FULL || raw == CONFIRM_SMART || raw == CONFIRM_STRICT) raw
+            else CONFIRM_MODE_DEFAULT
+
         fun sanitizePanelOpacity(raw: String?): String =
             if (raw == PANEL_OPACITY_CLEAR || raw == PANEL_OPACITY_SOFT || raw == PANEL_OPACITY_SOLID) raw
             else PANEL_OPACITY_DEFAULT
@@ -217,5 +244,6 @@ class ConfigStore(private val ctx: Context) {
         private val K_VISION_LEARNED = stringSetPreferencesKey("visionLearnedPkgs")
         private val K_SCREEN_BLACKLIST = stringSetPreferencesKey("screenBlacklistUser")
         private val K_PANEL_OPACITY = stringPreferencesKey("panelOpacity")
+        private val K_CONFIRM_MODE = stringPreferencesKey("confirmMode")
     }
 }

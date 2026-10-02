@@ -119,24 +119,39 @@ class ScreenSenseService : AccessibilityService() {
 
     // API 30+：无障碍自带截屏（免 MediaProjection/授权弹窗/前台服务）。
     // hardwareBuffer 必须 close，否则每次截屏泄漏一块 GraphicBuffer。
+    // 门0 W-A5 两处收口：
+    //  ① 回调执行器从 mainExecutor 换独立单线程——wrapHardwareBuffer+全屏 8888 拷贝不再掉主线程帧；
+    //  ② 取消/完成双保险——服务解绑后协程已取消时回调照样 close buffer（不泄漏），
+    //     cont.isActive 守卫防二次 resume；回调执行器随服务生命周期，服务销毁时 shutdown。
+    private val screenshotExecutor: java.util.concurrent.Executor by lazy {
+        java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+            Thread(r, "yunkai-screenshot").apply {
+                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
+            }
+        }
+    }
+
     suspend fun captureScreen(): Bitmap? {
         if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.R) return null
         return kotlinx.coroutines.suspendCancellableCoroutine { cont ->
             takeScreenshot(
                 android.view.Display.DEFAULT_DISPLAY,
-                mainExecutor,
+                screenshotExecutor,
                 object : AccessibilityService.TakeScreenshotCallback {
                     override fun onSuccess(screenshot: AccessibilityService.ScreenshotResult) {
-                        val bmp = android.graphics.Bitmap.wrapHardwareBuffer(
-                            screenshot.hardwareBuffer, screenshot.colorSpace
-                        )?.copy(Bitmap.Config.ARGB_8888, false)
-                        screenshot.hardwareBuffer.close()
-                        cont.resume(bmp)
+                        val bmp = try {
+                            android.graphics.Bitmap.wrapHardwareBuffer(
+                                screenshot.hardwareBuffer, screenshot.colorSpace
+                            )?.copy(Bitmap.Config.ARGB_8888, false)
+                        } finally {
+                            screenshot.hardwareBuffer.close()
+                        }
+                        if (cont.isActive) cont.resume(bmp)
                     }
 
                     override fun onFailure(errorCode: Int) {
                         android.util.Log.w("yunkai", "takeScreenshot fail code=$errorCode")
-                        cont.resume(null)
+                        if (cont.isActive) cont.resume(null)
                     }
                 },
             )

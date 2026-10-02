@@ -117,11 +117,16 @@ fun parseOpenAppArg(argsJson: String): String {
 //（真机诊断日志实抓，reports/20261001_realdevice_round2 发现①）。
 // 改为「允许名单」：Activity 通用词 + MIUI 设置族（Settings 覆盖 MiuiSettings/SubSettings）+ MIUI 桌面；
 // 输入法/系统UI/小部件宿主天然不匹配仍被排除。
+// 门0 W-A2（2026-10-02）：系统分享面板/权限弹窗等覆盖型临界面（ChooserActivity/ResolverActivity 族）
+// 名字里也带 "Activity"，记成 fgPkg 会把「面板底下 app」污染成系统壳包名 → 面板态读屏读错目标，
+// 加排除名单（先于允许名单判定）。
 // 新机型出现漏采时往 ACTIVITY_WINDOW_MARKERS 加模式（宁可 fail-closed 拒读，不可错记）。
 private val ACTIVITY_WINDOW_MARKERS = listOf("Activity", "Settings", ".Launcher")
+private val ACTIVITY_WINDOW_EXCLUDE = listOf("ChooserActivity", "ResolverActivity", "RedirectActivity")
 
 fun isActivityWindow(pkg: String, cls: String): Boolean {
     if (pkg.isEmpty() || cls.isEmpty()) return false
     if (pkg == "android") return false   // 系统占位窗口（桌面小部件宿主等）
+    if (ACTIVITY_WINDOW_EXCLUDE.any { cls.contains(it) }) return false
     return ACTIVITY_WINDOW_MARKERS.any { cls.contains(it) }
 }

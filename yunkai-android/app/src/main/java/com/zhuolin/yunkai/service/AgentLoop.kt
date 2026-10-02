@@ -53,6 +53,9 @@ object AgentLoop {
     // 防巨型网页/文件结果撑爆上下文；截断带标记让模型知情
     const val TOOL_OUTPUT_BUDGET: Int = 30000
 
+    // 门0 P6：use_skill 说明书单独硬上限（软预算豁免后的兜底），4 倍软预算防病态大导入
+    const val SKILL_OUTPUT_BUDGET: Int = 120_000
+
     // 取消专用错误消息：调用方按此静默吞（引擎层中断，结果直接丢弃）
     const val CANCELLED_MSG: String = "AGENT_LOOP_CANCELLED"
 
@@ -186,11 +189,12 @@ object AgentLoop {
                 return fakeChat(ms, ts, model)
             }
             // B1 SSE：非流式保持兜底；流式增量经 onDelta 上抛（UI 流式气泡）。
-            // 取消：轮询旗标在 onDelta 里检查，命中即抛（中断读流、断连省 token）。
+            // 取消：轮询旗标在 onDelta 里检查，命中即抛（中断读流、断连省 token）；
+            // 门0 W-C2：旗标再透传 LlmClient 看门狗——在途 socket 被 cancel()，600s 读超时不再占死 IO 线程。
             return llm.chatStream(ms, ts, model, onDelta = { partial ->
                 checkCancel(isCancelled)
                 onDelta?.invoke(partial)
-            }, onThinking = onThinking)
+            }, onThinking = onThinking, cancelled = isCancelled)
         }
 
         for (step in 1..maxSteps) {
@@ -209,16 +213,26 @@ object AgentLoop {
                     Log.i("yunkai", "tool ${tc.function.name} ${System.currentTimeMillis() - ts}ms outLen=${out.length}")
                     // M3 软预算（协议 §2 TOOL_OUTPUT_BUDGET=30000）：累计超限即截断本条并标记，
                     // 模型据此改用更小粒度的工具调用；预算逐轮重置（每轮 send 重新计）。
-                    // 预算已被前序结果打满（keep==0）时本条不再截零加标记，直接替换为耗尽提示
-                    if (toolBudgetUsed + out.length > TOOL_OUTPUT_BUDGET) {
+                    // 预算已被前序结果打满（keep==0）时本条不再截零加标记，直接替换为耗尽提示。
+                    // 门0 P6（双端同构瑕疵）：use_skill 豁免——说明书全文是讲解长文的正粮，
+                    // 30000 字软预算会把 eli5 手册拦腰截断、占位文案替换掉长文正文；
+                    // 以 SKILL_BUDGET（4 倍）单独设上限，防病态大导入撑爆上下文。
+                    if (tc.function.name == "use_skill") {
+                        if (out.length > SKILL_OUTPUT_BUDGET) {
+                            out = out.take(SKILL_OUTPUT_BUDGET) + "\n…[已截断：说明书超 ${SKILL_OUTPUT_BUDGET} 字硬上限]"
+                        }
+                        // use_skill 不占软预算（豁免）：说明书是当轮正粮
+                    } else if (toolBudgetUsed + out.length > TOOL_OUTPUT_BUDGET) {
                         val keep = (TOOL_OUTPUT_BUDGET - toolBudgetUsed).coerceAtLeast(0)
                         out = if (keep == 0) {
                             "本轮工具输出预算已耗尽，请基于已有结果作答"
                         } else {
                             out.take(keep) + "\n…[已截断：本轮工具输出累计超 ${TOOL_OUTPUT_BUDGET} 字软预算]"
                         }
+                        toolBudgetUsed += out.length
+                    } else {
+                        toolBudgetUsed += out.length
                     }
-                    toolBudgetUsed += out.length
                     // use_skill 成功返回说明书（非 '{"error"' 开头）→ 本轮余下调用切长文模型；
                     // 失败/error 回传不切换，模型仍用主模型自行调整策略
                     if (tc.function.name == "use_skill" && !out.startsWith("{\"error\"")) {
@@ -284,6 +298,8 @@ object AgentLoop {
             ?: return BuiltinTools.err("未知工具: ${tc.function.name}")
         return try {
             tool.execute(tc.function.arguments)
+        } catch (ce: kotlinx.coroutines.CancellationException) {
+            throw ce   // 门0 W-C6：取消语义不吞——取消瞬间的错误 JSON 不得入对话轨迹
         } catch (err: Exception) {
             BuiltinTools.err(err.message ?: err.toString())
         }

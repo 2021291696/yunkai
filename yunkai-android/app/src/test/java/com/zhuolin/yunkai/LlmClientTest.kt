@@ -68,4 +68,24 @@ class LlmClientTest {
     fun `extract_message 无 choices 抛错`() {
         LlmClient.extractMessage("{\"choices\":[]}")
     }
+
+    @Test
+    fun `extract_message arguments 对象形态归一为字符串（W-C7）`() {
+        // 端点把 arguments 回成 JSON 对象而非字符串：此前严格 String 反序列化整轮炸掉
+        val j = "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":" +
+            "[{\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"web_search\",\"arguments\":{\"query\":\"AI\"}}}]}}]}"
+        val m = LlmClient.extractMessage(j)
+        assertEquals(1, m.toolCalls!!.size)
+        assertEquals("{\"query\":\"AI\"}", m.toolCalls!![0].function.arguments)
+    }
+
+    @Test
+    fun `extract_message arguments 缺省补空对象串（W-C7）`() {
+        val j = "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":" +
+            "[{\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"read_screen\"}}]}}]}"
+        val m = LlmClient.extractMessage(j)
+        assertEquals(1, m.toolCalls!!.size)
+        assertEquals("read_screen", m.toolCalls!![0].function.name)
+        assertEquals("{}", m.toolCalls!![0].function.arguments)
+    }
 }

@@ -275,12 +275,18 @@ private val MIGRATION_4_5 = object : Migration(4, 5) {
 }
 
 
+// 门0 P10：迁移链收敛单点——新增版本时往数组追加即可，连续性由 DbMigrationChainTest 钉死
+internal val DB_MIGRATIONS = arrayOf(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+
+// 当前 schema 版本（门0 P10：单一定义点，测试与 builder 同源）
+internal const val DB_VERSION = 5
+
 @Database(
     entities = [
         ConvEntity::class, MsgEntity::class, SkillEntity::class,
         CoreBlockEntity::class, ArchivalEntity::class, TaskStateEntity::class,
     ],
-    version = 5,
+    version = DB_VERSION,
 )
 abstract class YunkaiDb : RoomDatabase() {
     abstract fun convDao(): ConvDao
@@ -296,7 +302,7 @@ abstract class YunkaiDb : RoomDatabase() {
 
         fun instance(ctx: Context): YunkaiDb = inst ?: synchronized(this) {
             inst ?: Room.databaseBuilder(ctx.applicationContext, YunkaiDb::class.java, "yunkai.db")
-                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(*DB_MIGRATIONS)
                 .fallbackToDestructiveMigration()
                 .build().also { inst = it }
         }

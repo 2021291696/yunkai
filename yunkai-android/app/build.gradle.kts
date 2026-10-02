@@ -21,10 +21,16 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
-    buildFeatures { compose = true }
-    // JVM 单测允许 android.util.Log 等框架调用返回默认值（引擎层 Log.w 不炸测试）
-    testOptions { unitTests.isReturnDefaultValues = true }
+kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
+buildFeatures { compose = true }
+// JVM 单测允许 android.util.Log 等框架调用返回默认值（引擎层 Log.w 不炸测试）
+testOptions { unitTests.isReturnDefaultValues = true }
+
+// 门0 P10：Room schema 导出入仓——每个版本的 schema JSON 落 schemas/，迁移历史从作者脑中挪到盘上，
+// MigrationTestHelper（后续版本迁移的自动化用例）以此为基
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
 }
 
 // run-all 门1 断言需要读到测试 stdout（LLM_CHAIN_OK）

@@ -95,7 +95,8 @@ internal fun ScreenPrivacyDialog(glass: GlassScheme, onClose: () -> Unit) {
                                 Text(pkg, fontSize = 10.5.sp, color = TextFaint, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                             Text("移除", fontSize = 12.sp, color = WarmOrange, modifier = Modifier.clickable {
-                                scope.launch { app?.configStore?.removeUserBlacklist(pkg); reload++ }
+                                // 写入挂 appScope（门0 W-B3 收口）：对话框秒关不再丢写入；reload 为快照态可跨线程写
+                                app?.appScope?.launch { app?.configStore?.removeUserBlacklist(pkg); reload++ }
                             })
                         }
                     }
@@ -148,7 +149,8 @@ internal fun ScreenPrivacyDialog(glass: GlassScheme, onClose: () -> Unit) {
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .clickable {
-                                                scope.launch { app?.configStore?.addUserBlacklist(a.pkg); reload++ }
+                                                // 写入挂 appScope（门0 W-B3 收口）：同移除，对话框秒关不丢
+                                                app?.appScope?.launch { app?.configStore?.addUserBlacklist(a.pkg); reload++ }
                                             },
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
@@ -169,13 +171,23 @@ internal fun ScreenPrivacyDialog(glass: GlassScheme, onClose: () -> Unit) {
                         }
                     }
                 }
-                // ── 区3：视觉学习集只读 ──
+                // ── 区3：视觉学习集（门0 W-A3：误记会永久退化纯视觉路线，支持单项移除+整清） ──
                 if (learned.isNotEmpty()) {
-                    Text("视觉路线学习集（read_screen 贫瘠时自动学习，可清空）", fontSize = 13.sp, color = TextFaint)
-                    Text(
-                        learned.sorted().joinToString("、") { appLabel(context, it) },
-                        fontSize = 12.sp, color = TextDark,
-                    )
+                    Text("视觉路线学习集（read_screen 贫瘠时自动学习，可单项移除）", fontSize = 13.sp, color = TextFaint)
+                    learned.sorted().forEach { pkg ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(appLabel(context, pkg), fontSize = 13.sp, color = TextDark, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(pkg, fontSize = 10.sp, color = TextFaint, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            Text("移除", fontSize = 12.sp, color = WarmOrange, modifier = Modifier.clickable {
+                                app?.appScope?.launch { app?.configStore?.removeVisionLearnedPkg(pkg); reload++ }
+                            })
+                        }
+                    }
                     Text(
                         if (confirmClear) "再点一次确认清空" else "清空学习记录",
                         fontSize = 12.sp,
@@ -184,7 +196,8 @@ internal fun ScreenPrivacyDialog(glass: GlassScheme, onClose: () -> Unit) {
                             if (!confirmClear) {
                                 confirmClear = true
                             } else {
-                                scope.launch { app?.configStore?.clearVisionLearned(); confirmClear = false; reload++ }
+                                // 写入挂 appScope（门0 W-B3 收口）：清空学习集同理
+                                app?.appScope?.launch { app?.configStore?.clearVisionLearned(); confirmClear = false; reload++ }
                             }
                         },
                     )

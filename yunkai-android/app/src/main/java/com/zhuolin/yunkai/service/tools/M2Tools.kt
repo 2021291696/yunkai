@@ -1,5 +1,7 @@
 package com.zhuolin.yunkai.service.tools
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -44,7 +46,8 @@ class ReadFileTool(private val root: File) : AgentTool() {
         val f = File(root, path)
         if (!insideSandbox(f, root)) return m2Err("路径越界")
         if (!f.exists()) return m2Err("文件不存在: $path")
-        return f.readText()
+        // 门0 W-C3：文件 IO 挂 IO 线程（主线程读大文件会 ANR）
+        return withContext(Dispatchers.IO) { f.readText() }
     }
 }
 
@@ -58,8 +61,11 @@ class WriteFileTool(private val root: File) : AgentTool() {
         val content = m2Str(obj, "content") ?: return m2Err("缺少 content")
         val f = File(root, path)
         if (!insideSandbox(f, root)) return m2Err("路径越界")
-        f.parentFile?.mkdirs()
-        f.writeText(content)
+        // 门0 W-C3：同上，写盘挂 IO 线程
+        withContext(Dispatchers.IO) {
+            f.parentFile?.mkdirs()
+            f.writeText(content)
+        }
         return m2Enc.encodeToString(M2WriteResult.serializer(), M2WriteResult(true, path))
     }
 }

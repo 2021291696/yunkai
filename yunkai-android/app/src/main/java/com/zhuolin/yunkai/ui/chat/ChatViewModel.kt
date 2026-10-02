@@ -18,7 +18,9 @@ import com.zhuolin.yunkai.service.LoopEvent
 import com.zhuolin.yunkai.model.ContentImage
 import com.zhuolin.yunkai.model.ContentPart
 import com.zhuolin.yunkai.service.ReplyKind
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 // 消息流渲染单元：role='user'|'assistant'；kind='html'|'text'（画布卡/文本气泡）
 data class RenderMsg(val id: Long, val role: String, val content: String, val kind: String, val thinking: String = "", val steps: Int = 0, val thinkingCollapsed: Boolean = true)
@@ -48,7 +50,7 @@ internal fun stripTraceForPersist(trace: List<ChatMsg>): List<ChatMsg> {
     }
 }
 
-class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
+class ChatViewModel(internal val app: YunkaiApp) : ViewModel() {
     val msgs = mutableStateListOf<RenderMsg>()
     val turns = mutableStateListOf<Msg>()
     val convs = mutableStateListOf<com.zhuolin.yunkai.model.Conv>()
@@ -67,8 +69,8 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
     // M3 继续任务：上一轮到顶（hitLimit）后为真，UI 出「▶ 继续」；换会话时按 task_state 恢复
     var canContinue = mutableStateOf(false)
     var convId: Long = -1L
-    private var nextId: Long = 1L
-    private var genId: Long = 0L
+    internal var nextId: Long = 1L
+    internal var genId: Long = 0L
     private var initialized = false
 
     // 流式节流：SSE chunk 高频直刷 @State 会驱动整页每 chunk 重组（流式期间卡顿主因）。
@@ -132,7 +134,7 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
         }
     }
 
-    private suspend fun loadTurns() {
+    internal suspend fun loadTurns() {
         val past = app.messageRepo.listByConv(convId)
         turns.clear()
         turns.addAll(past)
@@ -145,7 +147,7 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
         }
     }
 
-    private suspend fun refreshConvs() {
+    internal suspend fun refreshConvs() {
         val list = app.conversationRepo.list()
         convs.clear()
         convs.addAll(list)
@@ -173,42 +175,7 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
         picked.value = picked.value.filter { it.uri != uri }
     }
 
-    // uri 图片 → 长边 1280 JPEG(85) → base64（同 Wallpaper 的采样探测思路，防 12MP 原图撑爆请求）
-    private fun compressToB64(context: Context, uri: String): String {
-        val resolver = context.contentResolver
-        val input = resolver.openInputStream(android.net.Uri.parse(uri)) ?: throw Exception("读取图片失败")
-        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        android.graphics.BitmapFactory.decodeStream(input, null, bounds)
-        input.close()
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw Exception("图片解码失败")
-        var sample = 1
-        val maxSide = 1280
-        while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxSide) sample *= 2
-        val input2 = resolver.openInputStream(android.net.Uri.parse(uri)) ?: throw Exception("图片解码失败")
-        val bmp = android.graphics.BitmapFactory.decodeStream(input2, null,
-            android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
-        input2.close()
-            ?: throw Exception("图片解码失败")
-        val safeBmp = bmp ?: throw Exception("图片解码失败")
-        val out = java.io.ByteArrayOutputStream()
-        safeBmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, out)
-        return android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
-    }
-
-    // 附件读取（≤5MB；正文截断 3 万字并标注）：txt 直读；docx/xlsx/pdf 走 DocTextExtractor
-    // （二期；鸿蒙侧对应 docx/xlsx，PDF 挂 backlog）
-    private fun readAttachment(context: Context, uri: String, name: String): String {
-        val input = context.contentResolver.openInputStream(android.net.Uri.parse(uri))
-        val bytes = input?.readBytes() ?: throw Exception("读取文件失败")
-        input.close()
-        if (bytes.size > 5 * 1024 * 1024) throw Exception("文件超过 5MB 上限")
-        var text = com.zhuolin.yunkai.service.DocTextExtractor.extract(name, bytes)
-        if (text.isBlank()) throw Exception("未能从该文件抽取到文本（扫描件或空文档）")
-        if (text.length > 30000) {
-            text = text.substring(0, 30000) + "\n…（已截断）"
-        }
-        return text
-    }
+    // uri 图片压缩/附件抽取已拆至 ChatAttachments.kt（门0 P5 收口）
 
     fun cancelLoading() {
         genId += 1
@@ -221,121 +188,17 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
         queued.value = ""
     }
 
-    // M3 轨迹序列化器：ChatMsg 含 @SerialName，编解码对称；与请求体 wire transform 无关（内部态）
-    private val traceJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+    // M3 轨迹序列化器已拆至 TraceCodec.kt（门0 P5 收口，同包顶层免 import）
 
     // 屏幕感知工具（豆包对齐 M1）：总开关开才进工具表；关=彻底不暴露给模型，不产生任何系统能力调用
-    private suspend fun screenTools(): List<com.zhuolin.yunkai.service.tools.AgentTool> =
+    internal suspend fun screenTools(): List<com.zhuolin.yunkai.service.tools.AgentTool> =
         if (app.configStore.getScreenSense()) {
             com.zhuolin.yunkai.service.screen.createScreenTools(app)
         } else {
             emptyList()
         }
 
-    // M3 继续任务：取到顶轨迹续跑——system 就地重建（AgentLoop.seedMessages）、步数与软预算重置。
-    // 完成后照常落库；若再次到顶则更新轨迹（canContinue 保持），否则清掉 task_state
-    fun resumeTask(context: Context) {
-        if (loading.value || convId <= 0) return
-        val gen = genId + 1
-        genId = gen
-        loading.value = true
-        timeline.clear()
-        streamText.value = ""
-        thinking.value = ""
-        steps.value = 0
-        canContinue.value = false
-        viewModelScope.launch {
-            try {
-                val cfg = app.configStore.load()
-                if (cfg.baseUrl.isEmpty() || cfg.apiKey.isEmpty() || cfg.model.isEmpty()) {
-                    failed.value = true
-                    canContinue.value = true
-                    toast(context, "请先在设置页配置 API 地址/密钥/模型")
-                    return@launch
-                }
-                val ent = app.taskStateDao.get(convId) ?: return@launch
-                val trace = traceJson.decodeFromString(
-                    kotlinx.serialization.builtins.ListSerializer(com.zhuolin.yunkai.model.ChatMsg.serializer()),
-                    ent.trace_json,
-                )
-                val r = AgentLoop.run(
-                    cfg, app.skillRepo, emptyList(), "", null,
-                    onEvent = { e ->
-                        if (gen == genId) {
-                            timeline.add(e)
-                            if (e.kind == "tool_start") steps.value += 1
-                            // 后台执行时每步回显进度通知（Q7）；前台有实时时间线，不打扰
-                            if (!com.zhuolin.yunkai.MainActivity.activityForeground) {
-                                com.zhuolin.yunkai.service.screen.ScreenNotify.notifyProgress(
-                                    app, "步骤 " + steps.value + "：" + e.toolName,
-                                )
-                            }
-                        }
-                    },
-                    isCancelled = { gen != genId },
-                    extraTools = com.zhuolin.yunkai.service.tools.createM2Tools(app) + screenTools() +
-                        com.zhuolin.yunkai.memory.createMemoryTools(app.memoryStore) {
-                            app.configStore.load().memoryGear
-                        },
-                    memory = app.memoryStore,
-                    maxSteps = cfg.maxSteps,
-                    seedMessages = trace,
-                )
-                if (gen != genId) return@launch
-                var content = r.answer
-                var kind = ReplyKind.TEXT
-                val safe = HtmlGuard.sanitize(content)
-                if (safe != null && ReplyKind.detect(safe) == ReplyKind.HTML) {
-                    content = safe
-                    kind = ReplyKind.HTML
-                }
-                app.messageRepo.add(convId, "assistant", PrivacyGate.redact(content, app.configStore.load().memoryGear), kind)
-                app.conversationRepo.touch(convId)
-                refreshConvs()
-                if (r.hitLimit && r.trace != null) {
-                    app.taskStateDao.upsert(com.zhuolin.yunkai.store.TaskStateEntity(
-                        conversation_id = convId,
-                        // 落库前瘦身：带图轮 contentParts 的 base64 换占位文本，防 task_state 膨胀
-                        trace_json = traceJson.encodeToString(
-                            kotlinx.serialization.builtins.ListSerializer(com.zhuolin.yunkai.model.ChatMsg.serializer()),
-                            stripTraceForPersist(r.trace),
-                        ),
-                        step_used = r.steps,
-                        updated_at = System.currentTimeMillis(),
-                    ))
-                    canContinue.value = true
-                } else {
-                    app.taskStateDao.delete(convId)
-                    canContinue.value = false
-                }
-                msgs.add(RenderMsg(nextId++, "assistant", content, kind, thinking = thinking.value, steps = steps.value))
-                // 后台完成：结果通知静默送达（Q7）
-                if (!com.zhuolin.yunkai.MainActivity.activityForeground) {
-                    com.zhuolin.yunkai.service.screen.ScreenNotify.notifyResult(
-                        app, title.value, com.zhuolin.yunkai.service.screen.notifySummary(content),
-                    )
-                }
-                loadTurns()
-                // 忆枢 M2：resume 续跑同样走摘要检查（长收尾回答恰易触发阈值）
-                maybeSummarize(cfg)
-            } catch (e: Exception) {
-                if (gen == genId) {
-                    failed.value = true
-                    com.zhuolin.yunkai.service.screen.ScreenNotify.cancelProgress(app)
-                    // 失败不清 task_state：恢复「继续」可用态，用户可重试（轨迹仍在）
-                    canContinue.value = app.taskStateDao.get(convId) != null
-                    Log.e("yunkai", "resume failed: ${e.message}")
-                    toast(context, "出错了：${e.message}")
-                }
-            } finally {
-                if (gen == genId) {
-                    loading.value = false
-                    streamText.value = ""
-                }
-            }
-        }
-    }
-
+    // M3 继续任务 resumeTask 已拆至 ChatViewModelResume.kt 扩展（门0 P5 收口）
     // 立即：打断当前回答，马上发排队那句
     fun sendQueuedNow(context: Context) {
         if (queued.value.isEmpty()) return
@@ -375,29 +238,8 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
 
     // 忆枢 M2 会话摘要编排（协议 §4.4）：窗口超阈值 → 最旧一半轮次交给主模型压缩 ≤300 字，
     // 追加进 conversations.summary 并前移换出边界。任何异常静默跳过（摘要属增益）。
-    private suspend fun maybeSummarize(cfg: com.zhuolin.yunkai.model.AppConfig) {
-        try {
-            if (convId <= 0) return
-            val state = app.conversationRepo.summaryState(convId) ?: return
-            val rows = app.messageRepo.listByConv(convId)
-            val window = com.zhuolin.yunkai.memory.Summarizer.windowRows(rows, state.untilTurn)
-            if (!com.zhuolin.yunkai.memory.Summarizer.shouldTrigger(window)) return
-            val span = com.zhuolin.yunkai.memory.Summarizer.spanToSummarize(window) ?: return
-            val llm = com.zhuolin.yunkai.service.LlmClient(cfg)
-            val resp = llm.chatMessage(
-                listOf(ChatMsg(role = "user", content = com.zhuolin.yunkai.memory.Summarizer.buildPrompt(span.rows))),
-                null,
-            )
-            val text = resp.content.trim()
-            if (text.isEmpty()) return
-            app.conversationRepo.appendSummary(
-                convId,
-                text.take(com.zhuolin.yunkai.memory.Summarizer.SUMMARY_MAX_CHARS),
-                span.endTurnNo,
-            )
-        } catch (e: Exception) {
-            Log.w("yunkai", "summarize skipped: ${e.message}")
-        }
+    internal suspend fun maybeSummarize(cfg: com.zhuolin.yunkai.model.AppConfig) {
+        summarizeIfNeeded(app, cfg, convId)
     }
 
     // 发送管线：@提及解析 → 构建 history → AgentLoop.run（onEvent 实时推时间线）→ 画布卡/气泡入库渲染。
@@ -432,6 +274,9 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
         }
         val userText = q0 + attachSummary
         msgs.add(RenderMsg(nextId++, "user", userText, ReplyKind.TEXT))
+        // 门0 W-B2：会话身份在发送时快照——落库窄窗内用户 load() 切走（convId 被重指、msgs/nextId
+        // 重置）也不能把回答串写进别的会话或撞 key；回答永远归档进 sendConv
+        val sendConv = convId
 
         viewModelScope.launch {
             try {
@@ -478,16 +323,20 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
                 }
 
                 // 一期附件→contentParts：文字（问题+txt正文）+ 图片（压缩 base64）
+                // 门0 W-C3：附件抽取（PDF/docx 解压解析）与图片压缩是大 IO，挂 IO 线程防主线程 ANR
                 val parts: List<ContentPart>? = if (items.isEmpty()) null else buildList<ContentPart> {
-                    val txtParts = items.filter { !it.isImage }.map { readAttachment(context, it.uri, it.name) }
+                    val txtParts = withContext(Dispatchers.IO) {
+                        items.filter { !it.isImage }.map { ChatAttachments.readAttachment(context, it.uri, it.name) }
+                    }
                     val fullText = listOf(q) + txtParts
                     if (fullText.any { it.isNotBlank() }) {
                         add(ContentPart(type = "text", text = fullText.filter { it.isNotBlank() }.joinToString("\n\n")))
                     }
                     for (it in items.filter { it.isImage }) {
+                        val b64 = withContext(Dispatchers.IO) { ChatAttachments.compressToB64(context, it.uri) }
                         add(ContentPart(
                             type = "image_url",
-                            imageUrl = ContentImage("data:image/jpeg;base64," + compressToB64(context, it.uri)),
+                            imageUrl = ContentImage("data:image/jpeg;base64," + b64),
                         ))
                     }
                 }
@@ -537,33 +386,41 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
                     kind = ReplyKind.HTML
                 }
 
-                if (convId <= 0) {
-                    convId = app.conversationRepo.create("新对话")
+                // 门0 W-B2：落库窄窗收敛——targetConv 以发送时快照为准；期间 load() 切走
+                // （convId 被重指/msgs 重置）时回答照常归档进原会话，但不再触碰当前 UI 状态
+                //（msgs/title/picked），杜绝「回答串写进新会话 + nextId 撞车崩」的毫秒级窄窗
+                val switched = convId != sendConv
+                val targetConv = when {
+                    sendConv > 0 -> sendConv
+                    switched -> app.conversationRepo.create("新对话")   // 草稿被切走：新建会话归档本轮
+                    else -> app.conversationRepo.create("新对话").also { convId = it }
                 }
-                app.messageRepo.add(convId, "user", PrivacyGate.redact(userText, app.configStore.load().memoryGear), ReplyKind.TEXT)
-                app.messageRepo.add(convId, "assistant", PrivacyGate.redact(content, app.configStore.load().memoryGear), kind)
-                app.conversationRepo.setTitleIfPlaceholder(convId, q0.ifEmpty { "图片提问" })
-                app.conversationRepo.touch(convId)
-                refreshConvs()
-                for (c in convs) {
-                    if (c.id == convId) {
-                        title.value = c.title
-                        break
+                app.messageRepo.add(targetConv, "user", PrivacyGate.redact(userText, app.configStore.load().memoryGear), ReplyKind.TEXT)
+                app.messageRepo.add(targetConv, "assistant", PrivacyGate.redact(content, app.configStore.load().memoryGear), kind)
+                app.conversationRepo.setTitleIfPlaceholder(targetConv, q0.ifEmpty { "图片提问" })
+                app.conversationRepo.touch(targetConv)
+                if (!switched) {
+                    refreshConvs()
+                    for (c in convs) {
+                        if (c.id == convId) {
+                            title.value = c.title
+                            break
+                        }
                     }
+                    msgs.add(RenderMsg(nextId++, "assistant", content, kind, thinking = thinking.value, steps = steps.value))
+                    picked.value = emptyList()    // 发送成功即清空（失败保留可重试）
+                    loadTurns()
                 }
-                msgs.add(RenderMsg(nextId++, "assistant", content, kind, thinking = thinking.value, steps = steps.value))
-                // 后台完成：结果通知静默送达（Q7），点入看完整回答
+                // 后台完成：结果通知静默送达（Q7），点入看完整回答（切走时以归档会话标题通知）
                 if (!com.zhuolin.yunkai.MainActivity.activityForeground) {
                     com.zhuolin.yunkai.service.screen.ScreenNotify.notifyResult(
                         app, title.value, com.zhuolin.yunkai.service.screen.notifySummary(content),
                     )
                 }
-                picked.value = emptyList()    // 发送成功即清空（失败保留可重试）
-                loadTurns()
-                // M3 到顶处理：轨迹持久化供「继续」续跑；正常作答清掉旧轨迹
+                // M3 到顶处理：轨迹持久化供「继续」续跑（归档会话身份 targetConv）；正常作答清掉旧轨迹
                 if (r.hitLimit && r.trace != null) {
                     app.taskStateDao.upsert(com.zhuolin.yunkai.store.TaskStateEntity(
-                        conversation_id = convId,
+                        conversation_id = targetConv,
                         // 落库前瘦身：带图轮 contentParts 的 base64 换占位文本，防 task_state 膨胀
                         trace_json = traceJson.encodeToString(
                             kotlinx.serialization.builtins.ListSerializer(com.zhuolin.yunkai.model.ChatMsg.serializer()),
@@ -572,10 +429,10 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
                         step_used = r.steps,
                         updated_at = System.currentTimeMillis(),
                     ))
-                    canContinue.value = true
+                    if (!switched) canContinue.value = true
                 } else {
-                    app.taskStateDao.delete(convId)
-                    canContinue.value = false
+                    app.taskStateDao.delete(targetConv)
+                    if (!switched) canContinue.value = false
                 }
                 // 忆枢 M2 会话摘要（协议 §4.4）：落库成功后检查窗口阈值，超限则摘要换出最旧一半轮次。
                 // 失败静默跳过（摘要属增益，绝不让已成功的回答报错）；在 finally 之前，避免排队补发抢先

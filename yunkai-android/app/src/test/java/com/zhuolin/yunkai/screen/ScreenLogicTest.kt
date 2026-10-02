@@ -132,6 +132,15 @@ class ScreenLogicTest {
         assertFalse(isActivityWindow("android", "android.widget.ImageView"))
     }
 
+    @Test fun actWin_systemInterstitialExcluded() {
+        // 门0 W-A2：分享面板/解析器等覆盖型临界面名字带 "Activity"，记成 fgPkg 会污染
+        //「面板底下 app」记录 → 面板态读屏读错目标；排除名单先于允许名单判定
+        assertFalse(isActivityWindow("com.android.internal.app", "com.android.internal.app.ChooserActivity"))
+        assertFalse(isActivityWindow("com.android.internal.app", "com.android.internal.app.ResolverActivity"))
+        // 排除名单只打精确模式，普通 Activity 不受牵连
+        assertTrue(isActivityWindow("com.any", "com.any.ChooserHostActivity"))
+    }
+
     @Test fun actWin_emptyFieldsExcluded() {
         assertFalse(isActivityWindow("", "com.any.Activity"))
         assertFalse(isActivityWindow("com.any", ""))

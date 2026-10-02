@@ -115,12 +115,24 @@ fun SettingsScreen(onOpenSkills: () -> Unit = {}, onOpenMemory: () -> Unit = {},
     }
     LaunchedEffect(Unit) { maxSteps = app.configStore.getMaxSteps() }
 
+    // 执行确认三档（2026-10-02 计划确认分级）：写入即生效（下一次 propose_plan 读取），不随「保存」
+    var confirmMode by remember { mutableStateOf(ConfigStore.CONFIRM_MODE_DEFAULT) }
+    val pickConfirm: (String) -> Unit = { v ->
+        confirmMode = v
+        // 写入挂 appScope（app 级存活）：rememberCoroutineScope 随页面退出取消，
+        // 未落盘的写入会静默丢失（真 bug：拨开关后立刻退出=设置回退）
+        app.appScope.launch { app.configStore.setConfirmMode(v) }
+    }
+    LaunchedEffect(Unit) { confirmMode = app.configStore.getConfirmMode() }
+
     // 壁纸选择：系统相册选图 → 拷入沙箱 filesDir → 写 ConfigStore（WallpaperLayer 订阅即时生效）
     val pickWallpaper = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia(),
     ) { uri ->
         if (uri != null) {
-            scope.launch(Dispatchers.IO) {
+            // 写入挂 appScope（门0 W-B3 收口）：rememberCoroutineScope 随页面退出取消，
+            // 选完图立刻退出=写入静默丢失（与 Y4 同族）
+            app.appScope.launch(Dispatchers.IO) {
                 val ok = runCatching {
                     val dst = java.io.File(context.filesDir, "wallpaper_custom.jpg")
                     context.contentResolver.openInputStream(uri)?.use { inp ->
@@ -199,6 +211,22 @@ fun SettingsScreen(onOpenSkills: () -> Unit = {}, onOpenMemory: () -> Unit = {},
                 ThemeOption("25", "标准 25", maxSteps.toString()) { v -> pickSteps(v.toInt()) }
                 ThemeOption("50", "深度 50", maxSteps.toString()) { v -> pickSteps(v.toInt()) }
             }
+        }
+
+        // ===== 执行确认卡片：三档打扰程度（2026-10-02 计划确认分级） =====
+        GlassCard {
+            Text("执行确认", fontSize = 16.sp, color = TextMuted)
+            FieldLabel("确认模式")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ThemeOption(ConfigStore.CONFIRM_FULL, "完全访问", confirmMode, pickConfirm)
+                ThemeOption(ConfigStore.CONFIRM_SMART, "AI 自审", confirmMode, pickConfirm)
+                ThemeOption(ConfigStore.CONFIRM_STRICT, "事事过问", confirmMode, pickConfirm)
+            }
+            Text(
+                "写操作计划的询问频率：完全访问=全自动执行，任何情况都不询问；AI 自审=AI 只对危险动作和敏感页暂停确认（默认）；" +
+                    "事事过问=除点击滑动等低危操作外都先询问",
+                fontSize = 10.sp, color = TextFaint,
+            )
         }
 
         // ===== API 配置卡片 =====
@@ -312,7 +340,8 @@ fun SettingsScreen(onOpenSkills: () -> Unit = {}, onOpenMemory: () -> Unit = {},
                     )
                 }) { Text("选择图片", color = glass.accent) }
                 TextButton(onClick = {
-                    scope.launch(Dispatchers.IO) {
+                    // 写入挂 appScope（门0 W-B3 收口）：同 pickWallpaper，页面退出不丢写入
+                    app.appScope.launch(Dispatchers.IO) {
                         app.configStore.setWallpaper("")
                         withContext(Dispatchers.Main) {
                             Toast.makeText(context, "已恢复默认壁纸", Toast.LENGTH_SHORT).show()
@@ -323,96 +352,8 @@ fun SettingsScreen(onOpenSkills: () -> Unit = {}, onOpenMemory: () -> Unit = {},
             Text("壁纸铺在全局背景层，玻璃卡片会透出它", fontSize = 12.sp, color = TextFaint)
         }
 
-        // ===== 屏幕感知卡片（豆包对齐 M1）：总开关默认关 + 两项系统授权引导；写入即生效 =====
-        var screenSense by remember { mutableStateOf(false) }
-        var a11yReady by remember { mutableStateOf(false) }
-        var privacyOpen by remember { mutableStateOf(false) } // 屏蔽应用管理弹窗（M2b 收尾）
-        LaunchedEffect(Unit) {
-            screenSense = app.configStore.getScreenSense()
-            // 轻量轮询：从系统设置授权回来后状态自动跟上（页面存活时 1.5s 一次，成本可忽略）
-            while (true) {
-                a11yReady = com.zhuolin.yunkai.service.screen.ScreenSenseService.ready
-                kotlinx.coroutines.delay(1500)
-            }
-        }
-        GlassCard {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("屏幕感知", fontSize = 15.sp, modifier = Modifier.weight(1f))
-                Switch(checked = screenSense, onCheckedChange = { on ->
-                    screenSense = on
-                    // 写入挂 appScope（app 级存活）：rememberCoroutineScope 随页面退出取消，
-        // 未落盘的写入会静默丢失（真 bug：拨开关后立刻退出=设置回退）
-        app.appScope.launch { app.configStore.setScreenSense(on) }
-                    if (on) {
-                        // 悬浮球随总开关出现（主战场入口，M2b）；点按唤起闪问面板（T9b：拉起透明 FlashActivity）
-                        // 显式重开 = 用户要球回来：清掉「拖底删除圈」的单次隐藏标记（2026-10-02）
-                        com.zhuolin.yunkai.service.screen.FloatingBall.clearSessionHidden()
-                        com.zhuolin.yunkai.service.screen.FloatingBall.show(context) {
-                            com.zhuolin.yunkai.ui.flash.FlashPanelLauncher.launch(context)
-                        }
-                    } else {
-                        // 开关关闭即移除悬浮球（原 ProjectionService.stop 联动已随该服务下线，此处只留悬浮球）
-                        com.zhuolin.yunkai.service.screen.FloatingBall.remove()
-                    }
-                })
-            }
-            Text("开启后 agent 可列出/打开应用并读取屏幕：文字走无障碍节点树，图片与自绘应用走截图视觉", fontSize = 12.sp, color = TextFaint)
-            Text("隐私：银行/支付类默认不读；密码框内容永不上传；截屏随无障碍自动可用", fontSize = 12.sp, color = TextFaint)
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth().clickable { privacyOpen = true },
-            ) {
-                Text("屏蔽应用管理", fontSize = 14.sp, modifier = Modifier.weight(1f))
-                Text("›", fontSize = 20.sp, color = MaterialTheme.colorScheme.secondary)
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "无障碍读屏", fontSize = 14.sp, modifier = Modifier.weight(1f),
-                    color = if (a11yReady) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                )
-                Text(if (a11yReady) "已开启" else "未开启", fontSize = 12.sp, color = TextFaint)
-                if (!a11yReady) {
-                    TextButton(onClick = {
-                        context.startActivity(
-                            android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
-                        )
-                    }) { Text("去开启", color = glass.accent) }
-                }
-            }
-            // ── 悬浮球长期开关（2026-10-02）：持久化 DataStore，与拖底删除圈的"单次隐藏"分层——
-            // 这里管"球存不存在"（重启仍在），拖底关闭管"本次先不见"（重启回来）。
-            // 前置：屏幕感知总开关关闭时球无从谈起（行隐藏）。
-            if (screenSense) {
-                var ballEnabled by remember { mutableStateOf(true) }
-                LaunchedEffect(Unit) { ballEnabled = app.configStore.getBallEnabled() }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(top = 4.dp),
-                ) {
-                    Text("悬浮球", fontSize = 14.sp, modifier = Modifier.weight(1f))
-                    Switch(
-                        checked = ballEnabled,
-                        onCheckedChange = { on ->
-                            ballEnabled = on
-                            // 写入挂 appScope：NonCancellable（ConfigStore.editStore）保落盘
-                            app.appScope.launch { app.configStore.setBallEnabled(on) }
-                            if (on) {
-                                // 显式开 = 用户要球：清单次隐藏标记
-                                com.zhuolin.yunkai.service.screen.FloatingBall.clearSessionHidden()
-                                com.zhuolin.yunkai.service.screen.FloatingBall.show(context) {
-                                    com.zhuolin.yunkai.ui.flash.FlashPanelLauncher.launch(context)
-                                }
-                            } else {
-                                com.zhuolin.yunkai.service.screen.FloatingBall.remove()
-                            }
-                        },
-                    )
-                }
-            }
-        }
-
-        if (privacyOpen) ScreenPrivacyDialog(glass = glass, onClose = { privacyOpen = false })
+        // ===== 屏幕感知卡片（自 SettingsScreen 拆出至 ScreenSenseCard.kt，门0 W-B4 单文件 500 行收口） =====
+        ScreenSenseCard()
 
         // ===== 记忆隐私卡片（M1c）：三挡写入即生效，不随「保存」；说明文案按协议 §5.2 挡位矩阵 =====
         GlassCard {
@@ -493,10 +434,15 @@ fun SettingsScreen(onOpenSkills: () -> Unit = {}, onOpenMemory: () -> Unit = {},
     }
 }
 
-// 主题档位单选：写完立刻生效（不等「保存」）
+// 主题档位单选：写完立刻生效（不等「保存」）。
+// 整行可点（门0 W-B4 轮 P17 收口）：此前只有 RadioButton 自带 onClick，标签文本是死区——
+// 实测「实底」标签点 3 次不选中、单选圈一次即中；RadioButton 自身 onClick 保留（子级优先不双触发）。
 @Composable
 private fun ThemeOption(value: String, label: String, mode: String, onPick: (String) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.clickable { onPick(value) },
+    ) {
         RadioButton(selected = mode == value, onClick = { onPick(value) })
         Text(label, fontSize = 15.sp)
     }

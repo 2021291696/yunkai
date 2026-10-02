@@ -31,10 +31,11 @@ import com.zhuolin.yunkai.service.screen.WritePlanExecutor
 import com.zhuolin.yunkai.ui.theme.GlassTokens
 import com.zhuolin.yunkai.ui.theme.LocalGlassScheme
 
-// 写操作计划卡（M2a-T6）：propose_plan 提交后出现在对话流里，用户在此批准/取消整批写操作。
-// 可见性由状态机决定：非终态（Pending/Executing/两种 Paused）才渲染，Done/Stopped 自动消失。
+// 写操作计划卡（M2a-T6；2026-10-02 确认分级改造）：propose_plan 提交后出现在对话流里，
+// 提交即自动执行（无整计划批准门），卡片是进度+暂停确认面板：分档确认/敏感急停在此放行，任意时刻可取消。
+// 可见性由状态机决定：非终态（Executing/两种 Paused）才渲染，Done/Stopped 自动消失。
 // 卡片只读 state（步骤/进度）+ lastLabels（步骤文案）；失败步与敏感暂停原因只在 events 里，
-// 故额外收集事件（卡片在 Pending 时即上屏，早于任何 StepEcho/SensitivePaused 事件）。
+// 故额外收集事件（卡片在 Executing 起即上屏，早于任何 StepEcho/SensitivePaused 事件）。
 // 已知降级：若用户在计划执行中途才回到本页，早于订阅的事件已丢弃 → 之前的失败步会显示为已完成。
 @Composable
 fun PlanCardHost(exec: WritePlanExecutor) {
@@ -70,15 +71,18 @@ private fun PlanCard(exec: WritePlanExecutor, st: WritePlanExecutor.PlanState) {
         else -> -1
     }
     val status = when (st) {
-        is WritePlanExecutor.PlanState.Pending -> "待批准：点「执行」后开始逐步操作"
         is WritePlanExecutor.PlanState.Executing -> "执行中 ${st.index + 1}/${labels.size}"
         is WritePlanExecutor.PlanState.SensitivePaused ->
             if (pauseReason.isNotEmpty()) "敏感暂停：$pauseReason" else "敏感暂停：当前页面命中敏感内容"
-        // 安全审计（run-1 F-3）：外发确认门直显将注入的真实文本——批准必须绑定参数本身
+        // 安全审计（run-1 F-3）：确认门直显该步真实动作（输入动作连注入文本一起亮出）——确认绑定参数本身
         is WritePlanExecutor.PlanState.SendConfirmPaused -> {
-            val txt = (exec.lastActions.getOrNull(st.index) as? WriteAction.Input)?.text
-            if (txt != null) "确认发送：第 ${st.index + 1} 步将输入「$txt」（可能发送给他人）"
-            else "外发确认：第 ${st.index + 1} 步将输入文本（可能发送给他人）"
+            val desc = when (val a = exec.lastActions.getOrNull(st.index)) {
+                is WriteAction.Input -> "将输入「${a.text}」（可能发送给他人）"
+                is WriteAction.Tap -> "将点击 (${a.x},${a.y})"
+                is WriteAction.Swipe -> "将滑动"
+                else -> "将执行该动作"
+            }
+            "等待确认：第 ${st.index + 1} 步 $desc"
         }
         else -> ""
     }
@@ -140,16 +144,12 @@ private fun PlanCard(exec: WritePlanExecutor, st: WritePlanExecutor.PlanState) {
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             when (st) {
-                is WritePlanExecutor.PlanState.Pending -> {
-                    PlanBtn("执行", true) { exec.approve(planId) }
-                    PlanBtn("取消", false) { exec.cancel(planId) }
-                }
                 is WritePlanExecutor.PlanState.SensitivePaused -> {
                     PlanBtn("继续", true) { exec.approve(planId) }
                     PlanBtn("取消", false) { exec.cancel(planId) }
                 }
                 is WritePlanExecutor.PlanState.SendConfirmPaused -> {
-                    PlanBtn("确认发送", true) { exec.approveSend(planId) }
+                    PlanBtn("确认", true) { exec.approveSend(planId) }
                     PlanBtn("取消", false) { exec.cancel(planId) }
                 }
                 else -> {}

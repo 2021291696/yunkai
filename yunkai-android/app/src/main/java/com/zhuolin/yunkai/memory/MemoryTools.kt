@@ -2,6 +2,8 @@ package com.zhuolin.yunkai.memory
 
 import com.zhuolin.yunkai.memory.MemoryStore.Companion.coreLimitOf
 import com.zhuolin.yunkai.service.tools.AgentTool
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -213,8 +215,11 @@ internal class ArchivalMemorySearchTool(private val store: MemoryStore) : AgentT
         val query = memStr(obj, "query") ?: ""
         val topK = (memOptInt(obj, "top_k") ?: MemoryTools.ARCHIVAL_TOP_K)
             .coerceIn(1, MemoryTools.ARCHIVAL_TOP_K_MAX)
-        val corpus = store.allArchival().map { Bm25.Doc(it.id, it.content, it.createdAt) }
-        val hits = Bm25.search(corpus, query, topK, System.currentTimeMillis())
+        // 门0 W-C4：全语料装载+BM25 打分挂 IO 线程（记忆量大后主线程掉帧）
+        val hits = withContext(Dispatchers.IO) {
+            val corpus = store.allArchival().map { Bm25.Doc(it.id, it.content, it.createdAt) }
+            Bm25.search(corpus, query, topK, System.currentTimeMillis())
+        }
         // §3.4 边界：命中条目 hit_count 各 +1，随检索同批写回；写失败不阻塞返回
         if (hits.isNotEmpty()) {
             runCatching { store.incrementHitCounts(hits.map { it.id }) }

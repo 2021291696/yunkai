@@ -6,6 +6,9 @@ import com.zhuolin.yunkai.model.ChatMsgListJsonTransform
 import com.zhuolin.yunkai.model.ToolCall
 import com.zhuolin.yunkai.model.ToolDef
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -19,11 +22,14 @@ import okhttp3.Response
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 // LLM 客户端：OpenAI 兼容 /chat/completions 与 /models。
 // 请求体显式 max_tokens（16384，长 HTML 讲解不截断）；tools 走 OpenAI function calling 协议。
 // 语义唯一依据：yunkai-harmony/entry/src/main/ets/service/LlmClient.ets
+// 2026-10-02 执行到底改造：连接失败与 5xx/429 自动重试（指数退避），瞬时网络抖动不再
+// 直接炸掉整轮对话；4xx（密钥/参数错）与流式读中断裂不重试。
 
 // 完整 message（含 tool_calls），供 agent 循环按调用分派；导出供测试 fake 构造脚本
 @Serializable
@@ -44,18 +50,23 @@ private data class ChatRequestBody(
 
 class LlmClient(private val cfg: AppConfig) {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true; explicitNulls = false }
-    private val client = OkHttpClient.Builder()
-        // 非流式下 glm-4.7 长文（1 万+ token）实测 180s 无字节必超时（模拟器 eli5 两次复现），
-        // 放宽到 600s；OkHttp readTimeout 是读间隔超时而非总时长，长连接保活不受影响
-        .readTimeout(600, TimeUnit.SECONDS)
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .build()
-
-    private fun base(): String = cfg.baseUrl.replace(Regex("/+$"), "")
 
     companion object {
         // 单次响应 token 上限：常量化显式下发，防端点默认值截断长讲解
         const val MAX_TOKENS: Int = 16384
+
+        // 网络重试（2026-10-02 执行到底改造）：连接失败/5xx/429 重试 2 次，退避 1s/2s
+        const val HTTP_RETRIES: Int = 2
+        const val RETRY_BACKOFF_MS: Long = 1000L
+
+        // 门0 W-C5：进程级共享 OkHttpClient——每次 send 新建 LlmClient 时 TLS 连接池无法复用，
+        // 白付握手延迟；超时配置全实例一致，共享无副作用
+        private val sharedClient: OkHttpClient = OkHttpClient.Builder()
+            // 非流式下 glm-4.7 长文（1 万+ token）实测 180s 无字节必超时（模拟器 eli5 两次复现），
+            // 放宽到 600s；OkHttp readTimeout 是读间隔超时而非总时长，长连接保活不受影响
+            .readTimeout(600, TimeUnit.SECONDS)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .build()
 
         private val bodyJson = Json {
             encodeDefaults = true
@@ -86,17 +97,85 @@ class LlmClient(private val cfg: AppConfig) {
                 if (c is JsonPrimitive && c.isString) content = c.content
                 val tcs = raw["tool_calls"]
                 if (tcs is JsonArray) {
-                    toolCalls = bodyJson.decodeFromJsonElement(tcs)
+                    toolCalls = bodyJson.decodeFromJsonElement(normalizeToolCallArgs(tcs))
                 }
             }
             return OpenAiMessage(content = content, toolCalls = toolCalls)
         }
+
+        // 门0 W-C7：tool_calls.arguments 严格按 String 反序列化，端点直接回 JSON 对象/数组
+        // （或不带）时整个 decode 炸掉、整轮失败。此处把非字符串形态归一为 JSON 文本，
+        // 缺省补 "{}"，下游 execTool 的解析路径零改动。
+        private fun normalizeToolCallArgs(tcs: JsonArray): JsonArray = JsonArray(tcs.map { tc ->
+            val obj = tc as? JsonObject ?: return@map tc
+            val fn = obj["function"] as? JsonObject ?: return@map tc
+            val args = fn["arguments"]
+            if (args is JsonPrimitive && args.isString) return@map tc
+            val normalized = args?.toString() ?: "{}"
+            val newFn = JsonObject(fn.toMap() + ("arguments" to JsonPrimitive(normalized)))
+            JsonObject(obj.toMap() + ("function" to newFn))
+        })
+    }
+
+    private fun base(): String = cfg.baseUrl.replace(Regex("/+$"), "")
+
+    private val client: OkHttpClient get() = sharedClient
+
+    // 带重试的请求执行：连接失败（IOException）与 5xx/429 重试 HTTP_RETRIES 次（线性退避），
+    // 其余 4xx 直接抛（密钥/参数错重试无意义）。成功响应（含流式的 body）由调用方 use{} 消费。
+    // cancelled（门0 W-C2）：调用方取消旗标——看门狗协程 400ms 轮询，命中即 cancel() 在途 socket，
+    // 否则 readTimeout(600s) 期间 IO 线程被占死、用户取消后仍白跑整段读。必须在 IO 线程调用。
+    private suspend fun executeWithRetry(req: Request, cancelled: (() -> Boolean)?): Response = coroutineScope {
+        var lastErr: Exception? = null
+        for (attempt in 0..HTTP_RETRIES) {
+            if (attempt > 0) delay(RETRY_BACKOFF_MS * attempt)
+            if (cancelled?.invoke() == true) break
+            val call = client.newCall(req)
+            val watcher = cancelled?.let { flag ->
+                launch {
+                    while (!flag.invoke()) {
+                        if (call.isCanceled()) return@launch
+                        delay(400)
+                    }
+                    call.cancel()
+                }
+            }
+            try {
+                val resp = call.execute()
+                if (resp.isSuccessful) {
+                    watcher?.cancel()
+                    return@coroutineScope resp
+                }
+                val code = resp.code
+                val errText = resp.body?.string() ?: ""
+                resp.close()
+                if (code >= 500 || code == 429) {
+                    lastErr = IOException("LLM HTTP $code: ${errText.take(300)}")
+                    continue
+                }
+                throw Exception("LLM HTTP $code: ${errText.take(300)}")
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: IOException) {
+                lastErr = e
+            } finally {
+                watcher?.cancel()
+            }
+        }
+        if (cancelled?.invoke() == true) throw IOException(AgentLoop.CANCELLED_MSG)
+        throw IOException("LLM 请求失败（已重试 $HTTP_RETRIES 次）: ${lastErr?.message ?: "未知错误"}")
     }
 
     // 非流式对话：返回完整 message（含 tool_calls），tools 由调用方显式给（null 表示不带）。
     // model 可选覆盖：双模型分工——agent 循环 use_skill 后传 longModel 生成长文；
-    // 不传或空串回退 cfg.model（其他调用方零改动）
-    suspend fun chatMessage(messages: List<ChatMsg>, tools: List<ToolDef>?, model: String? = null): OpenAiMessage =
+    // 不传或空串回退 cfg.model（其他调用方零改动）。
+    // cancelled（门0 W-C2）：取消旗标透传 executeWithRetry，命中即 cancel 在途 socket。
+    suspend fun chatMessage(
+        messages: List<ChatMsg>,
+        tools: List<ToolDef>?,
+        model: String? = null,
+        cancelled: (() -> Boolean)? = null,
+    ): OpenAiMessage =
         withContext(Dispatchers.IO) {
             val useModel = if (!model.isNullOrEmpty()) model else cfg.model
             val req = Request.Builder()
@@ -105,11 +184,8 @@ class LlmClient(private val cfg: AppConfig) {
                 .header("Authorization", "Bearer ${cfg.apiKey}")
                 .post(buildRequestBody(useModel, messages, tools).toRequestBody("application/json".toMediaType()))
                 .build()
-            client.newCall(req).execute().use { resp ->
+            executeWithRetry(req, cancelled).use { resp ->
                 val text = resp.body?.string() ?: ""
-                if (!resp.isSuccessful) {
-                    throw Exception("LLM HTTP ${resp.code}: ${text.take(300)}")
-                }
                 extractMessage(text)
             }
         }
@@ -143,6 +219,7 @@ class LlmClient(private val cfg: AppConfig) {
         model: String?,
         onDelta: (String) -> Unit,
         onThinking: ((String) -> Unit)? = null,
+        cancelled: (() -> Boolean)? = null,
     ): OpenAiMessage = withContext(Dispatchers.IO) {
         val useModel = if (!model.isNullOrEmpty()) model else cfg.model
         val req = Request.Builder()
@@ -151,11 +228,10 @@ class LlmClient(private val cfg: AppConfig) {
             .header("Authorization", "Bearer ${cfg.apiKey}")
             .post(buildRequestBody(useModel, messages, tools, stream = true).toRequestBody("application/json".toMediaType()))
             .build()
-        client.newCall(req).execute().use { resp ->
-            if (!resp.isSuccessful) {
-                val errText = resp.body?.string() ?: ""
-                throw Exception("LLM HTTP ${resp.code}: ${errText.take(300)}")
-            }
+        // 只对「拿到响应前」的失败重试（连接失败/5xx/429）；流式读中断裂不重试——
+        // 此时 onDelta 已外发部分文本，重试会让 UI 出现重复内容。
+        // cancelled 透传看门狗（W-C2）：流式首字节前挂死也能被用户取消打断
+        executeWithRetry(req, cancelled).use { resp ->
             val source = resp.body?.source() ?: throw Exception("LLM 响应无 body")
             var content = StringBuilder()
             var think = StringBuilder()   // reasoning_content 累计（思考流）
@@ -200,21 +276,29 @@ class LlmClient(private val cfg: AppConfig) {
                         }
                         val fa = (tc["function"] as? JsonObject)?.get("arguments")
                         if (fa is JsonPrimitive && fa.isString) tcArgs[idx]!!.append(fa.content)
+                        else if (fa != null) tcArgs[idx]!!.append(fa.toString())   // 门0 W-C7：对象/数组形态归一为 JSON 文本
                     }
                 }
             }
 
-            while (true) {
-                val line = source.readUtf8Line() ?: break
-                if (!line.startsWith("data:")) continue
-                val payload = line.removePrefix("data:").trim()
-                if (payload == "[DONE]") { sawDone = true; break }
-                if (payload.isEmpty()) continue
-                val obj = runCatching { bodyJson.parseToJsonElement(payload) }.getOrNull() as? JsonObject
-                    ?: continue
-                val choices = obj["choices"] as? JsonArray ?: continue
-                if (choices.isEmpty()) continue
-                applyDelta((choices[0] as? JsonObject)?.get("delta") as? JsonObject)
+            try {
+                while (true) {
+                    val line = source.readUtf8Line() ?: break
+                    if (!line.startsWith("data:")) continue
+                    val payload = line.removePrefix("data:").trim()
+                    if (payload == "[DONE]") { sawDone = true; break }
+                    if (payload.isEmpty()) continue
+                    val obj = runCatching { bodyJson.parseToJsonElement(payload) }.getOrNull() as? JsonObject
+                        ?: continue
+                    val choices = obj["choices"] as? JsonArray ?: continue
+                    if (choices.isEmpty()) continue
+                    applyDelta((choices[0] as? JsonObject)?.get("delta") as? JsonObject)
+                }
+            } catch (e: IOException) {
+                // 门0 W-C2：取消旗标命中导致的断流按「用户取消」收敛（上层静默吞），
+                // 否则按网络错上抛
+                if (cancelled?.invoke() == true) throw Exception(AgentLoop.CANCELLED_MSG)
+                throw e
             }
 
             val toolCalls: List<ToolCall>? = if (tcOrder.isEmpty()) null else tcOrder.mapNotNull { idx ->
