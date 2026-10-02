@@ -1,0 +1,3 @@
+$ ['D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe', 'list', 'targets']
+exit=0
+127.0.0.1:5557

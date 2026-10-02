@@ -1,7 +1,9 @@
 package com.zhuolin.yunkai.ui.canvas
 
+import android.graphics.Color
 import android.util.Base64
 import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -74,32 +76,75 @@ fun CanvasScreen(onBack: () -> Unit) {
     }
 }
 
-// WebView 封装：JS 禁用（讲解页无需 JS，与 sanitize 剥 script 双保险）；
-// data:base64 URL 加载；离开组合时销毁实例
-@Composable
-fun HtmlCanvas(html: String, modifier: Modifier = Modifier) {
-    val url = remember(html) {
-        val b64 = Base64.encodeToString(html.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
-        "data:text/html;base64,$b64"
+// WebView 池（闪跳修复 2026-10-02）：LazyColumn 快速滚动会销毁/重建画布卡，旧实现
+// 每次重建都新 WebView + loadUrl——白闪 + 重排即「快速滑动闪跳」（M2 待办清账）。
+// 池按 html 缓存已加载实例：滚出进池、滚回复用（不重载不闪）。
+// 门0 B1 修复（run-all 2026-10-02）：淘汰必须 entry.remove()——只 destroy 不 remove
+// 会死循环持锁 ANR；acquire 与 recycle 两侧都封顶（recycle 侧无界膨胀是 B1 放大器）。
+// 门0 W1：宿主 Activity 销毁经 YunkaiApp.ActivityLifecycleCallbacks 调 clear() 清池防泄漏。
+object WebViewPool {
+    private const val CAP = 3
+    private val pool = LinkedHashMap<String, WebView>()
+
+    private fun destroyOldest() {
+        val it = pool.entries.iterator()
+        val first = it.next()
+        (first.value.parent as? android.view.ViewGroup)?.removeView(first.value)
+        first.value.destroy()
+        it.remove()
     }
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val webView = remember {
-        WebView(context).apply {
+
+    @Synchronized
+    fun acquire(context: android.content.Context, html: String): WebView {
+        pool.remove(html)?.let { return it }
+        while (pool.size >= CAP) destroyOldest()
+        val b64 = Base64.encodeToString(html.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+        return WebView(context).apply {
             settings.javaScriptEnabled = false
-            // 安全审计（run-1 NV-3 配套）：画布禁止任何页面级跳转（meta refresh/链接/表单提交），
-            // 只允许本 WebView 的初始 data: 内容；shouldOverrideUrlLoading 不拦子资源（https 图片照常加载）。
-            // 初始 loadUrl 是程序化加载，不走此回调，画布渲染不受影响。
-            webViewClient = object : android.webkit.WebViewClient() {
+            // 安全审计（run-1 NV-3 配套）：禁止页面级跳转（meta refresh/链接/表单提交）
+            webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean = true
             }
+            // 底色透明：首载期间透出卡片底色，替代白闪
+            setBackgroundColor(Color.TRANSPARENT)
+            loadUrl("data:text/html;base64,$b64")
         }
     }
-    DisposableEffect(Unit) {
-        onDispose { webView.destroy() }
+
+    @Synchronized
+    fun recycle(html: String, wv: WebView) {
+        // 门0 W2：同键覆盖时被顶者必须销毁（防孤儿实例泄漏）
+        pool.put(html, wv)?.let { old ->
+            (old.parent as? android.view.ViewGroup)?.removeView(old)
+            old.destroy()
+        }
+        while (pool.size > CAP) destroyOldest()
+    }
+
+    @Synchronized
+    fun clear() {
+        for (wv in pool.values) {
+            (wv.parent as? android.view.ViewGroup)?.removeView(wv)
+            wv.destroy()
+        }
+        pool.clear()
+    }
+}
+
+// WebView 封装：JS 禁用（讲解页无需 JS，与 sanitize 剥 script 双保险）；
+// 池化复用；滚出组合进池而非销毁（快速滚动不再反复重建闪跳）
+@Composable
+fun HtmlCanvas(html: String, modifier: Modifier = Modifier) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val webView = remember(html) { WebViewPool.acquire(context, html) }
+    DisposableEffect(html) {
+        onDispose { WebViewPool.recycle(html, webView) }
     }
     AndroidView(
-        factory = { webView },
-        update = { wv -> if (wv.url != url) wv.loadUrl(url) },
+        factory = {
+            (webView.parent as? android.view.ViewGroup)?.removeView(webView)
+            webView
+        },
         modifier = modifier,
     )
 }

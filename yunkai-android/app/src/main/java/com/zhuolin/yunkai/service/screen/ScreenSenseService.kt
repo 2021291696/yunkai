@@ -42,7 +42,7 @@ class ScreenSenseService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        android.util.Log.i("yunkai", "a11y onServiceConnected")
+        android.util.Log.i("yunkai", "a11y onServiceConnected (fgPkg=${lastForegroundPkg ?: "null"})")
         instance = this
         mainHandler.removeCallbacks(disconnectNotice)
         restoreBallIfEnabled()
@@ -51,7 +51,7 @@ class ScreenSenseService : AccessibilityService() {
     // 系统对同一 service 记录解绑后再绑走 onRebind（force-stop 后重授、无障碍列表翻转等场景），
     // 不会再走 onServiceConnected——漏了它 instance 永久为 null（门2 实测：「已开启」变「未开启」不恢复）
     override fun onRebind(intent: android.content.Intent?) {
-        android.util.Log.i("yunkai", "a11y onRebind")
+        android.util.Log.i("yunkai", "a11y onRebind (fgPkg=${lastForegroundPkg ?: "null"})")
         instance = this
         super.onRebind(intent)
         mainHandler.removeCallbacks(disconnectNotice)
@@ -73,7 +73,11 @@ class ScreenSenseService : AccessibilityService() {
     // 配置读在 IO，addView 必须回主线程（ViewRootImpl 要主线程 Looper，IO 直调即崩）
     private fun restoreBallIfEnabled() {
         GlobalScope.launch(Dispatchers.IO) {
-            val on = com.zhuolin.yunkai.store.ConfigStore(applicationContext).getScreenSense()
+            // 悬浮球长期开关（ballEnabled，2026-10-02）+ 单次隐藏（拖底删除圈 sessionHidden）：
+            // 两者任一不满足都不补显；屏幕感知本身保持开启
+            val on = com.zhuolin.yunkai.store.ConfigStore(applicationContext).getScreenSense() &&
+                com.zhuolin.yunkai.store.ConfigStore(applicationContext).getBallEnabled() &&
+                !com.zhuolin.yunkai.service.screen.FloatingBall.isSessionHidden
             if (on) {
                 mainHandler.post {
                     android.util.Log.i("yunkai", "floating ball restore")
@@ -97,9 +101,18 @@ class ScreenSenseService : AccessibilityService() {
         val pkg = event?.packageName?.toString() ?: return
         if (pkg == packageName) return
         // 只记 Activity 级窗口状态：输入法/系统 UI 的窗口事件也带非自身包名，
-        // 会把「面板底下 app」的记录冲掉（模拟器实测 ADBKeyboard 事件污染导致黑名单被绕过）
+        // 会把「面板底下 app」的记录冲掉（模拟器实测 ADBKeyboard 事件污染导致黑名单被绕过）。
+        // P12：判定收敛到 ScreenLogic.isActivityWindow——contains("Activity") 在 MIUI 上
+        // 漏采 Launcher/MiuiSettings（真机根因），允许名单式修复
         val cls = event.className?.toString() ?: return
-        if (cls.contains("Activity")) lastForegroundPkg = pkg
+        if (isActivityWindow(pkg, cls)) {
+            lastForegroundPkg = pkg
+            // P12 诊断日志（2026-10-01 拍板：先加日志找根因，不改行为）：
+            // 记录每个 Activity 级事件的采集情况，供排查「服务重启后正向读屏失效」
+            android.util.Log.i("yunkai", "fgPkg 更新: $pkg (cls=$cls)")
+        } else {
+            android.util.Log.d("yunkai", "fgPkg 忽略非 Activity 事件: pkg=$pkg cls=$cls")
+        }
     }
 
     override fun onInterrupt() {}
@@ -212,7 +225,8 @@ class ScreenSenseService : AccessibilityService() {
                 "yunkai",
                 "readForeground panel: apps=" +
                     appWindows.map { (it.root?.packageName?.toString() ?: "?") + ":L" + it.layer } +
-                    " chose=" + (chosen?.root?.packageName?.toString() ?: "none"),
+                    " chose=" + (chosen?.root?.packageName?.toString() ?: "none") +
+                    " 回退记录=" + (lastForegroundPkg ?: "null"),
             )
             root = chosen?.root
                 ?: rootInActiveWindow

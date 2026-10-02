@@ -1,0 +1,27 @@
+{
+  "gate": "ui",
+  "platform": "harmony(AI 驱动 hdc+uitest)",
+  "date": "2026-09-13",
+  "paths": [
+    {"id": "launch_and_guide", "status": "PASS", "evidence": "artifacts/launch_guide_dump.json（新对话+引导 chips+9月13日 文本在位）"},
+    {"id": "chat_memory_turn", "status": "PASS", "evidence": "artifacts/chat_memory_turn_dump.json + hilog：真实 LLM 轮『记住：我的猫叫团子』→ core_memory_append 工具执行(outLen=56) → 回复『已经帮你记下了…团子…三岁』；core_blocks 落库经 sqlite3 直查证实（persona=289 种子/human=17 团子行）"},
+    {"id": "memory_manage_page", "status": "PASS", "evidence": "artifacts/memory_manage_dump.json：human 17/800 团子行、persona 289/600 种子、归档空态、重置种子/清空按钮在位"},
+    {"id": "settings_yishu_cards", "status": "PASS", "evidence": "artifacts/settings_cards_dump.json：记忆隐私三挡/任务步数三档/记忆管理入口全部在位"},
+    {"id": "drawer_open", "status": "PASS", "evidence": "artifacts/settings_cards_dump.json 前置 dump：会话列表+⚙+新对话按钮"},
+    {"id": "drawer_dismiss_three_ways", "status": "挂账", "evidence": "本轮未驱动（Back 键路径未复验）"},
+    {"id": "settings_theme_modes", "status": "挂账", "evidence": "本轮未驱动（深色切换+冷启动持久化）"},
+    {"id": "skill_import_paste", "status": "挂账", "evidence": "本轮未驱动"},
+    {"id": "chat_eli5_canvas", "status": "挂账", "evidence": "本轮未驱动（双模型切换+画布渲染，@eli5 路径）"},
+    {"id": "probe_bad_baseurl", "status": "挂账", "evidence": "9-10 旧挂账未收口（折叠下保存钮+IME 滚动）"}
+  ],
+  "summary": "驱动 5 路全 PASS（含真 LLM 记忆轮），5 路挂账（铁律9：本轮未收口，总结论不计全绿）"
+}
+
+=== ADDENDUM 2026-09-13 追加收口 ===
+以上五条挂账已全部驱动收口：
+- drawer_dismiss_three_ways: PASS×3（点外部 dismiss_outside.json / Back dismiss_back.json / ☰ toggle dismiss_toggle2.json——注意 ☰ 抽屉打开后挂右缘 (1084,200)，原位 (50,200) 已是聊天区）
+- settings_theme_modes: PASS（深色点击即时生效 theme_dark.png；force-stop 冷启动后仍深色 theme_dark_after_restart.png；恢复跟随系统 theme_restored_follow_system.png，亮度实测 168=浅色证明系统档恢复）
+- skill_import_paste: PASS（多行 yaml 逐行 inputText+keyEvent66 输入，import_result.json 含「全流程导入技能」）
+- chat_eli5_canvas: PASS（真 LLM eli5 轮：glm-5.3-flash 调 use_skill → 切 glm-4.7 长文 129s 出 19517 字 HTML → 画布卡「画布 · 点此全屏查看」在位 eli5_canvas.json；无 jscrash）
+- probe_bad_baseurl: PASS（坏 URL 保存后发消息 → hilog "send failed: Failed to resolve the host name" + 应用不崩溃；还原 bigmodel URL 后 LLM_OK probe_restore_verify.json）
+探针收尾纪律：baseURL 已还原 bigmodel 正确值并验证回复正常。

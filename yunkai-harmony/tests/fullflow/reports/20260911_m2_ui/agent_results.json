@@ -1,0 +1,25 @@
+{
+ "run_id": "20260911_m2_ui_harmony_base",
+ "gate": "ui (AI 驱动通道，铁律8)",
+ "platform": "cli（HarmonyOS 无脚本通道，门2=AI 驱动 hdc + uitest）",
+ "device": "127.0.0.1:5555（1320x2232）",
+ "hap": "entry-default-signed.hap @ commit 232549b（含 M2 全量 + 门0 SSE 修复 + write_file 回归修复，门1 于 03:09 全量 clean 构建装机；05:1x 回归修复后重装）",
+ "driver": "tests/fullflow/drive_harmony.sh（本次修复 dump md5 重试 / tap_text_scroll 补末次定位 / walk 选首个有效宽高 bounds 节点 / s15、s13 与 manifest 同步）；步骤⑩⑫⑬由编排层 python 等价驱动（Mimosa 拦 .sh 外的 subprocess 脚本写入），证据同目录",
+ "note_driver_deviations": [
+  "步骤⑬错误提示是 4s Toast（dump 树外）：判据=13t_01.png 可见「出错了：LLM HTTP: Failed to resolve the host name」+ hilog 05:19:19 send failed 行；应用不退出、输入恢复",
+  "步骤⑬恢复卡点（上轮挂账根因已定位）：中文 IME composing 态吞 keyEvent（2082/2055 全失效）且输入框聚焦时 swipe 落在键盘上——正解=Back 收键盘（IME 开着时 Back 只收键盘不导航）→ keyEvent 2055 逐字删 → inputText 输入 → 滚动点保存；app 在点保存后自动回对话页",
+  "步骤⑫@eli5 揭示 M2 真回归：write_file 把整页 HTML 吸进沙箱文件、回答变散文、画布判定失效——已两端修复（use_skill 长文形态下移除 M2 四工具，Android beffefb / 鸿蒙 232549b）并复测通过"
+ ],
+ "steps": [
+  {"id": "launch_and_guide", "status": "PASS", "ms": 15000, "detail": "引导页问候+3 chips+左上☰；无旧版元素", "evidence": ["06_launch_guide.png"]},
+  {"id": "drawer_open_and_layout", "status": "PASS", "ms": 20000, "detail": "抽屉=会话/长按可删除/✕/＋新对话/⚙；「会话与历史」「历史轮次」「收起」等旧文案全部不存在", "evidence": ["07_drawer_layout.png"]},
+  {"id": "drawer_dismiss_three_ways", "status": "PASS", "ms": 40000, "detail": "✕ 钮/点面板外/系统返回 三条路径均收起且不退出应用", "evidence": ["08_dismiss.png"]},
+  {"id": "settings_theme_modes", "status": "PASS", "ms": 60000, "detail": "深色档即时生效→冷启动持久化（系统浅色下仍深色）→切回跟随系统", "evidence": ["09a_light.png", "09b_dark.png", "09c_persist.png", "09d_system.png"]},
+  {"id": "skill_import_paste", "status": "PASS", "ms": 120000, "detail": "粘贴导入「# 全流程导入技能」（导入器无 frontmatter 时降级取首个 # 标题行为名）→列表可见", "evidence": ["10a_skillpage.png", "10b_imported.png"]},
+  {"id": "chat_bare_llm", "status": "PASS", "ms": 45000, "detail": "真 LLM（glm-5.3-flash，走鸿蒙 SSE chatStream）答「1+1 等于 2。」——中文流式无乱码（门0 stream:true 修复实景验证）", "evidence": ["11_bare.png"]},
+  {"id": "chat_eli5_canvas", "status": "PASS", "ms": 200000, "detail": "@eli5→use_skill→长文模型→HTML 直接写在回答（write_file 回归修复生效）→画布卡→全屏画布整页渲染（标题+目录10节，非白屏）", "evidence": ["12a_card.png", "12b_canvas.png"]},
+  {"id": "probe_bad_baseurl", "status": "PASS", "ms": 300000, "detail": "非法 baseURL 保存后发送→4s Toast「出错了：LLM HTTP: Failed to resolve the host name」（13t_01.png）+ hilog「send failed: LLM HTTP: Failed to resolve the host name」机制证据；应用不退出；URL 已恢复 bigmodel 并重进设置字段验证（上轮挂账本轮收口）", "evidence": ["13t_01.png", "13_restored.png"]}
+ ],
+ "crash_scan": "hilog 全程无 jscrash；门1 aa test 47/47 通过",
+ "verdict": "PASS 8/8（上轮挂账 probe_bad_baseurl 本轮收口）"
+}

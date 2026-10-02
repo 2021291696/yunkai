@@ -71,6 +71,20 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
     private var genId: Long = 0L
     private var initialized = false
 
+    // 流式节流：SSE chunk 高频直刷 @State 会驱动整页每 chunk 重组（流式期间卡顿主因）。
+    // 90ms 时间闸合并中间帧；收尾无损——落库走全量 content 渲染，streamText 仅是过程预览。
+    // 思考流与回答流独立计时，互不吞帧。
+    private var lastStreamFlushAt = 0L
+    private var lastThinkingFlushAt = 0L
+    private fun flushStream(partial: String) {
+        val now = System.currentTimeMillis()
+        if (now - lastStreamFlushAt >= 90) { lastStreamFlushAt = now; streamText.value = partial }
+    }
+    private fun flushThinking(acc: String) {
+        val now = System.currentTimeMillis()
+        if (now - lastThinkingFlushAt >= 90) { lastThinkingFlushAt = now; thinking.value = acc }
+    }
+
     // 首次组合才加载：从设置页/画布页返回时 NavHost 会重组 chat，
     // 重复 init 会把进行中的会话重置成草稿（鸿蒙版 router.back 不重初始化，语义对齐）
     fun initIfNeed(id: Long) {
@@ -495,12 +509,12 @@ class ChatViewModel(private val app: YunkaiApp) : ViewModel() {
                     isCancelled = { gen != genId },
                     onDelta = { partial ->
                         if (gen == genId) {
-                            streamText.value = partial
+                            flushStream(partial)
                         }
                     },
                     onThinking = { acc ->
                         if (gen == genId) {
-                            thinking.value = acc
+                            flushThinking(acc)
                         }
                     },
                     extraTools = com.zhuolin.yunkai.service.tools.createM2Tools(app) + screenTools() +

@@ -5,12 +5,14 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -45,6 +47,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -52,11 +55,14 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -113,10 +119,24 @@ fun ChatScreen(embedded: Boolean = false, onOpenSettings: () -> Unit, onOpenCanv
     BackHandler(enabled = showAttach) { showAttach = false }
 
     LaunchedEffect(Unit) { vm.initIfNeed(-1L) }
-    // 新消息/时间线上屏自动滚底
-    LaunchedEffect(vm.msgs.size, vm.timeline.size, vm.loading.value, vm.streamText.value, vm.thinking.value) {
+    // 时间线快照：只在步数变化时重建实例——原来每 chunk toList 新分配，作为不稳定参数
+    // 每次 SSM equals 都付全量比较（timeline 只追加，size 即正确 key）
+    val timelineSnapshot = remember(vm.timeline.size) { vm.timeline.toList() }
+    // 新消息/生成起止 → 动画滚底（低频事件，动画体验保留）
+    LaunchedEffect(vm.msgs.size, vm.loading.value) {
         val last = listState.layoutInfo.totalItemsCount
         if (last > 0) listState.animateScrollToItem(last - 1)
+    }
+    // 流式增长 → 仅贴底时瞬时跟随：不再以 streamText/thinking 为 key 逐 chunk 重启
+    // animateScrollToItem（动画互相打断是流式期间抖动主因之一）；用户上滚回看时不拽人
+    val pinnedToBottom by remember { derivedStateOf { !listState.canScrollForward } }
+    LaunchedEffect(listState) {
+        snapshotFlow { vm.streamText.value.length to vm.thinking.value.length }
+            .collect {
+                if (pinnedToBottom && listState.layoutInfo.totalItemsCount > 0) {
+                    listState.scrollToItem(listState.layoutInfo.totalItemsCount - 1)
+                }
+            }
     }
 
     // 删除会话确认弹窗（抽屉长按触发）
@@ -196,7 +216,7 @@ fun ChatScreen(embedded: Boolean = false, onOpenSettings: () -> Unit, onOpenCanv
                         // 净空语义不变——流式渲染仅为预览，落库仍走唯一成功路径
                         item(key = "timeline") {
                             TimelineCard(
-                                timeline = vm.timeline.toList(),
+                                timeline = timelineSnapshot,
                                 thinking = vm.thinking.value,
                                 steps = vm.steps.value,
                                 failed = vm.failed.value,
@@ -205,13 +225,23 @@ fun ChatScreen(embedded: Boolean = false, onOpenSettings: () -> Unit, onOpenCanv
                         }
                         if (vm.streamText.value.isNotEmpty()) {
                             item(key = "stream") {
-                                Text(
-                                    renderMarkdownSingle(vm.streamText.value),
-                                    fontSize = 14.sp,
-                                    lineHeight = 23.sp,
-                                    color = glass.textHi,
-                                    modifier = Modifier.padding(vertical = 4.dp),
-                                )
+                                if (looksLikeCanvasStream(vm.streamText.value)) {
+                                    // 画布类输出：整页 HTML 喂给 markdown 会逐 chunk 打碎成满屏
+                                    // 碎片（真机 /eli5 实测），改占位卡衔接最终画布卡
+                                    CanvasGeneratingCard()
+                                } else {
+                                    // 按内容记忆化：timeline/thinking 等旁路状态重组时不再重跑解析
+                                    val streamMarkdown = remember(vm.streamText.value) {
+                                        renderMarkdownSingle(vm.streamText.value)
+                                    }
+                                    Text(
+                                        streamMarkdown,
+                                        fontSize = 14.sp,
+                                        lineHeight = 23.sp,
+                                        color = glass.textHi,
+                                        modifier = Modifier.padding(vertical = 4.dp),
+                                    )
+                                }
                             }
                         }
 
@@ -228,6 +258,41 @@ fun ChatScreen(embedded: Boolean = false, onOpenSettings: () -> Unit, onOpenCanv
                         },
                         convCount = vm.convs.size,
                     )
+                }
+                // 回到底部：离底>1/4屏即现身（流式期间上滚回看也照常），点击动画回底。
+                // 按像素距离判：单条超长回答内部滚动时子项索引恒定，索引判据会永不出现（模拟器实测缺陷）
+                val showJumpToBottom by remember {
+                    derivedStateOf {
+                        val info = listState.layoutInfo
+                        val last = info.visibleItemsInfo.lastOrNull() ?: return@derivedStateOf false
+                        if (info.totalItemsCount == 0) return@derivedStateOf false
+                        val gapPx = last.offset + last.size - info.viewportEndOffset
+                        val axisPx = info.viewportEndOffset - info.viewportStartOffset
+                        (info.totalItemsCount - 1 - last.index) > 0 || gapPx > axisPx * 0.25f
+                    }
+                }
+                // 全限定：外层 Column 的 ColumnScope.AnimatedVisibility 扩展会抢走隐式接收器解析
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = showJumpToBottom,
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp),
+                    enter = fadeIn(tween(GlassTokens.MS_STD, easing = GlassTokens.EASE)),
+                    exit = fadeOut(tween(GlassTokens.MS_SUBTLE, easing = GlassTokens.EASE)),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(glass.glassBgStrong)
+                            .glassBorder(CircleShape)
+                            .clickable {
+                                scope.launch {
+                                    val last = listState.layoutInfo.totalItemsCount
+                                    if (last > 0) listState.animateScrollToItem(last - 1)
+                                }
+                            }
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                    ) {
+                        Text("↓", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = glass.textHi)
+                    }
                 }
                 // 附件面板展开时：点消息区任意处收起面板
                 if (showAttach) {
@@ -265,10 +330,17 @@ fun ChatScreen(embedded: Boolean = false, onOpenSettings: () -> Unit, onOpenCanv
                                         .clickable { vm.removePicked(item.uri) },
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    val bmp = remember(item.uri) { loadThumb(context, item.uri) }
-                                    if (bmp != null) {
+                                    // 解码移出组合线程：BitmapFactory 是文件 IO，remember 里跑会卡首帧
+                                    val bmp by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, item.uri) {
+                                        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                            loadThumb(context, item.uri)
+                                        }
+                                    }
+                                    // 委托属性不能 smart cast：先落局部变量再判空
+                                    val current = bmp
+                                    if (current != null) {
                                         Image(
-                                            bitmap = bmp,
+                                            bitmap = current,
                                             contentDescription = item.name,
                                             modifier = Modifier.fillMaxSize(),
                                             contentScale = ContentScale.Crop,
@@ -361,7 +433,11 @@ fun ChatScreen(embedded: Boolean = false, onOpenSettings: () -> Unit, onOpenCanv
                     }
                 }
                 // ===== 输入坞合体：输入行与附件选项同属一块玻璃（四角全圆角、无内部线条）=====
-                val dockCorner by animateDpAsState(if (showAttach) 26.dp else 100.dp, label = "dockCorner")
+                val dockCorner by animateDpAsState(
+                    if (showAttach) 26.dp else 100.dp,
+                    tween(GlassTokens.MS_STD, easing = GlassTokens.EASE),
+                    label = "dockCorner",
+                )
                 val dockShape = RoundedCornerShape(dockCorner)
                 Column(
                     modifier = Modifier
@@ -374,6 +450,8 @@ fun ChatScreen(embedded: Boolean = false, onOpenSettings: () -> Unit, onOpenCanv
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            // 多行增高平滑过渡（maxLines=4 逐行增高不再硬跳）
+                            .animateContentSize(tween(GlassTokens.MS_STD, easing = GlassTokens.EASE))
                             .padding(horizontal = 6.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -426,8 +504,14 @@ fun ChatScreen(embedded: Boolean = false, onOpenSettings: () -> Unit, onOpenCanv
                     // 附件选项：与输入行同一块玻璃；关闭 = ＋ 切换 / 点面板外 / 返回键
                     AnimatedVisibility(
                         visible = showAttach,
-                        enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(),
-                        exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut(),
+                        enter = expandVertically(
+                            expandFrom = Alignment.Top,
+                            animationSpec = tween(GlassTokens.MS_STD, easing = GlassTokens.EASE),
+                        ) + fadeIn(tween(GlassTokens.MS_STD, easing = GlassTokens.EASE)),
+                        exit = shrinkVertically(
+                            shrinkTowards = Alignment.Top,
+                            animationSpec = tween(GlassTokens.MS_STD, easing = GlassTokens.EASE),
+                        ) + fadeOut(tween(GlassTokens.MS_SUBTLE, easing = GlassTokens.EASE)),
                     ) {
                         Column(
                             modifier = Modifier
@@ -463,7 +547,7 @@ fun ChatScreen(embedded: Boolean = false, onOpenSettings: () -> Unit, onOpenCanv
     val drawerW = (LocalConfiguration.current.screenWidthDp * 0.80f).dp
     val handleX by animateDpAsState(
         targetValue = if (vm.showHistory.value) drawerW + 6.dp else 0.dp,
-        animationSpec = tween(260),
+        animationSpec = tween(GlassTokens.MS_EMPH, easing = GlassTokens.EASE),
         label = "handleX",
     )
     Box(modifier = Modifier.fillMaxSize()) {
@@ -483,6 +567,23 @@ fun ChatScreen(embedded: Boolean = false, onOpenSettings: () -> Unit, onOpenCanv
                     } else {
                         showAttach = false; scope.launch { vm.openHistory() }
                     }
+                }
+                .pointerInput(Unit) {
+                    // 右滑拉头开抽屉（与面板左滑收对称）；拖拽消费移动事件后 tap 自然不触发
+                    var dragTotal = 0f
+                    detectHorizontalDragGestures(
+                        onDragStart = { dragTotal = 0f },
+                        onHorizontalDrag = { change, amount ->
+                            change.consume()
+                            dragTotal += amount
+                        },
+                        onDragEnd = {
+                            if (dragTotal > 40.dp.toPx() && !vm.showHistory.value) {
+                                showAttach = false
+                                scope.launch { vm.openHistory() }
+                            }
+                        },
+                    )
                 },
             contentAlignment = Alignment.Center,
         ) {
@@ -535,14 +636,22 @@ private fun MessageItem(m: RenderMsg, onOpenCanvas: () -> Unit, onEdit: () -> Un
         } else if (m.kind == ReplyKind.HTML) {
             CanvasCard(html = m.content, onOpen = onOpenCanvas)
         } else {
-            // AI 正文无气泡：直接排版在壁纸上
-            Text(
-                renderMarkdownSingle(m.content),
-                fontSize = 14.sp,
-                lineHeight = 23.sp,
-                color = glass.textHi,
-                modifier = Modifier.padding(vertical = 4.dp),
-            )
+            // AI 正文无气泡：直接排版在壁纸上；代码块独立卡片（2026-10-02：json 等可复制）
+            Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                val blocks = remember(m.id, m.content) { renderMarkdownBlocks(m.content) }
+                for (b in blocks) {
+                    if (b.isCode) {
+                        CodeBlockCard(b.codeText)
+                    } else {
+                        Text(
+                            b.an,
+                            fontSize = 14.sp,
+                            lineHeight = 23.sp,
+                            color = glass.textHi,
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -656,8 +765,12 @@ private fun TimelineCard(
             )
         }
         if (thinking.isNotEmpty()) {
+            // 尾部截取按内容记忆化：思考流高频增长时不重复切串
+            val tail = remember(thinking) {
+                if (thinking.length > 600) "…" + thinking.takeLast(600) else thinking
+            }
             Text(
-                if (thinking.length > 600) "…" + thinking.takeLast(600) else thinking,
+                tail,
                 fontSize = 12.sp,
                 lineHeight = 18.sp,
                 color = glass.textMid.copy(alpha = 0.75f),
@@ -706,3 +819,36 @@ private fun queryDisplayName(context: android.content.Context, uri: Uri): String
         if (c.moveToFirst()) c.getString(0) else null
     }
 }.getOrNull()
+
+// 流式画布探测：与落库判定同口径（HtmlGuard.sanitize 剥```围栏后看 <!DOCTYPE/<html）。
+// 命中 = 本轮输出是画布页 → 流式区显示占位卡，而非把整页 HTML 喂给 markdown 打碎成满屏碎片
+private fun looksLikeCanvasStream(raw: String): Boolean {
+    var t = raw.trim()
+    if (t.startsWith("```")) t = t.replace(Regex("^```[a-zA-Z]*\\s*"), "")
+    val lower = t.lowercase()
+    if (lower.startsWith("<!doctype") || lower.startsWith("<html")) return true
+    return lower.take(256).contains("<html")
+}
+
+// 画布生成中占位卡：外观对齐 CanvasCard 卡头，完成后由落库的画布卡自然顶替
+@Composable
+private fun CanvasGeneratingCard() {
+    val glass = LocalGlassScheme.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(GlassTokens.R_CARD.dp))
+            .background(glass.glassBg)
+            .glassBorder(RoundedCornerShape(GlassTokens.R_CARD.dp))
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CircularProgressIndicator(
+            modifier = Modifier.size(18.dp),
+            strokeWidth = 2.dp,
+            color = glass.accent,
+        )
+        Spacer(Modifier.size(10.dp))
+        Text("画布生成中…", fontSize = 13.sp, color = glass.textMid)
+    }
+}

@@ -230,7 +230,8 @@ private val MIGRATION_2_3 = object : Migration(2, 3) {
         )
         db.execSQL(
             "CREATE TABLE IF NOT EXISTS archival (" +
-                "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                // Room 校验按字面比对：必须显式 NOT NULL（同 3→4 的 flash_sessions，缺了存量升级启动即崩，门0 B1）
+                "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, " +
                 "content TEXT NOT NULL, " +
                 "type TEXT NOT NULL DEFAULT 'fact', " +
                 "source TEXT NOT NULL DEFAULT 'agent', " +

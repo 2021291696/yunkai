@@ -1,6 +1,6 @@
 import { AbilityConstant, Configuration, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { window, font } from '@kit.ArkUI';
+import { window, font, KeyboardAvoidMode } from '@kit.ArkUI';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { util } from '@kit.ArkTS';
 import { SkillRepo } from '../store/SkillRepo';
@@ -82,6 +82,13 @@ export default class EntryAbility extends UIAbility {
         hilog.error(DOMAIN, 'testTag', 'Failed to load the content. Cause: %{public}s', JSON.stringify(err));
         return;
       }
+      // 键盘避让改压缩模式：默认 OFFSET 在全屏沉浸页上会整窗上抬——键盘弹起时输入坞
+      // 连同标题一起被顶出屏（离线声明库实锤：OFFSET=「键盘抬起时页面上抬」）。
+      // RESIZE 压缩页面高度，输入坞（margin 避让导航条）自然贴键盘上沿，其余内容不动。
+      // 必须在 loadContent 成功后调：onWindowStageCreate 早期窗口 Uicontent 为空，
+      // getUIContext() 会抛「window state is abnormal」启动即崩（09-30 模拟器实测）。
+      // 注意：RESIZE 下 expandSafeArea(KEYBOARD, BOTTOM) 不生效；本页只用 SYSTEM 边缘，不受影响
+      windowStage.getMainWindowSync().getUIContext().setKeyboardAvoidMode(KeyboardAvoidMode.RESIZE);
       hilog.info(DOMAIN, 'testTag', 'Succeeded in loading the content.');
     });
 

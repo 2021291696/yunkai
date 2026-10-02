@@ -91,6 +91,21 @@ class YunkaiApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // 门0 W1（2026-10-02）：全部 Activity 不可见时清 WebView 池——池是进程级单例，
+        // 持有 Activity context 的 WebView 不清会泄漏；以 started 计数归零为"全部不可见"信号。
+        registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
+            private var started = 0
+            override fun onActivityStarted(activity: android.app.Activity) { started++ }
+            override fun onActivityStopped(activity: android.app.Activity) {
+                started = (started - 1).coerceAtLeast(0)
+                if (started == 0) com.zhuolin.yunkai.ui.canvas.WebViewPool.clear()
+            }
+            override fun onActivityCreated(activity: android.app.Activity, savedInstanceState: android.os.Bundle?) {}
+            override fun onActivityResumed(activity: android.app.Activity) {}
+            override fun onActivityPaused(activity: android.app.Activity) {}
+            override fun onActivitySaveInstanceState(activity: android.app.Activity, outState: android.os.Bundle) {}
+            override fun onActivityDestroyed(activity: android.app.Activity) {}
+        })
         // 二期 PDF 抽取：PdfBox-Android 需要初始化资源加载器（字体/编码表），否则抽文本抛错
         com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(applicationContext)
         // 首启播种内置技能（幂等：无同名行才插；失败不影响启动）

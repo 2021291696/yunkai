@@ -45,6 +45,12 @@ class InjectionBuilderTest {
         override suspend fun getByName(name: String): AgentSkill? = null
     }
 
+    private class OneSkillRepo : SkillSource {
+        override suspend fun list() = listOf(AgentSkill(1, "eli5", "讲解", "说明书正文"))
+        override suspend fun getByName(name: String): AgentSkill? =
+            list().firstOrNull { it.name == name }
+    }
+
     private fun toolCall(name: String, args: String = "{}", id: String = "call_1") =
         ToolCall(id, "function", FunctionCall(name, args))
 
@@ -118,12 +124,13 @@ class InjectionBuilderTest {
 
     @Test
     fun `eli5 撤下五记忆工具且 system 撤记忆段`() = runTest {
+        // P14 后本用例走「模型自决调 use_skill 成功」路径（forcedSkill=null）：
+        // @强制（forced 有内容）的记忆语义由 AgentLoopTest 直接注入用例覆盖（开局即撤）
         val store = InMemoryMemoryStore()
-        val forced = AgentSkill(1, "eli5", "讲解", "说明书正文")
         var callIdx = 0
         val sysByCall = mutableListOf<String>()
         val toolNamesByCall = mutableListOf<List<String>>()
-        val r = AgentLoop.run(cfg(), EmptySkillRepo(), emptyList(), "@eli5 讲讲天空", forced, {},
+        val r = AgentLoop.run(cfg(), OneSkillRepo(), emptyList(), "讲讲天空", null, {},
             fakeChat = { ms, tools, _ ->
                 callIdx++
                 sysByCall.add(ms[0].content)

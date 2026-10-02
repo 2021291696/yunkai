@@ -1,0 +1,144 @@
+{
+ "manifest": "D:\\MyAIWorkspace\\project\\yunkai\\yunkai-harmony\\tests\\fullflow\\manifest.yaml",
+ "name": "yunkai-harmony v2 全流程",
+ "gate": "api",
+ "started_at": "2026-09-13T11:35:05+08:00",
+ "finished_at": "2026-09-13T11:35:05+08:00",
+ "target": {
+  "platform": "cli",
+  "app": {
+   "bundle": "com.zhuolin.yunkai",
+   "entry": "EntryAbility",
+   "device_emulator": "127.0.0.1:5557",
+   "device_real": "2MH0224513029186",
+   "hap": "entry/build/default/outputs/default/entry-default-signed.hap",
+   "test_hap": "entry/build/default/outputs/ohosTest/entry-ohosTest-signed.hap",
+   "device_llm": {
+    "base_url": "https://open.bigmodel.cn/api/paas/v4",
+    "model": "glm-5.3-flash",
+    "long_model": "glm-4.7"
+   }
+  }
+ },
+ "runs": [
+  {
+   "id": "base",
+   "kind": "normal",
+   "branch_trace": [],
+   "status": "PASS",
+   "ms": 31211,
+   "error": null,
+   "steps": [
+    {
+     "id": "device_wake_screen",
+     "status": "PASS",
+     "ms": 178,
+     "detail": "cli: ['D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe', 'shell', 'power-shell', 'wakeup'] → exit 0"
+    },
+    {
+     "id": "device_unlock_screen",
+     "status": "PASS",
+     "ms": 108,
+     "detail": "cli: ['D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe', 'shell', 'power-shell', 'setmode', '602'] → exit 0"
+    },
+    {
+     "id": "device_online_check",
+     "status": "PASS",
+     "ms": 62,
+     "detail": "cli: ['D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe', 'list', 'targets'] → exit 0"
+    },
+    {
+     "id": "hvigor_clean_assemble",
+     "status": "PASS",
+     "ms": 16765,
+     "detail": "cli: ['node', 'D:/Huawei/DevEcoStudio/tools/hvigor/bin/hvigorw.js', 'clean', '--mode', 'module', '-p', 'product=default', 'assembleHap'] → exit 0"
+    },
+    {
+     "id": "hvigor_ohostest_assemble",
+     "status": "PASS",
+     "ms": 9355,
+     "detail": "cli: ['node', 'D:/Huawei/DevEcoStudio/tools/hvigor/bin/hvigorw.js', '--mode', 'module', '-p', 'product=default', '-p', 'module=entry@ohosTest', 'assembleHap'] → exit 0"
+    },
+    {
+     "id": "hdc_install_app",
+     "status": "PASS",
+     "ms": 621,
+     "detail": "cli: ['D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe', 'install', '-r', 'entry/build/default/outputs/default/entry-default-signed.hap'] → exit 0"
+    },
+    {
+     "id": "hdc_install_test",
+     "status": "PASS",
+     "ms": 883,
+     "detail": "cli: ['D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe', 'install', '-r', 'entry/build/default/outputs/ohosTest/entry-ohosTest-signed.hap'] → exit 0"
+    },
+    {
+     "id": "aa_test_logic",
+     "status": "PASS",
+     "ms": 3237,
+     "detail": "cli: ['D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe', 'shell', 'aa', 'test', '-b', 'com.zhuolin.yunkai', '-m', 'entry_test', '-s', 'unittest', 'OpenHarmonyTestRunner', '-s', 'class', 'logicTest'] → exit 0"
+    },
+    {
+     "id": "launch_and_guide",
+     "status": "PASS",
+     "ms": 0,
+     "detail": "门1 跳过 UI 步骤"
+    },
+    {
+     "id": "drawer_open_and_layout",
+     "status": "PASS",
+     "ms": 0,
+     "detail": "门1 跳过 UI 步骤"
+    },
+    {
+     "id": "drawer_dismiss_three_ways",
+     "status": "PASS",
+     "ms": 0,
+     "detail": "门1 跳过 UI 步骤"
+    },
+    {
+     "id": "settings_theme_modes",
+     "status": "PASS",
+     "ms": 0,
+     "detail": "门1 跳过 UI 步骤"
+    },
+    {
+     "id": "skill_import_paste",
+     "status": "PASS",
+     "ms": 0,
+     "detail": "门1 跳过 UI 步骤"
+    },
+    {
+     "id": "chat_bare_llm",
+     "status": "PASS",
+     "ms": 0,
+     "detail": "门1 跳过 UI 步骤"
+    },
+    {
+     "id": "chat_eli5_canvas",
+     "status": "PASS",
+     "ms": 0,
+     "detail": "门1 跳过 UI 步骤"
+    },
+    {
+     "id": "probe_bad_baseurl",
+     "status": "PASS",
+     "ms": 0,
+     "detail": "门1 跳过 UI 步骤"
+    }
+   ],
+   "vars": {},
+   "snips": {},
+   "artifacts": [
+    "device_wake_screen.cli.txt",
+    "device_unlock_screen.cli.txt",
+    "device_online_check.cli.txt",
+    "hvigor_clean_assemble.cli.txt",
+    "hvigor_ohostest_assemble.cli.txt",
+    "hdc_install_app.cli.txt",
+    "hdc_install_test.cli.txt",
+    "aa_test_logic.cli.txt"
+   ],
+   "finished_at": "2026-09-13T11:35:05+08:00"
+  }
+ ]
+}

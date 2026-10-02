@@ -88,6 +88,12 @@ struct Chat {
   @State input: string = '';
   @State loading: boolean = false;
   @State showHistory: boolean = false;
+  // 抽屉开合位移（vp，负=收起）：状态驱动 + 拖拽跟手（原 transition(translate) 只能整段播，拖拽无法接管）
+  @State drawerX: number = 0;
+  @State jumpVisible: boolean = false; // 回到底部按钮：离底>1/4屏即现身
+  private dragBase: number = 0;        // 拖拽起点的 drawerX 快照
+  private listViewportH: number = 0;   // List 视口高（onAreaChange）
+  private jumping: boolean = false;    // 回底滚动进行中（挂起 jumpVisible 刷新防打断）
   @State screenW: number = 0; // 拉头 ☰ 开态挂在抽屉右缘所需（vp）
   @State streamText: string = '';
   @State genId: number = 0;
@@ -143,6 +149,59 @@ struct Chat {
     this.init();
     const disp = display.getDefaultDisplaySync();
     this.screenW = disp.width / disp.densityPixels;
+    this.drawerX = -this.drawerW(); // 初始收起位
+  }
+
+  // ===== 抽屉开合（状态驱动 + 拖拽跟手）=====
+  private drawerW(): number {
+    return this.screenW * 0.80;
+  }
+
+  private animateDrawerTo(x: number): void {
+    this.getUIContext().animateTo({ duration: ThemeTokens.MS_EMPH, curve: ThemeTokens.EASE }, () => {
+      this.drawerX = x;
+    });
+  }
+
+  private closeDrawer(): void {
+    this.animateDrawerTo(-this.drawerW());
+    this.showHistory = false; // 渲染条件含 drawerX>收起位，动画播完才卸载
+  }
+
+  // 回到底部：List 尾子项索引（msgs + 过程卡 + 流式卡）
+  private listLastChildIndex(): number {
+    let n: number = this.msgs.length - 1;
+    if (this.loading || this.failed) { n += 1; }
+    if (this.loading && this.streamText !== '') { n += 1; }
+    return n;
+  }
+
+  // 流式画布探测：与落库判定同口径（HtmlGuard.sanitize 剥```围栏后 <!DOCTYPE/<html；
+  // 落库走 detect(safe)，safe 已剥围栏——此处对未剥围栏的流式原文做同语义预判）
+  private streamLooksLikeCanvas(raw: string): boolean {
+    let t: string = raw.trim();
+    if (t.startsWith('```')) { t = t.replace(/^```[a-zA-Z]*\s*/, ''); }
+    const lower: string = t.toLowerCase();
+    if (lower.startsWith('<!doctype') || lower.startsWith('<html')) { return true; }
+    return lower.substring(0, 256).includes('<html');
+  }
+
+  // 离底距离（vp）：末项在视口内的底缘到视口底的距离（getItemRect 为视口相对坐标）。
+  // 单条超长回答内部滚动时 onScrollIndex 的子项索引恒定，必须按像素距离判（模拟器实测抓到的缺陷）
+  private refreshJumpVisible(): void {
+    if (this.jumping) { return; } // 回底动画期间挂起判断：中途插拔按钮层会打断 scrollToIndex 动画（真机实测）
+    if (this.listViewportH <= 0) { return; }
+    const idx: number = this.listLastChildIndex();
+    if (idx < 0) { this.setJumpVisible(false); return; }
+    const r = this.listScroller.getItemRect(idx); // Rect 类型注解会撞 ArkUI Rect 组件名，用推断
+    if (!r || Number(r.height) <= 0) { return; }
+    // 末项底缘超出视口底的量（正=末项还在下方视口外）
+    const dist: number = (Number(r.y) + Number(r.height)) - this.listViewportH;
+    this.setJumpVisible(dist > this.listViewportH * 0.25);
+  }
+
+  private setJumpVisible(v: boolean): void {
+    if (v !== this.jumpVisible) { this.jumpVisible = v; }
   }
 
   // 加载会话：turns 逐条转 RenderMsg，assistant 按 ReplyKind.detect 判画布卡/气泡
@@ -644,7 +703,7 @@ struct Chat {
       return true;
     }
     if (this.showHistory) {
-      this.showHistory = false;
+      this.closeDrawer();
       return true;
     }
     return false;
@@ -655,10 +714,12 @@ struct Chat {
   private async openHistory(): Promise<void> {
     await this.refreshConvs();
     this.showHistory = true;
+    this.animateDrawerTo(0);
   }
 
   private startNewConversation(): void {
-    this.showHistory = false;
+    // 走 closeDrawer：早退分支（已是新对话页）不导航，直接位移归零防抽屉残留全开位
+    this.closeDrawer();
     if (this.convId <= 0) { return; }
     const p: Record<string, number> = { 'convId': -1 };
     router.replaceUrl({ url: 'pages/Chat', params: p });
@@ -666,7 +727,7 @@ struct Chat {
 
   // 点会话 = 重新 init 该会话（简化实现：replaceUrl Chat 带 convId）
   private openConversation(id: number): void {
-    this.showHistory = false;
+    this.closeDrawer();
     if (id === this.convId) { return; }
     const p: Record<string, number> = { 'convId': id };
     router.replaceUrl({ url: 'pages/Chat', params: p });
@@ -869,12 +930,33 @@ struct Chat {
                 .width('100%')
               }
             }
-            // B1 流式气泡：增量文本非空时渲染生长中的回答（打字机体验）；落库仍走唯一成功路径
+            // B1 流式气泡：增量文本非空时渲染生长中的回答（打字机体验）；落库仍走唯一成功路径。
+            // 画布类输出（剥```围栏后 <!DOCTYPE/<html，与落库判定同口径）：整页 HTML 喂给
+            // markdown 会逐 chunk 打碎成满屏碎片（真机 /eli5 实测），改占位卡衔接最终画布卡
             if (this.loading && this.streamText !== '') {
               ListItem() {
-                MarkdownText({ text: this.streamText })
-                  .padding({ top: 4, bottom: 4 })
+                if (this.streamLooksLikeCanvas(this.streamText)) {
+                  Row({ space: 10 }) {
+                    LoadingProgress()
+                      .width(18)
+                      .height(18)
+                      .color(this.scheme.accent)
+                    Text('画布生成中…')
+                      .fontSize(13)
+                      .fontColor(this.scheme.textMid)
+                  }
+                  .justifyContent(FlexAlign.Center)
                   .width('100%')
+                  .padding(14)
+                  .borderRadius(ThemeTokens.R_CARD)
+                  .backgroundColor(this.scheme.glassBg)
+                  .backdropBlur(ThemeTokens.BLUR_CARD)
+                  .border({ width: ThemeTokens.BORDER_W, color: this.scheme.glassBorder })
+                } else {
+                  MarkdownText({ text: this.streamText })
+                    .padding({ top: 4, bottom: 4 })
+                    .width('100%')
+                }
               }
               .transition(TransitionEffect.OPACITY)
             }
@@ -883,9 +965,11 @@ struct Chat {
           .width('100%')
           .padding({ left: 14, right: 14, top: 12, bottom: 12 })
           .cachedCount(4)
+          .onAreaChange((_o: Area, n: Area) => { this.listViewportH = Number(n.height); })
+          .onDidScroll(() => { this.refreshJumpVisible(); })
 
-          // ===== 引导态：无任何消息时 =====
-          if (this.msgs.length === 0) {
+          // ===== 引导态：无任何消息且未在生成时 =====
+          if (this.msgs.length === 0 && !this.loading) {
             GuidePage({
               convCount: this.convs.length,
               onAsk: (q: string): void => {
@@ -893,6 +977,41 @@ struct Chat {
                 this.send();
               }
             })
+          }
+          // 回到底部：离底≥2项即现身（流式期间上滚回看也照常），点击平滑回底
+          if (this.jumpVisible) {
+            Column() {
+              Column() {
+                Text('↓')
+                  .fontSize(15)
+                  .fontWeight(FontWeight.Bold)
+                  .fontColor(this.scheme.textHi)
+              }
+              .justifyContent(FlexAlign.Center)
+              .width(40)
+              .height(40)
+              .borderRadius(20)
+              .backgroundColor(this.scheme.glassBgStrong)
+              .backdropBlur(ThemeTokens.BLUR_DOCK)
+              .border({ width: ThemeTokens.BORDER_W, color: this.scheme.glassBorder })
+              .onClick(() => {
+                // 先卸按钮+挂起刷新；scrollEdge 而非 scrollToIndex——后者对单条超长
+                // ListItem 的 smooth 滚动在真机上不生效（模拟器 OK，真机实测纹丝不动）
+                this.jumping = true;
+                this.setJumpVisible(false);
+                this.listScroller.scrollEdge(Edge.Bottom);
+                setTimeout((): void => {
+                  this.jumping = false;
+                  this.refreshJumpVisible();
+                }, 1200);
+              })
+            }
+            .width('100%')
+            .height('100%')
+            .justifyContent(FlexAlign.End)
+            .alignItems(HorizontalAlign.Center)
+            .padding({ bottom: 10 })
+            .hitTestBehavior(HitTestMode.None) // 容器不吃点击，只有 ↓ 胶囊本身可点
           }
           // 附件面板展开时：点消息区任意处收起面板
           if (this.showAttach) {
@@ -1062,29 +1181,38 @@ struct Chat {
       .height('100%')
 
       // ===== 侧抽屉：上半会话列表 + 下半历史轮次 =====
-      if (this.showHistory) {
-        // 遮罩：35% 压暗底层，抽屉轮廓立起来；淡入淡出；点外部即收起
+      // 位移驱动（原 if+transition 只能整段播放，拖拽无法接管）：drawerX 状态驱动位置，
+      // 左滑跟手、松手按阈值回弹/收起；遮罩透明度随开合进度连续变化
+      if (this.showHistory || this.drawerX > -this.drawerW()) {
+        // 遮罩：35% 压暗上限，透明度跟随进度；点外部即收起
         Column()
           .width('100%')
           .height('100%')
-          .backgroundColor('#59000000')
-          .onClick(() => { this.showHistory = false; })
-          .transition(TransitionEffect.OPACITY.animation({ duration: 200 }))
+          .backgroundColor(`rgba(0,0,0,${(0.35 * (1 + this.drawerX / this.drawerW())).toFixed(3)})`)
+          .onClick(() => { this.closeDrawer(); })
 
         HistoryDrawer({
           convs: this.convs,
-          onClose: (): void => { this.showHistory = false; },
+          onClose: (): void => { this.closeDrawer(); },
           onNewConversation: (): void => { this.startNewConversation(); },
           onOpenSettings: (): void => {
-            this.showHistory = false;
+            this.closeDrawer(); // push 保留 Chat 实例，必须位移归零防返回时抽屉残留全开位
             router.pushUrl({ url: 'pages/Settings' });
           },
           onOpenConversation: (id: number): void => { this.openConversation(id); },
           onDeleteConversation: (c: Conv): void => { this.confirmDelete(c); },
         })
-        .transition(TransitionEffect.translate({ x: -500 })
-          .combine(TransitionEffect.OPACITY)
-          .animation({ duration: 260, curve: Curve.FastOutSlowIn }))
+        .translate({ x: this.drawerX })
+        .gesture(
+          PanGesture({ fingers: 1, direction: PanDirection.Horizontal, distance: 5 })
+            .onActionStart((): void => { this.dragBase = this.drawerX; })
+            .onActionUpdate((event: GestureEvent) => {
+              this.drawerX = Math.min(0, this.dragBase + event.offsetX);
+            })
+            .onActionEnd((): void => {
+              if (this.drawerX < -this.drawerW() * 0.25) { this.closeDrawer(); } else { this.animateDrawerTo(0); }
+            })
+        )
       }
 
       // 拉头（上长下短双横线）：全 app 只此一颗，展开时停在抽屉右缘之外（收起时停在屏幕左缘）
@@ -1101,10 +1229,10 @@ struct Chat {
       .borderRadius(17)
       .border({ width: ThemeTokens.BORDER_W, color: this.scheme.glassBorder })
       .position({ x: 0, y: this.statusBarH + 12 })
-      .translate({ x: this.showHistory ? this.screenW * 0.80 + 6 : 0 })
-      .animation({ duration: 260, curve: Curve.FastOutSlowIn })
+      // 开合进度驱动（与抽屉同源 drawerX）：拖拽/动画全程同步，无先收拉头后收抽屉的脱节
+      .translate({ x: this.screenW > 0 ? (1 + this.drawerX / this.drawerW()) * (this.drawerW() + 6) : 0 })
       .onClick(() => {
-        if (this.showHistory) { this.showHistory = false; } else { this.showAttach = false; this.openHistory(); }
+        if (this.showHistory) { this.closeDrawer(); } else { this.showAttach = false; this.openHistory(); }
       })
     }
     .width('100%')

@@ -1,0 +1,19 @@
+{
+ "run_id": "20260911_m2_b2_ui_harmony",
+ "gate": "ui (AI 驱动通道，铁律8) —— B2 markdown 气泡专项复验",
+ "platform": "cli（HarmonyOS 无脚本通道，门2=AI 驱动 hdc + uitest）",
+ "device": "127.0.0.1:5555（1320x2232）",
+ "hap": "entry-default-signed.hap 构建于 06:16（含 MarkdownLite.ets + Chat.ets 两气泡接线 + AgentLoop 长文 M2 拒绝守卫 7c63ae4）",
+ "root_cause_fixed_this_round": [
+  "装机陈旧根因：tests/fullflow/build.sh 原来只打 entry@ohosTest 目标，主包 entry-default-signed.hap 停在 03:10 旧版——前几轮 markdown/守卫改动从未真正上机。build.sh 已改为 default+ohosTest 双目标连打",
+  "M2 write_file 幻觉调用实锤：05:54 hilog 显示工具表撤下后 glm-4.7 仍幻觉调用 write_file（execTool 放行）——已加 execTool 长文形态拒绝守卫（鸿蒙 7c63ae4 / Android 00affc6），本轮 eli5 全链路未再被分流"
+ ],
+ "steps": [
+  {"id": "chat_bare_llm", "status": "PASS", "ms": 45000, "detail": "真 LLM 答「1+1等于2。」切题无失败自述（新 HAP）", "evidence": ["11_bare.png"]},
+  {"id": "chat_eli5_canvas", "status": "PASS", "ms": 200000, "detail": "@eli5→use_skill→长文→HTML 回答（M2 守卫生效未被 write_file 分流）→画布卡 108s 出现→全屏画布整页渲染（黑洞标题+副题+目录8节）；对话页无裸 **", "evidence": ["12a_card.png", "12b_canvas.png", "12c_back_chat.png"]},
+  {"id": "markdown_bubble_probe", "status": "PASS", "ms": 60000, "detail": "要求 markdown 格式回答：assistant 气泡内 ## 标题渲染为加粗大字（无 ## 前缀）、- 列表渲染为 • 圆点、** 加粗渲染为粗体 span——dump 与截图均无裸 **", "evidence": ["b2_answer.png", "b2_stream.png"]}
+ ],
+ "markdown_dump_evidence": "对话页 dump：'2. 在黑洞边缘，时间会变慢'（无 ## 前缀）、'• 根据爱因斯坦的广义相对论…'（• 圆点）、assistant 区裸 ** 片段=无",
+ "crash_scan": "全程无 jscrash",
+ "verdict": "PASS 3/3（鸿蒙 B2 收口）"
+}

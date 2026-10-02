@@ -3,6 +3,7 @@ package com.zhuolin.yunkai.screen
 import com.zhuolin.yunkai.service.screen.ScreenBlacklist
 import com.zhuolin.yunkai.service.screen.ScreenFormat
 import com.zhuolin.yunkai.service.screen.ScreenGuard
+import com.zhuolin.yunkai.service.screen.isActivityWindow
 import com.zhuolin.yunkai.service.screen.ScreenNode
 import com.zhuolin.yunkai.service.screen.ScreenRouteTable
 import com.zhuolin.yunkai.service.screen.notifySummary
@@ -105,5 +106,34 @@ class ScreenLogicTest {
         assertEquals("微信", parseOpenAppArg("""{"name":"微信"}"""))
         assertEquals("", parseOpenAppArg("not-json"))
         assertEquals("", parseOpenAppArg("""{}"""))
+    }
+
+    // ── P12：Activity 级窗口判定（2026-10-01 真机根因：MIUI 类名不含 Activity）──
+    @Test fun actWin_miuiVariantsRecognized() {
+        // 真机实拍类名：旧过滤器全部漏采 → 面板态读屏 fail-closed 的根因
+        assertTrue(isActivityWindow("com.miui.home", "com.miui.home.launcher.Launcher"))
+        assertTrue(isActivityWindow("com.android.settings", "com.android.settings.MiuiSettings"))
+        assertTrue(isActivityWindow("com.android.settings", "com.android.settings.SubSettings"))
+    }
+
+    @Test fun actWin_stockAndThirdPartyRecognized() {
+        assertTrue(isActivityWindow("com.google.android.apps.nexuslauncher", "com.google.android.apps.nexuslauncher.NexusLauncherActivity"))
+        assertTrue(isActivityWindow("com.ss.android.ugc.aweme", "com.ss.android.ugc.aweme.splash.SplashActivity"))
+        assertTrue(isActivityWindow("com.android.settings", "com.android.settings.Settings"))
+    }
+
+    @Test fun actWin_nonActivityWindowsExcluded() {
+        // 输入法/系统UI/音量条/桌面小部件宿主—— pollution 防线（ADBKeyboard 污染旧案）
+        assertFalse(isActivityWindow("com.baidu.input_mi", "android.inputmethodservice.SoftInputWindow"))
+        assertFalse(isActivityWindow("com.android.adbkeyboard", "android.inputmethodservice.SoftInputWindow"))
+        assertFalse(isActivityWindow("miui.systemui.plugin", "com.android.systemui.miui.volume.VolumePanelDialog"))
+        assertFalse(isActivityWindow("miui.systemui.plugin", "android.widget.FrameLayout"))
+        assertFalse(isActivityWindow("com.android.quicksearchbox", "android.widget.FrameLayout"))
+        assertFalse(isActivityWindow("android", "android.widget.ImageView"))
+    }
+
+    @Test fun actWin_emptyFieldsExcluded() {
+        assertFalse(isActivityWindow("", "com.any.Activity"))
+        assertFalse(isActivityWindow("com.any", ""))
     }
 }

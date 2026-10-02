@@ -1,0 +1,4 @@
+$ ['D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe', 'list', 'targets']
+exit=0
+[Empty]
+

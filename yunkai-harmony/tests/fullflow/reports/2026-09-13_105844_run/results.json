@@ -1,0 +1,61 @@
+{
+ "manifest": "D:\\MyAIWorkspace\\project\\yunkai\\yunkai-harmony\\tests\\fullflow\\manifest.yaml",
+ "name": "yunkai-harmony v2 全流程",
+ "gate": "api",
+ "started_at": "2026-09-13T10:58:44+08:00",
+ "finished_at": "2026-09-13T10:58:44+08:00",
+ "target": {
+  "platform": "cli",
+  "app": {
+   "bundle": "com.zhuolin.yunkai",
+   "entry": "EntryAbility",
+   "device_emulator": "127.0.0.1:5555",
+   "device_real": "2MH0224513029186",
+   "hap": "entry/build/default/outputs/default/entry-default-signed.hap",
+   "test_hap": "entry/build/default/outputs/ohosTest/entry-ohosTest-signed.hap",
+   "device_llm": {
+    "base_url": "https://open.bigmodel.cn/api/paas/v4",
+    "model": "glm-5.3-flash",
+    "long_model": "glm-4.7"
+   }
+  }
+ },
+ "runs": [
+  {
+   "id": "base",
+   "kind": "normal",
+   "branch_trace": [],
+   "status": "RED",
+   "ms": 397,
+   "error": "步骤 device_online_check: 断言不过: 响应文本包含性",
+   "steps": [
+    {
+     "id": "device_wake_screen",
+     "status": "PASS",
+     "ms": 225,
+     "detail": "cli: ['D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe', 'shell', 'power-shell', 'wakeup'] → exit 0"
+    },
+    {
+     "id": "device_unlock_screen",
+     "status": "PASS",
+     "ms": 116,
+     "detail": "cli: ['D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe', 'shell', 'power-shell', 'setmode', '602'] → exit 0"
+    },
+    {
+     "id": "device_online_check",
+     "status": "RED",
+     "ms": 54,
+     "detail": "断言不过: 响应文本包含性"
+    }
+   ],
+   "vars": {},
+   "snips": {},
+   "artifacts": [
+    "device_wake_screen.cli.txt",
+    "device_unlock_screen.cli.txt",
+    "device_online_check.cli.txt"
+   ],
+   "finished_at": "2026-09-13T10:58:44+08:00"
+  }
+ ]
+}

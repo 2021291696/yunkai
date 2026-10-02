@@ -1,0 +1,58 @@
+$ ['node', 'D:/Huawei/DevEcoStudio/tools/hvigor/bin/hvigorw.js', '--mode', 'module', '-p', 'product=default', '-p', 'module=entry@ohosTest', 'assembleHap']
+exit=0
+> hvigor [32mUP-TO-DATE :entry:ohosTest@PreBuild...  [39m
+> hvigor [32mFinished :entry:ohosTest@CreateModuleInfo... after 1 ms [39m
+> hvigor [32mFinished :entry:ohosTest@GenerateMetadata... after 3 ms [39m
+> hvigor [32mFinished :entry:ohosTest@ConfigureCmake... after 1 ms [39m
+> hvigor [32mFinished :entry:ohosTest@MergeProfile... after 3 ms [39m
+> hvigor [32mFinished :entry:ohosTest@CreateBuildProfile... after 2 ms [39m
+> hvigor [32mFinished :entry:ohosTest@PreCheckSyscap... after 1 ms [39m
+> hvigor [32mFinished :entry:ohosTest@GenerateOhosTestTemplate... after 24 ms [39m
+> hvigor [32mFinished :entry:ohosTest@GeneratePkgContextInfo... after 5 ms [39m
+> hvigor [32mFinished :entry:ohosTest@GeneratePkgSdkInfo... after 2 ms [39m
+> hvigor [32mFinished :entry:ohosTest@ProcessIntegratedHsp... after 1 ms [39m
+> hvigor [32mFinished :entry:ohosTest@BuildNativeWithCmake... after 1 ms [39m
+> hvigor [32mFinished :entry:ohosTest@MakePackInfo... after 3 ms [39m
+> hvigor [32mFinished :entry:ohosTest@SyscapTransform... after 2 ms [39m
+> hvigor [32mFinished :entry:ohosTest@ProcessProfile... after 143 ms [39m
+> hvigor [32mFinished :entry:ohosTest@ProcessRouterMap... after 3 ms [39m
+> hvigor [32mFinished :entry:ohosTest@ProcessShareConfig... after 2 ms [39m
+> hvigor [32mFinished :entry:ohosTest@ProcessStartupConfig... after 2 ms [39m
+> hvigor [32mFinished :entry:ohosTest@BuildNativeWithNinja... after 2 ms [39m
+> hvigor [32mFinished :entry:ohosTest@ProcessResource... after 4 ms [39m
+> hvigor [32mFinished :entry:ohosTest@GenerateLoaderJson... after 7 ms [39m
+> hvigor [32mFinished :entry:ohosTest@ProcessLibs... after 4 ms [39m
+> hvigor [32mFinished :entry:ohosTest@CompileResource... after 240 ms [39m
+> hvigor [32mFinished :entry:ohosTest@DoNativeStrip... after 2 ms [39m
+> hvigor [32mFinished :entry:ohosTest@OhosTestBuildJS... after 2 ms [39m
+> hvigor [32mFinished :entry:ohosTest@CacheNativeLibs... after 13 ms [39m
+> hvigor [32mFinished :entry:ohosTest@OhosTestCompileArkTS... after 7 s 2 ms [39m
+> hvigor [32mFinished :entry:ohosTest@OhosTestCopyMockConfigJson... after 3 ms [39m
+> hvigor [32mFinished :entry:ohosTest@GeneratePkgModuleJson... after 4 ms [39m
+> hvigor [32mFinished :entry:ohosTest@ProcessCompiledResources... after 1 ms [39m
+> hvigor [32mFinished :entry:ohosTest@PackageHap... after 584 ms [39m
+> hvigor [32mFinished :entry:ohosTest@PackingCheck... after 3 ms [39m
+> hvigor [32mFinished :entry:ohosTest@SignHap... after 159 ms [39m
+> hvigor [32mFinished :entry:ohosTest@CollectDebugSymbol... after 1 ms [39m
+> hvigor [32mFinished :entry:assembleHap... after 1 ms [39m
+> hvigor [32mBUILD SUCCESSFUL in 8 s 673 ms [39m
+
+35 tasks in total: 34 executed, 1 up-to-date
+> hvigor [33mWARN: Warning: 'start_window_background' conflict, first declared.
+at D:\MyAIWorkspace\project\yunkai\yunkai-harmony\entry\src\main\resources\base\element\color.json
+but declared again.
+at D:\MyAIWorkspace\project\yunkai\yunkai-harmony\entry\.test\default\intermediates\src\ohosTest\resources\base\element\color.json
+[39m
+> hvigor [33mWARN: [33mWARN: [33m[33mArkTS:WARN File: D:/MyAIWorkspace/project/yunkai/yunkai-harmony/entry/src/main/ets/service/AttachUtil.ets:21:31
+ Function may throw exceptions. Special handling is required.
+[39m[39m
+[33mWARN: [33m[33mArkTS:WARN File: D:/MyAIWorkspace/project/yunkai/yunkai-harmony/entry/src/main/ets/service/AttachUtil.ets:33:45
+ 'packing' has been deprecated.
+[39m[39m
+[33mWARN: [33m[33mArkTS:WARN File: D:/MyAIWorkspace/project/yunkai/yunkai-harmony/entry/src/main/ets/service/AttachUtil.ets:39:31
+ Function may throw exceptions. Special handling is required.
+[39m[39m
+[33mWARN: [33m[33mArkTS:WARN File: D:/MyAIWorkspace/project/yunkai/yunkai-harmony/entry/src/main/ets/service/AttachUtil.ets:45:21
+ Function may throw exceptions. Special handling is required.
+[39m[39m
+[33mWARN: [33m[33mArkTS:WARN File: D:/MyAIWorkspace/project/yunkai/yunkai-harmony/en

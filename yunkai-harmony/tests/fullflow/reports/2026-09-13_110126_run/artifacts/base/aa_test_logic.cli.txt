@@ -1,0 +1,6 @@
+$ ['D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe', 'shell', 'aa', 'test', '-b', 'com.zhuolin.yunkai', '-m', 'entry_test', '-s', 'unittest', 'OpenHarmonyTestRunner', '-s', 'class', 'logicTest']
+exit=0
+start ability successfully.
+TestFinished-ResultCode: -1
+TestFinished-ResultMsg: App died
+user test finished.

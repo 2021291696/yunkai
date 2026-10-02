@@ -1,0 +1,4 @@
+$ ['D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe', 'shell', 'power-shell', 'setmode', '602']
+exit=0
+[Fail]ExecuteCommand need connect-key? please confirm a device by help info
+

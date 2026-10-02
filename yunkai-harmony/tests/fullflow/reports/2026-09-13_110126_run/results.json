@@ -1,0 +1,96 @@
+{
+ "manifest": "D:\\MyAIWorkspace\\project\\yunkai\\yunkai-harmony\\tests\\fullflow\\manifest.yaml",
+ "name": "yunkai-harmony v2 全流程",
+ "gate": "api",
+ "started_at": "2026-09-13T11:01:52+08:00",
+ "finished_at": "2026-09-13T11:01:52+08:00",
+ "target": {
+  "platform": "cli",
+  "app": {
+   "bundle": "com.zhuolin.yunkai",
+   "entry": "EntryAbility",
+   "device_emulator": "127.0.0.1:5557",
+   "device_real": "2MH0224513029186",
+   "hap": "entry/build/default/outputs/default/entry-default-signed.hap",
+   "test_hap": "entry/build/default/outputs/ohosTest/entry-ohosTest-signed.hap",
+   "device_llm": {
+    "base_url": "https://open.bigmodel.cn/api/paas/v4",
+    "model": "glm-5.3-flash",
+    "long_model": "glm-4.7"
+   }
+  }
+ },
+ "runs": [
+  {
+   "id": "base",
+   "kind": "normal",
+   "branch_trace": [],
+   "status": "RED",
+   "ms": 25867,
+   "error": "步骤 aa_test_logic: 断言不过: 响应文本包含性",
+   "steps": [
+    {
+     "id": "device_wake_screen",
+     "status": "PASS",
+     "ms": 128,
+     "detail": "cli: ['D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe', 'shell', 'power-shell', 'wakeup'] → exit 0"
+    },
+    {
+     "id": "device_unlock_screen",
+     "status": "PASS",
+     "ms": 109,
+     "detail": "cli: ['D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe', 'shell', 'power-shell', 'setmode', '602'] → exit 0"
+    },
+    {
+     "id": "device_online_check",
+     "status": "PASS",
+     "ms": 68,
+     "detail": "cli: ['D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe', 'list', 'targets'] → exit 0"
+    },
+    {
+     "id": "hvigor_clean_assemble",
+     "status": "PASS",
+     "ms": 13452,
+     "detail": "cli: ['node', 'D:/Huawei/DevEcoStudio/tools/hvigor/bin/hvigorw.js', 'clean', '--mode', 'module', '-p', 'product=default', 'assembleHap'] → exit 0"
+    },
+    {
+     "id": "hvigor_ohostest_assemble",
+     "status": "PASS",
+     "ms": 9272,
+     "detail": "cli: ['node', 'D:/Huawei/DevEcoStudio/tools/hvigor/bin/hvigorw.js', '--mode', 'module', '-p', 'product=default', '-p', 'module=entry@ohosTest', 'assembleHap'] → exit 0"
+    },
+    {
+     "id": "hdc_install_app",
+     "status": "PASS",
+     "ms": 514,
+     "detail": "cli: ['D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe', 'install', '-r', 'entry/build/default/outputs/default/entry-default-signed.hap'] → exit 0"
+    },
+    {
+     "id": "hdc_install_test",
+     "status": "PASS",
+     "ms": 1093,
+     "detail": "cli: ['D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe', 'install', '-r', 'entry/build/default/outputs/ohosTest/entry-ohosTest-signed.hap'] → exit 0"
+    },
+    {
+     "id": "aa_test_logic",
+     "status": "RED",
+     "ms": 1228,
+     "detail": "断言不过: 响应文本包含性"
+    }
+   ],
+   "vars": {},
+   "snips": {},
+   "artifacts": [
+    "device_wake_screen.cli.txt",
+    "device_unlock_screen.cli.txt",
+    "device_online_check.cli.txt",
+    "hvigor_clean_assemble.cli.txt",
+    "hvigor_ohostest_assemble.cli.txt",
+    "hdc_install_app.cli.txt",
+    "hdc_install_test.cli.txt",
+    "aa_test_logic.cli.txt"
+   ],
+   "finished_at": "2026-09-13T11:01:52+08:00"
+  }
+ ]
+}

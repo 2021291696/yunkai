@@ -1,0 +1,5 @@
+P1_gate1_build_unitest: PASS
+- clean assembleHap: BUILD SUCCESSFUL
+- ohosTest assembleHap: BUILD SUCCESSFUL（含签名测试包 entry-ohosTest-signed.hap）
+- 组合修正：signed 主包 + signed ohosTest 包（unsigned 混装会被签名一致性拒绝并丢测试模块）
+- aa test logicTest: Tests run: 19, Failure: 0, Error: 0, Pass: 19

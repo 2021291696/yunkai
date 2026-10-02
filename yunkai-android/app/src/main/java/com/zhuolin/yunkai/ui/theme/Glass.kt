@@ -1,5 +1,6 @@
 package com.zhuolin.yunkai.ui.theme
 
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
@@ -174,4 +175,12 @@ object GlassTokens {
     const val R_TIGHT = 4
     const val BORDER_W = 0.5f
     const val RISE_MS = 700
+
+    // ===== 动效词汇表（与鸿蒙 ThemeTokens 逐值同步）=====
+    // 全 app 动效只取这三档时长 + 一条曲线：subtle=chip/按压反馈，std=面板/输入坞，
+    // emph=页面级转场/抽屉/拉头。曲线统一 expo-out（与鸿蒙 curves.cubicBezierCurve(0.16,1,0.3,1) 同参）
+    const val MS_SUBTLE = 150
+    const val MS_STD = 220
+    const val MS_EMPH = 260
+    val EASE = CubicBezierEasing(0.16f, 1f, 0.3f, 1f)
 }

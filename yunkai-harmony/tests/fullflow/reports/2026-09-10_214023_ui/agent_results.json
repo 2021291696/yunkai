@@ -1,0 +1,58 @@
+{
+  "platform": "cli(harmony)",
+  "run": "2026-09-10",
+  "paths": [
+    {
+      "path": "launch_and_guide",
+      "verdict": "PASS",
+      "note": "冷启动问候式引导页（晚上好/想聊点什么？/日期+对话数/三个 chips）+ 左上 ☰；无装饰图形",
+      "evidence": "06_launch_guide.png"
+    },
+    {
+      "path": "drawer_open_and_layout",
+      "verdict": "PASS",
+      "note": "☰ → 抽屉「会话 | 长按可删除 | ✕ | ＋新对话 | ⚙ | 会话列表」；残留检查：会话与历史/历史轮次/还没有讲解记录/收起 均 0",
+      "evidence": "07_drawer_layout.png"
+    },
+    {
+      "path": "drawer_dismiss_three_ways",
+      "verdict": "PASS",
+      "note": "✕ / 点面板外 / 系统返回 三条路径后抽屉均消失且未退出应用（返回键被 onBackPress 消费）",
+      "evidence": "08_dismiss_back.png"
+    },
+    {
+      "path": "settings_theme_modes",
+      "verdict": "PASS",
+      "note": "点「深色」→ 设置页整屏转暗（09b）；force-stop 冷启动 → 系统为浅色但仍是深色（读档生效，09c）；切回「跟随系统」→ 回浅色（09d）",
+      "evidence": "09a_settings_light.png / 09b_settings_dark.png / 09c_theme_dark_persist.png / 09d_theme_system.png"
+    },
+    {
+      "path": "skill_import_paste",
+      "verdict": "PASS",
+      "note": "技能库 → 粘贴导入（无 📋 前缀）→ 注入「# 全流程导入技能」→ 解析并导入 → 列表出现该技能、表单关闭",
+      "evidence": "10a_skills.png / 10b_import_form.png / 10c_imported.png"
+    },
+    {
+      "path": "chat_bare_llm",
+      "verdict": "PASS",
+      "note": "真连智谱 glm-5.3-flash：问「1+1等于几？」→ 回答「1+1等于2。」",
+      "evidence": "11_bare_llm.png"
+    },
+    {
+      "path": "chat_eli5_canvas",
+      "verdict": "PASS",
+      "note": "@eli5 chip → 画布卡 → 全屏画布 HTML 真渲染（标题「黑洞是什么？」+ 11 节目录），非白屏",
+      "evidence": "12a_canvas_card.png / 12_canvas.png"
+    },
+    {
+      "path": "probe_bad_baseurl",
+      "verdict": "未收口（挂账）",
+      "note": "错误 baseURL 报错路径本轮未触发：① 保存按钮在折叠下方且打字后 IME 挡住滚动 → 已定位并修（收键盘后能滚动命中 660,1715 并保存成功）；② 第三次的发送未落到输入框（引导页无用户气泡）。已确认收尾状态正常：地址已还原 open.bigmodel、模型正常回「1+1=2」。参照：20260907-agent-m1-gate2 曾验证该路径（screenshot_error_toast）",
+      "evidence": "13_error_probe.png（显示为引导页，非报错态 → 未触发的直接证据）"
+    }
+  ],
+  "summary": {
+    "pass": 7,
+    "unclosed": 1
+  }
+}

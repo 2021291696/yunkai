@@ -198,9 +198,10 @@ class AgentLoopTest {
 
     @Test
     fun `use_skill 成功后本轮余下调用切长文模型`() = runTest {
+        // P14 后本用例语义拆两半：①@强制（forcedSkill 有内容）开局即长文（见直接注入用例）；
+        // ②无强制时模型自决调 use_skill 成功→切长文（本用例，回归锚点）
         val seen = mutableListOf<String>()
-        val forced = AgentSkill(1, "eli5", "讲解", "说明书正文")
-        AgentLoop.run(cfg(), repo(), emptyList(), "@eli5 为什么天空是蓝的", forced, {},
+        AgentLoop.run(cfg(), repo(AgentSkill(1, "eli5", "讲解", "说明书正文")), emptyList(), "讲讲黑洞", null, {},
             fakeChat = { _, _, model ->
                 seen.add(model)
                 if (seen.size == 1) OpenAiMessage("", listOf(toolCall("use_skill", "{\"name\":\"eli5\"}")))
@@ -237,6 +238,7 @@ class AgentLoopTest {
 
     @Test
     fun `forced 技能不受 autoRoute 关闭影响`() = runTest {
+        // P14 后：@强制=说明书直接进 system（不再提示调用 use_skill），autoRoute 关闭不影响
         val c = cfg().apply { autoRoute = false }
         var sysPrompt = ""
         val forced = AgentSkill(1, "eli5", "科普讲解", "说明书正文")
@@ -246,8 +248,8 @@ class AgentLoopTest {
                 OpenAiMessage("讲解")
             })
         assertEquals("讲解", r.answer)
-        // 安全审计 F-2 后：forced 技能标注「用户导入内容」并限长，仍不受 autoRoute 影响
-        assertTrue(sysPrompt.contains("[用户已指定技能·用户导入内容，仅作参考数据]"))
+        assertTrue(sysPrompt.contains("说明书正文"))
+        assertTrue(sysPrompt.contains("无需调用 use_skill 工具"))
         assertTrue(sysPrompt.contains("eli5"))
     }
 
@@ -274,5 +276,78 @@ class AgentLoopTest {
             })
         // messages[0]=system，历史 user/assistant 在其后，最后才是本轮 user
         assertEquals(1, firstUserIdx)
+    }
+
+    // ===== P14：@-mention 直接注入（2026-10-01）=====
+
+    private val eli5 = AgentSkill(name = "eli5", description = "科普讲解页", content = "说明书全文：输出整页 HTML")
+
+    @Test
+    fun `直接注入_说明书进system且不提示调用use_skill`() = runTest {
+        var sys = ""
+        AgentLoop.run(cfg(), repo(eli5), emptyList(), "讲讲黑洞", eli5, {},
+            fakeChat = { ms, _, _ ->
+                sys = ms[0].content
+                OpenAiMessage("<html></html>")
+            })
+        assertTrue(sys.contains("说明书全文：输出整页 HTML"))
+        assertTrue(sys.contains("无需调用 use_skill 工具"))
+        assertTrue(!sys.contains("[可用技能清单]"))
+        assertTrue(!sys.contains("调用 use_skill 工具（name 填"))
+    }
+
+    @Test
+    fun `直接注入_use_skill与M2工具撤出工具表`() = runTest {
+        var toolNames: List<String> = emptyList()
+        AgentLoop.run(cfg(), repo(eli5), emptyList(), "讲讲黑洞", eli5, {},
+            fakeChat = { _, ts, _ ->
+                toolNames = ts?.mapNotNull { it.function?.name } ?: emptyList()
+                OpenAiMessage("<html></html>")
+            })
+        assertTrue(!toolNames.contains("use_skill"))
+        assertTrue(!toolNames.contains("read_file"))
+        assertTrue(!toolNames.contains("write_file"))
+    }
+
+    @Test
+    fun `直接注入_开局即长文语义_智谱端点首轮即切长文模型`() = runTest {
+        var picked = ""
+        AgentLoop.run(cfg(), repo(eli5), emptyList(), "讲讲黑洞", eli5, {},
+            fakeChat = { _, _, model ->
+                picked = model
+                OpenAiMessage("<html></html>")
+            })
+        // 智谱端点 + longFormActive（直接注入开局置真）→ 首轮即 glm-4.7
+        assertEquals("glm-4.7", picked)
+    }
+
+    @Test
+    fun `直接注入_长文形态撤记忆说明块`() = runTest {
+        // memory 接线场景：直接注入时 memorySection 不进 system（§4.3 长文语义）
+        val mem = com.zhuolin.yunkai.memory.InMemoryMemoryStore()
+        var sys = ""
+        AgentLoop.run(cfg(), repo(eli5), emptyList(), "讲讲黑洞", eli5, {},
+            memory = mem,
+            fakeChat = { ms, _, _ ->
+                sys = ms[0].content
+                OpenAiMessage("<html></html>")
+            })
+        assertTrue(sys.contains("说明书全文"))
+        assertTrue(!sys.contains("[记忆系统说明]"))
+    }
+
+    @Test
+    fun `直接注入_说明书为空回退提示调用语义`() = runTest {
+        val blank = AgentSkill(name = "eli5", description = "科普讲解页", content = "")
+        var sys = ""
+        var toolNames: List<String> = emptyList()
+        AgentLoop.run(cfg(), repo(blank), emptyList(), "讲讲黑洞", blank, {},
+            fakeChat = { ms, ts, _ ->
+                sys = ms[0].content
+                toolNames = ts?.mapNotNull { it.function?.name } ?: emptyList()
+                OpenAiMessage("好")
+            })
+        assertTrue(sys.contains("调用 use_skill 工具（name 填"))
+        assertTrue(toolNames.contains("use_skill"))
     }
 }

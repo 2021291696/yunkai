@@ -1,0 +1,153 @@
+$ ['D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe', 'shell', 'aa', 'test', '-b', 'com.zhuolin.yunkai', '-m', 'entry_test', '-s', 'unittest', 'OpenHarmonyTestRunner', '-s', 'class', 'logicTest']
+exit=0
+start ability successfully.
+
+OHOS_REPORT_SUM: 47
+OHOS_REPORT_STATUS: class=logicTest
+
+
+OHOS_REPORT_STATUS: class=logicTest
+OHOS_REPORT_STATUS: current=1
+OHOS_REPORT_STATUS: id=JS
+OHOS_REPORT_STATUS: numtests=47
+OHOS_REPORT_STATUS: stream=
+OHOS_REPORT_STATUS: test=guard_accepts_full_doc
+OHOS_REPORT_STATUS_CODE: 1
+
+
+OHOS_REPORT_STATUS: class=logicTest
+OHOS_REPORT_STATUS: current=1
+OHOS_REPORT_STATUS: id=JS
+OHOS_REPORT_STATUS: numtests=47
+OHOS_REPORT_STATUS: stream=
+OHOS_REPORT_STATUS: test=guard_accepts_full_doc
+OHOS_REPORT_STATUS_CODE: 0
+OHOS_REPORT_STATUS: consuming=2
+
+
+OHOS_REPORT_STATUS: class=logicTest
+OHOS_REPORT_STATUS: current=2
+OHOS_REPORT_STATUS: id=JS
+OHOS_REPORT_STATUS: numtests=47
+OHOS_REPORT_STATUS: stream=
+OHOS_REPORT_STATUS: test=guard_strips_markdown_fence_and_injects_viewport
+OHOS_REPORT_STATUS_CODE: 1
+
+
+OHOS_REPORT_STATUS: class=logicTest
+OHOS_REPORT_STATUS: current=2
+OHOS_REPORT_STATUS: id=JS
+OHOS_REPORT_STATUS: numtests=47
+OHOS_REPORT_STATUS: stream=
+OHOS_REPORT_STATUS: test=guard_strips_markdown_fence_and_injects_viewport
+OHOS_REPORT_STATUS_CODE: 0
+OHOS_REPORT_STATUS: consuming=2
+
+
+OHOS_REPORT_STATUS: class=logicTest
+OHOS_REPORT_STATUS: current=3
+OHOS_REPORT_STATUS: id=JS
+OHOS_REPORT_STATUS: numtests=47
+OHOS_REPORT_STATUS: stream=
+OHOS_REPORT_STATUS: test=guard_rejects_non_html
+OHOS_REPORT_STATUS_CODE: 1
+
+
+OHOS_REPORT_STATUS: class=logicTest
+OHOS_REPORT_STATUS: current=3
+OHOS_REPORT_STATUS: id=JS
+OHOS_REPORT_STATUS: numtests=47
+OHOS_REPORT_STATUS: stream=
+OHOS_REPORT_STATUS: test=guard_rejects_non_html
+OHOS_REPORT_STATUS_CODE: 0
+OHOS_REPORT_STATUS: consuming=1
+
+
+OHOS_REPORT_STATUS: class=logicTest
+OHOS_REPORT_STATUS: current=4
+OHOS_REPORT_STATUS: id=JS
+OHOS_REPORT_STATUS: numtests=47
+OHOS_REPORT_STATUS: stream=
+OHOS_REPORT_STATUS: test=extractor_strips_tags_and_entities
+OHOS_REPORT_STATUS_CODE: 1
+
+
+OHOS_REPORT_STATUS: class=logicTest
+OHOS_REPORT_STATUS: current=4
+OHOS_REPORT_STATUS: id=JS
+OHOS_REPORT_STATUS: numtests=47
+OHOS_REPORT_STATUS: stream=
+OHOS_REPORT_STATUS: test=extractor_strips_tags_and_entities
+OHOS_REPORT_STATUS_CODE: 0
+OHOS_REPORT_STATUS: consuming=1
+
+
+OHOS_REPORT_STATUS: class=logicTest
+OHOS_REPORT_STATUS: current=5
+OHOS_REPORT_STATUS: id=JS
+OHOS_REPORT_STATUS: numtests=47
+OHOS_REPORT_STATUS: stream=
+OHOS_REPORT_STATUS: test=reply_kind_detects_html
+OHOS_REPORT_STATUS_CODE: 1
+
+
+OHOS_REPORT_STATUS: class=logicTest
+OHOS_REPORT_STATUS: current=5
+OHOS_REPORT_STATUS: id=JS
+OHOS_REPORT_STATUS: numtests=47
+OHOS_REPORT_STATUS: stream=
+OHOS_REPORT_STATUS: test=reply_kind_detects_html
+OHOS_REPORT_STATUS_CODE: 0
+OHOS_REPORT_STATUS: consuming=1
+
+
+OHOS_REPORT_STATUS: class=logicTest
+OHOS_REPORT_STATUS: current=6
+OHOS_REPORT_STATUS: id=JS
+OHOS_REPORT_STATUS: numtests=47
+OHOS_REPORT_STATUS: stream=
+OHOS_REPORT_STATUS: test=reply_kind_detects_html_prefix_case_insensitive
+OHOS_REPORT_STATUS_CODE: 1
+
+
+OHOS_REPORT_STATUS: class=logicTest
+OHOS_REPORT_STATUS: current=6
+OHOS_REPORT_STATUS: id=JS
+OHOS_REPORT_STATUS: numtests=47
+OHOS_REPORT_STATUS: stream=
+OHOS_REPORT_STATUS: test=reply_kind_detects_html_prefix_case_insensitive
+OHOS_REPORT_STATUS_CODE: 0
+OHOS_REPORT_STATUS: consuming=2
+
+
+OHOS_REPORT_STATUS: class=logicTest
+OHOS_REPORT_STATUS: current=7
+OHOS_REPORT_STATUS: id=JS
+OHOS_REPORT_STATUS: numtests=47
+OHOS_REPORT_STATUS: stream=
+OHOS_REPORT_STATUS: test=reply_kind_detects_text_with_inline_markup
+OHOS_REPORT_STATUS_CODE: 1
+
+
+OHOS_REPORT_STATUS: class=logicTest
+OHOS_REPORT_STATUS: current=7
+OHOS_REPORT_STATUS: id=JS
+OHOS_REPORT_STATUS: numtests=47
+OHOS_REPORT_STATUS: stream=
+OHOS_REPORT_STATUS: test=reply_kind_detects_text_with_inline_markup
+OHOS_REPORT_STATUS_CODE: 0
+OHOS_REPORT_STATUS: consuming=6
+
+
+OHOS_REPORT_STATUS: class=logicTest
+OHOS_REPORT_STATUS: current=8
+OHOS_REPORT_STATUS: id=JS
+OHOS_REPORT_STATUS: numtests=47
+OHOS_REPORT_STATUS: stream=
+OHOS_REPORT_STATUS: test=router_auto_default_bing_external
+OHOS_REPORT_STATUS_CODE: 1
+
+
+OHOS_REPORT_STATUS: class=logicTest
+OHOS_REPORT_STATUS: current=8
+OHOS_REPO

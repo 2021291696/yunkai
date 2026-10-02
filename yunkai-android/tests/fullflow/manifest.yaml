@@ -14,6 +14,8 @@
 # llm_off 场景由门2 的 pm clear 空态护栏步骤覆盖。
 # ═══════════════════════════════════════════════════════════════════
 name: yunkai-android v2 全流程
+# pending: P1,P2,P3,P4（悬浮窗真机目检/微信链路/黑名单UI路径，见 tests/fullflow/ledger.md）
+# external-assets: tests/fullflow/tools/ADBKeyboard.apk（IME 注入，装机前置）
 target:
   platform: android
   app:
@@ -21,6 +23,8 @@ target:
     activity: com.zhuolin.yunkai/.MainActivity
     avd: quizlens_test            # android-35 x86_64，320x640
     apk: app/build/outputs/apk/debug/app-debug.apk
+    devices:                      # 真机抽验（悬浮窗命中 device-matrix「无障碍/悬浮窗」必抽判据）
+      realdevice: df07a4cd        # Redmi 2607DRA18C / Android 16（HyperOS），MIUI 闪断重绑场景唯一可见层
     device_llm:                   # 注入模拟器 app 设置页的模型配置（真 LLM 路径用）
       base_url: https://api.deepseek.com/v1
       model: deepseek-chat
@@ -85,6 +89,8 @@ flow:
         - { action: fill, target: "聊天输入框", value: "你好" }
         - { action: click, target: "text=发送" }
         - { action: expect_visible, target: "text=请先在设置页配置 API 地址/密钥/模型" }
+      # 判据（2026-10-01 修正）：护栏文案是 Toast（ChatViewModel.toast），永不在 dump 树——
+      # 断言以发送后 1s 内 screencap 抢拍为准（02e_toast_fast.png 范例）；dump 断言必假 FAIL
 
     - id: config_save_restore       # ③ 配置保存 + 杀进程重进恢复
       ui:
@@ -145,6 +151,8 @@ flow:
         - { action: expect_visible, target: "text=画布 · 点此全屏查看" }
         - { action: click, target: "text=画布 · 点此全屏查看" }
         - { action: expect_visible, target: "text=‹ 返回" }
+      # 前置（2026-10-01 实证）：本步必须在**干净会话**跑（＋新对话后第一条消息）——
+      # 长纯文本历史会抑制 use_skill 工具调用→降级文本气泡（ledger P14）；降级时先开新会话再判 FAIL
 
     - id: history_and_delete        # ⑨ 历史抽屉（恢复/新对话）
       ui:
@@ -238,3 +246,89 @@ flow:
       # 前台切到设置子页——「Airplane mode」仅存在于该子页（主页条目同名 Network & internet 不可作判据）。
       # 模型直答不调 propose_plan=FAIL；中途敏感暂停=按 ScreenGuard 语义判 PASS 但须记录暂停原因。
       # 前置：⑰ 的无障碍授权已开（写操作经无障碍手势，授权即手势授权）。
+
+    # ─────────── 悬浮窗/悬浮面板 M2b 补全轮（2026-10-01：球/磁贴/共享大脑/几何/底色/重绑/面板态读屏） ───────────
+    # 前置：⑰ 无障碍授权已开（球/指示圈均为 TYPE_ACCESSIBILITY_OVERLAY）。
+    # 取数口径：overlay 不稳定入 uiautomator dump → 本段机制断言以 dumpsys window + logcat -s yunkai
+    # + screencap 为准，dump 只作辅证（AGENTS.md 坑 20）；内容级断言看截图。
+    - id: fw_ball_show_drag_tap      # ㉑ 悬浮球：服务绑定后出现 / 拖动换位 / 单击唤起面板
+      ui:
+        - { action: expect_visible, target: "悬浮球窗口在场（dumpsys window 含 44x44 ACCESSIBILITY_OVERLAY，初始位 20,400；screencap 目检）" }
+        - { action: swipe, target: "球心 → 屏幕另一侧中部（拖动换位，位移>12px 触发 moved 分支）" }
+        - { action: expect_visible, target: "球窗口坐标=新位置（dumpsys window 复读 mAttrs）" }
+        - { action: click, target: "悬浮球球心（tap，不位移）" }
+        - { action: expect_visible, target: "topResumedActivity=.ui.flash.FlashActivity（半屏面板）" }
+      # 判据：球随服务绑定出现；拖动后窗口坐标更新；单击开面板（FlashPanelLauncher）。
+      # 球不显示/拖后坐标不变/单击无响应=FAIL
+
+    - id: fw_tile_open_panel         # ㉒ QS 磁贴：磁贴点击 → 直接拉起面板（不经主界面）
+      ui:
+        - { action: click, target: "「收起」钮（关面板回主界面）" }
+        - { action: goto, url: "adb input keyevent KEYCODE_HOME（回桌面，验证不经主界面）" }
+        - { action: click, target: "adb shell cmd statusbar click-tile com.zhuolin.yunkai/.service.screen.ScreenTileService" }
+        - { action: expect_visible, target: "topResumedActivity=.ui.flash.FlashActivity（面板在桌面上浮起）" }
+      # 判据：磁贴直达面板，无 BadToken/无崩溃（API34+ 走 PendingIntent 重载）
+      # 前置（2026-10-01 实证）：cmd statusbar click-tile 前必须先 add-tile（磁贴未入活动列表时 click 静默无效）
+
+    - id: fw_panel_shared_brain      # ㉓ 共享大脑：面板=主对话同一会话流（09-19 重构核心语义）
+      ui:
+        - { action: fill, target: "面板内聊天输入框", value: "用一句话回答：天空为什么是蓝色的？" }
+        - { action: click, target: "发送" }
+        - { action: wait, seconds: 35 }
+        - { action: expect_visible, target: "面板内出现回答气泡（内容级：含散射/瑞利/蓝色之一，无失败自述）" }
+        - { action: click, target: "「收起」钮" }
+        - { action: expect_visible, target: "主界面会话流同显同一问答（面板发→主界面可见，无旁路无分叉）" }
+      # 判据：面板内收发的消息在主界面同一会话出现（共享 app.chatViewModel）；
+      # 两处会话/消息互不相通=FAIL（旁路回流=回潮）
+
+    - id: fw_panel_geometry          # ㉔ 面板几何：拖高全屏 / 下拉收起 / 遮罩收起 / 空白区不误关（Y2 回归）
+      ui:
+        - { action: click, target: "悬浮球开面板（默认 fraction=0.6）" }
+        - { action: swipe, target: "拉头上滑到顶（松手 fraction≥0.85 切全屏）" }
+        - { action: expect_visible, target: "面板铺满状态栏以下：拉头/工具行 statusBarsPadding，状态栏完整可见（screencap）" }
+        - { action: swipe, target: "拉头下拉到底（松手 fraction≤0.5 收起）" }
+        - { action: expect_visible, target: "FlashActivity 退出回 MainActivity（topResumedActivity）" }
+        - { action: click, target: "悬浮球开面板 → 点面板上方遮罩暗化区" }
+        - { action: expect_visible, target: "面板收起（遮罩 tap=收起语义）" }
+        - { action: click, target: "悬浮球开面板 → 点面板内空白区（消息列表空白处，非按钮）" }
+        - { action: expect_visible, target: "面板仍在（FlashActivity 未退出；Y2 空白区穿透回归锚点）" }
+      # 阈值口径以代码常量为准（PANEL_FULL_ENTER=0.85 / PANEL_COLLAPSE=0.5，FlashActivity.kt:60-64）；
+      # 文件头注释写 70% 属文档漂移（门0 条目），不作为断言依据
+
+    - id: fw_panel_opacity_persist   # ㉕ 面板底色三档：切换生效 + 拨档立刻退出仍落盘（Y4 回归）
+      ui:
+        - { action: click, target: "左上角侧边栏按钮 ☰" }
+        - { action: click, target: "抽屉内齿轮设置钮 ⚙" }
+        - { action: click, target: "外观→面板底色「实底」档" }
+        - { action: click, target: "系统返回键（立刻退出设置页，制造 Y4 场景）" }
+        - { action: click, target: "悬浮球开面板" }
+        - { action: expect_visible, target: "面板近实底（screencap：底色遮罩 alpha=0.85，背景 app 仅剩残影）" }
+        - { action: goto, url: "app://restart" }
+        - { action: click, target: "左上角侧边栏按钮 ☰" }
+        - { action: click, target: "抽屉内齿轮设置钮 ⚙" }
+        - { action: expect_visible, target: "「实底」档仍选中（panelOpacity=solid 落盘未丢失）" }
+        - { action: click, target: "面板底色「适中」档（恢复默认）" }
+      # 判据：三档即时生效（订阅 panelOpacityFlow）；拨档+立刻退出+重启后档位保持（Y4 写入丢失不得回潮）
+
+    - id: fw_rebind_ball_restore     # ㉖ 无障碍(重)绑定补显（Y1 回归）：翻转授权→球自动回位
+      ui:
+        - { action: goto, url: "adb settings put secure enabled_accessibility_services 置空 → 等 3s → 回写原值（触发 unbind→bind 全链）" }
+        - { action: wait, seconds: 6 }
+        - { action: expect_visible, target: "logcat 三条：a11y onUnbind → a11y onServiceConnected → floating ball restore" }
+        - { action: expect_visible, target: "dumpsys window 悬浮球窗口回位（44x44）" }
+      # 判据：重绑后球自动补显；缺 restore 日志或球窗口消失=FAIL（cb1e82a，Y1）
+      # 注：本步走 unbind→bind 全链；onRebind 分支（force-stop 类）系统不按选择触发，报告披露即可
+
+    - id: fw_panel_read_under        # ㉗ 面板态读底下 app（Y3 回归）：黑名单负向 + 正向对照
+      ui:
+        - { action: goto, url: "换配置：craft_yunkai_cfg.py 附 screenBlacklistUser=[com.google.android.youtube] 重写 datastore + 无障碍翻转重绑" }
+        - { action: goto, url: "adb am start com.google.android.youtube（前台）→ 点球开面板" }
+        - { action: fill, target: "面板输入框", value: "看看我现在这个页面上有什么内容" }
+        - { action: click, target: "发送" }
+        - { action: expect_visible, target: "回复含拒绝语义（黑名单/隐私/无法读取），未描述 YouTube 页面内容" }
+        - { action: goto, url: "adb am start com.android.settings（前台）→ 面板下发同句" }
+        - { action: expect_visible, target: "回复准确描述设置页要素（视觉路线放行；logcat readForeground panel chose=com.android.settings）" }
+      # 判据：黑名单包前台+面板态=拒绝（Y3 流程性绕过不得回潮）；非黑名单 app=正常转述。
+      # 语义注（2026-10-01）：①面板态 read_screen 恒走视觉路线为 7cdaa3c 架构既定，非缺陷；
+      # ②正向转述依赖 lastForegroundPkg（内存态，服务重启即失效走 fail-closed「读不到拒绝」——安全方向，
+      # 挂账 P12）；③历史污染会让模型不调工具直接抢答，正向断言须在**新对话**+显式「调用 read_screen」措辞下驱动

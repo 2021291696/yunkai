@@ -109,3 +109,19 @@ fun parseOpenAppArg(argsJson: String): String {
         ""
     }
 }
+
+// 前台采集的「Activity 级窗口」判定（P12，2026-10-01 真机根因修复）：
+// 原实现 cls.contains("Activity") 在 MIUI/HyperOS 上系统性漏采——桌面
+// com.miui.home.launcher.Launcher、设置 com.android.settings.MiuiSettings/SubSettings
+// 都不含 "Activity"，fgPkg 永远记不住 MIUI 自家 app → 面板浮在其上读屏必走 fail-closed
+//（真机诊断日志实抓，reports/20261001_realdevice_round2 发现①）。
+// 改为「允许名单」：Activity 通用词 + MIUI 设置族（Settings 覆盖 MiuiSettings/SubSettings）+ MIUI 桌面；
+// 输入法/系统UI/小部件宿主天然不匹配仍被排除。
+// 新机型出现漏采时往 ACTIVITY_WINDOW_MARKERS 加模式（宁可 fail-closed 拒读，不可错记）。
+private val ACTIVITY_WINDOW_MARKERS = listOf("Activity", "Settings", ".Launcher")
+
+fun isActivityWindow(pkg: String, cls: String): Boolean {
+    if (pkg.isEmpty() || cls.isEmpty()) return false
+    if (pkg == "android") return false   // 系统占位窗口（桌面小部件宿主等）
+    return ACTIVITY_WINDOW_MARKERS.any { cls.contains(it) }
+}

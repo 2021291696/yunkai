@@ -3,7 +3,7 @@ package com.zhuolin.yunkai.ui.flash
 // 悬浮球/磁贴宿主（2026-09-19 重构：入口=主对话，见 design-explorations 重构计划）：
 // 透明 Activity 上浮可拖高度玻璃面板，面板内复用主对话 ChatScreen——
 // 共享 YunkaiApp.chatViewModel 全局大脑（同一会话流/记忆/技能/画布，无旁路）。
-// 形态：默认半屏（60%），顶部拉头拖高，≥70% 屏高松手切全屏，<50% 松手收起面板。
+// 形态：默认半屏（60%），顶部拉头拖高，松手 ≥85% 切全屏、≤50% 收起面板（PANEL_FULL_ENTER/PANEL_COLLAPSE）。
 // 画布：面板内嵌 CanvasScreen（全屏态体验最佳）。
 import android.content.Intent
 import android.os.Bundle
@@ -44,6 +44,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zhuolin.yunkai.YunkaiApp
@@ -117,6 +118,7 @@ private fun FlashPanelHost(store: ConfigStore, onFinish: () -> Unit) {
     val glass = LocalGlassScheme.current
     val context = LocalContext.current
     val screenH = LocalConfiguration.current.screenHeightDp.toFloat()
+    val density = LocalDensity.current
     var showCanvas by remember { mutableStateOf(false) }
     var fraction by remember { mutableStateOf(PANEL_DEFAULT_FRACTION) }
     val cardShape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
@@ -151,7 +153,7 @@ private fun FlashPanelHost(store: ConfigStore, onFinish: () -> Unit) {
                 .background(panelScrim)
                 .border(GlassTokens.BORDER_W.dp, glass.glassBorder, cardShape)
         ) {
-            // ===== 拉头：拖动调高（≥70% 松手全屏，<50% 松手收起面板）=====
+            // ===== 拉头：拖动调高（松手 ≥0.85 全屏，≤0.5 收起面板）=====
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -161,7 +163,9 @@ private fun FlashPanelHost(store: ConfigStore, onFinish: () -> Unit) {
                         detectVerticalDragGestures(
                             onVerticalDrag = { change, amount ->
                                 change.consume()
-                                fraction = (fraction - amount / screenH).coerceIn(PANEL_MIN_FRACTION, PANEL_FULL)
+                                // amount 是 px、screenH 是 dp：先按密度换算再相除，否则高密度设备灵敏度被放大 density 倍、阈值状态机失真（门0 B2）
+                                val amountDp = with(density) { amount.toDp().value }
+                                fraction = (fraction - amountDp / screenH).coerceIn(PANEL_MIN_FRACTION, PANEL_FULL)
                             },
                             onDragEnd = {
                                 if (fraction <= PANEL_COLLAPSE) onFinish()

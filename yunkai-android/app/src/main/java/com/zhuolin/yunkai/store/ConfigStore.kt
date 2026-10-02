@@ -130,6 +130,16 @@ class ConfigStore(private val ctx: Context) {
         editStore { p -> p[K_SCREEN_SENSE] = on }
     }
 
+    // ── 悬浮球长期开关（2026-10-02）：与「拖底删除圈」的单次隐藏（sessionHidden，内存态）
+    // 分层——这里管"球存不存在"（持久），那边管"本次要不要看到"。默认开（存量用户不丢球）──
+    val ballEnabledFlow: Flow<Boolean> = ctx.dataStore.data.map { it[K_BALL_ENABLED] ?: true }
+
+    suspend fun getBallEnabled(): Boolean = ctx.dataStore.data.first()[K_BALL_ENABLED] ?: true
+
+    suspend fun setBallEnabled(on: Boolean) {
+        editStore { p -> p[K_BALL_ENABLED] = on }
+    }
+
     suspend fun getVisionLearned(): Set<String> =
         ctx.dataStore.data.first()[K_VISION_LEARNED] ?: emptySet()
 
@@ -203,6 +213,7 @@ class ConfigStore(private val ctx: Context) {
         private val K_MEMORY_GEAR = stringPreferencesKey("memoryGear")
         private val K_MAX_STEPS = intPreferencesKey("maxSteps")
         private val K_SCREEN_SENSE = booleanPreferencesKey("screenSense")
+        private val K_BALL_ENABLED = booleanPreferencesKey("ballEnabled")
         private val K_VISION_LEARNED = stringSetPreferencesKey("visionLearnedPkgs")
         private val K_SCREEN_BLACKLIST = stringSetPreferencesKey("screenBlacklistUser")
         private val K_PANEL_OPACITY = stringPreferencesKey("panelOpacity")

@@ -1,0 +1,3 @@
+$ ['D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe', 'shell', 'power-shell', 'wakeup']
+exit=0
+WakeupDevice is called

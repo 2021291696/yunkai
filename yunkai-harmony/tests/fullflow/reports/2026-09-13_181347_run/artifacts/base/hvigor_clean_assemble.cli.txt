@@ -1,0 +1,18 @@
+$ ['node', 'D:/Huawei/DevEcoStudio/tools/hvigor/bin/hvigorw.js', 'clean', '--mode', 'module', '-p', 'product=default', 'assembleHap']
+exit=4294967295
+> hvigor [32mhvigor client: Starting hvigor daemon.[39m
+> hvigor [32mHvigor Daemon started in 352 ms[39m
+
+0 task in total: 0 executed, 0 up-to-date.
+> hvigor [91mERROR: [31m00303217 Configuration Error
+[31mError Message: Invalid value of 'DEVECO_SDK_HOME' in the system environment path.
+[31m
+* Try the following:
+  > Correct the value, run hvigorw --stop-daemon to stop the daemon process, and then try again.
+[39m
+
+[31m* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --debug option to get more log output.
+[39m
+> hvigor [91mERROR: BUILD FAILED in 1 s 612 ms [39m

@@ -345,6 +345,8 @@ fun SettingsScreen(onOpenSkills: () -> Unit = {}, onOpenMemory: () -> Unit = {},
         app.appScope.launch { app.configStore.setScreenSense(on) }
                     if (on) {
                         // 悬浮球随总开关出现（主战场入口，M2b）；点按唤起闪问面板（T9b：拉起透明 FlashActivity）
+                        // 显式重开 = 用户要球回来：清掉「拖底删除圈」的单次隐藏标记（2026-10-02）
+                        com.zhuolin.yunkai.service.screen.FloatingBall.clearSessionHidden()
                         com.zhuolin.yunkai.service.screen.FloatingBall.show(context) {
                             com.zhuolin.yunkai.ui.flash.FlashPanelLauncher.launch(context)
                         }
@@ -376,6 +378,36 @@ fun SettingsScreen(onOpenSkills: () -> Unit = {}, onOpenMemory: () -> Unit = {},
                                 .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
                         )
                     }) { Text("去开启", color = glass.accent) }
+                }
+            }
+            // ── 悬浮球长期开关（2026-10-02）：持久化 DataStore，与拖底删除圈的"单次隐藏"分层——
+            // 这里管"球存不存在"（重启仍在），拖底关闭管"本次先不见"（重启回来）。
+            // 前置：屏幕感知总开关关闭时球无从谈起（行隐藏）。
+            if (screenSense) {
+                var ballEnabled by remember { mutableStateOf(true) }
+                LaunchedEffect(Unit) { ballEnabled = app.configStore.getBallEnabled() }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(top = 4.dp),
+                ) {
+                    Text("悬浮球", fontSize = 14.sp, modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = ballEnabled,
+                        onCheckedChange = { on ->
+                            ballEnabled = on
+                            // 写入挂 appScope：NonCancellable（ConfigStore.editStore）保落盘
+                            app.appScope.launch { app.configStore.setBallEnabled(on) }
+                            if (on) {
+                                // 显式开 = 用户要球：清单次隐藏标记
+                                com.zhuolin.yunkai.service.screen.FloatingBall.clearSessionHidden()
+                                com.zhuolin.yunkai.service.screen.FloatingBall.show(context) {
+                                    com.zhuolin.yunkai.ui.flash.FlashPanelLauncher.launch(context)
+                                }
+                            } else {
+                                com.zhuolin.yunkai.service.screen.FloatingBall.remove()
+                            }
+                        },
+                    )
                 }
             }
         }

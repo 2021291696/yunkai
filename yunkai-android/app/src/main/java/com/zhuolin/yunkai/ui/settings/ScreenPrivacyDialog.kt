@@ -131,6 +131,17 @@ internal fun ScreenPrivacyDialog(glass: GlassScheme, onClose: () -> Unit) {
                                 .filter { it.pkg !in blacklist }
                             if (shown.isEmpty()) {
                                 Text("没有可添加的应用", fontSize = 13.sp, color = TextFaint)
+                                // P15（2026-10-01 真机发现）：HyperOS「获取应用列表」权限新侧载默认拒，
+                                // queryIntentActivities 只回云开自己 → 列表看似"无应用可加"。提示授权路径
+                                //（各版本跳转组件名漂移，只给文字路径不硬跳）。
+                                if (list.size <= 1) {
+                                    Text(
+                                        "只看到云开自己？请在 系统设置→应用设置→应用管理→云开→权限管理 中允许「获取应用列表」，回来后重新打开本页",
+                                        fontSize = 12.sp,
+                                        color = TextFaint,
+                                        modifier = Modifier.padding(top = 6.dp),
+                                    )
+                                }
                             } else {
                                 shown.forEach { a ->
                                     Row(

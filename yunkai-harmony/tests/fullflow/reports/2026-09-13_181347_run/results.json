@@ -1,0 +1,68 @@
+{
+ "manifest": "D:\\MyAIWorkspace\\project\\yunkai\\yunkai-harmony\\tests\\fullflow\\manifest.yaml",
+ "name": "yunkai-harmony v2 全流程",
+ "gate": "api",
+ "started_at": "2026-09-13T18:13:51+08:00",
+ "finished_at": "2026-09-13T18:13:51+08:00",
+ "target": {
+  "platform": "cli",
+  "app": {
+   "bundle": "com.zhuolin.yunkai",
+   "entry": "EntryAbility",
+   "device_emulator": "127.0.0.1:5557",
+   "device_real": "2MH0224513029186",
+   "hap": "entry/build/default/outputs/default/entry-default-signed.hap",
+   "test_hap": "entry/build/default/outputs/ohosTest/entry-ohosTest-signed.hap",
+   "device_llm": {
+    "base_url": "https://open.bigmodel.cn/api/paas/v4",
+    "model": "glm-5.3-flash",
+    "long_model": "glm-4.7"
+   }
+  }
+ },
+ "runs": [
+  {
+   "id": "base",
+   "kind": "normal",
+   "branch_trace": [],
+   "status": "RED",
+   "ms": 3544,
+   "error": "步骤 hvigor_clean_assemble: 断言不过: status=4294967295 期望 0",
+   "steps": [
+    {
+     "id": "device_wake_screen",
+     "status": "PASS",
+     "ms": 88,
+     "detail": "cli: ['D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe', 'shell', 'power-shell', 'wakeup'] → exit 0"
+    },
+    {
+     "id": "device_unlock_screen",
+     "status": "PASS",
+     "ms": 79,
+     "detail": "cli: ['D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe', 'shell', 'power-shell', 'setmode', '602'] → exit 0"
+    },
+    {
+     "id": "device_online_check",
+     "status": "PASS",
+     "ms": 46,
+     "detail": "cli: ['D:/Huawei/DevEcoStudio/sdk/default/openharmony/toolchains/hdc.exe', 'list', 'targets'] → exit 0"
+    },
+    {
+     "id": "hvigor_clean_assemble",
+     "status": "RED",
+     "ms": 3329,
+     "detail": "断言不过: status=4294967295 期望 0"
+    }
+   ],
+   "vars": {},
+   "snips": {},
+   "artifacts": [
+    "device_wake_screen.cli.txt",
+    "device_unlock_screen.cli.txt",
+    "device_online_check.cli.txt",
+    "hvigor_clean_assemble.cli.txt"
+   ],
+   "finished_at": "2026-09-13T18:13:51+08:00"
+  }
+ ]
+}

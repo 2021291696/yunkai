@@ -16,7 +16,10 @@
         android:label="云开"
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:allowBackup="false">
-        <activity android:name=".MainActivity" android:exported="true">
+        <!-- adjustResize：edge-to-edge 下 imePadding 生效的前提；缺省 adjustUnspecified 会被系统
+             解析成 adjustPan 整窗上推——键盘弹起时对话框大幅上移的根因 -->
+        <activity android:name=".MainActivity" android:exported="true"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -27,6 +30,7 @@
             android:name=".ui.flash.FlashActivity"
             android:exported="false"
             android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.Yunkai.Flash" />
         <!-- 无障碍读屏：只取窗口内容，不订阅按键、不做注入（M2 手势再扩） -->
         <service
