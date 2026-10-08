@@ -8,6 +8,7 @@ import com.zhuolin.yunkai.service.LlmClient
 import com.zhuolin.yunkai.service.tools.AgentTool
 import com.zhuolin.yunkai.service.tools.BuiltinTools
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 // 屏幕感知四工具（豆包对齐 M1，设计简报 §二/§五）：
@@ -15,10 +16,23 @@ import kotlinx.coroutines.withContext
 // 调度规则写进工具描述，模型自主执行：读文字先节点树、看画面才截图、自绘白名单直走视觉。
 // 门槛：总开关 cfg.screenSense 关闭时 ChatViewModel 不接线（工具表根本不暴露给模型）。
 
-// 视觉转述提示词：客观描述，控制篇幅（转述结果回填工具结果，不进对话历史）
-private const val DESCRIBE_PROMPT =
-    "请用中文客观描述这张手机屏幕截图：1) 当前页面/应用是什么；2) 可见的主要文字要点；" +
-    "3) 图片、视频或图表等视觉内容。500 字以内，只描述所见，不要推测与建议。"
+// 视觉接地提示词（2026-10-08）：不再只要散文——要求输出可点击元素清单（缩放图坐标 JSON），
+// 工具侧换算物理坐标后供 agent 的 tap 直接使用。$SW/$SH=缩放图尺寸，$PW/$PH=物理尺寸（供参考）。
+private const val ELEMENTS_PROMPT =
+    "这是手机屏幕截图。原图 \$PW x \$PH 物理像素，你看到的图像已缩放为 \$SW x \$SH——" +
+    "下面要求的所有坐标一律用【缩放图像素】（相对你看到的这张图）。\n" +
+    "任务：列出当前屏幕上所有可点击/可交互的元素（按钮、图标、列表项、输入框、开关、底部 tab 等），" +
+    "输出一个 JSON 数组（不要包 markdown 代码块），每项格式：\n" +
+    "{\"type\":\"元素类型(图标/按钮/列表项/输入框/tab/开关)\",\"text\":\"元素上可见的文字(无则留空)\",\"x\":中心x,\"y\":中心y,\"w\":宽,\"h\":高}\n" +
+    "x,y 为元素中心的缩放图坐标，w,h 为元素尺寸。元素要全（含右上角搜索、底部 tab 这类小图标），最多 25 个，" +
+    "按从上到下排序。数组前用一句话概述当前页面。只输出概述和 JSON，不要其他解释。"
+
+// 长按粘贴菜单定位提示词（自绘输入框降级末级）
+private const val PASTE_MENU_PROMPT =
+    "这是手机屏幕截图（已缩放为 \$SW x \$SH）。刚才长按了一个输入框，屏幕上应该弹出了操作菜单" +
+    "（通常含「粘贴」）。请输出弹出菜单里所有可点击项的 JSON 数组，每项：" +
+    "{\"text\":\"菜单项文字\",\"x\":中心x,\"y\":中心y,\"w\":宽,\"h\":高}（坐标用缩放图像素）。" +
+    "「粘贴」项必须在列表里。如果没有弹出任何菜单，只输出 []。只输出 JSON。"
 
 class ListAppsTool(private val app: YunkaiApp) : AgentTool() {
     override val name = "list_apps"
@@ -155,7 +169,9 @@ class CaptureScreenTool(private val app: YunkaiApp) : AgentTool() {
         }
         val bmp = withContext(Dispatchers.IO) { svc.captureScreen() }
             ?: return BuiltinTools.err("截屏失败：设备或服务暂不支持（需 Android 11+ 且无障碍已开启）")
-        val b64 = ScreenCapture.toBase64(bmp)
+        val physW = bmp.width
+        val physH = bmp.height
+        val enc = ScreenCapture.encode(bmp)
         bmp.recycle()
         // TOCTOU 收口（门0 I3）：截的是 t2 帧而包名是 t1 快照——截完复读前台，
         // 切换过（或进了黑名单 app）即丢弃，绝不把黑名单画面回传外发
@@ -165,18 +181,116 @@ class CaptureScreenTool(private val app: YunkaiApp) : AgentTool() {
         }
         return try {
             val llm = LlmClient(app.configStore.load())
+            // 视觉接地（2026-10-08）：不再只要散文描述——告诉视觉模型缩放比，要它输出
+            // 可点击元素清单（缩放图坐标），工具侧换算成物理坐标附在结果里，
+            // agent 的 tap 直接抄清单坐标（旧版散文转述导致坐标全靠猜、tap 落空）
+            val prompt = ELEMENTS_PROMPT
+                .replace("\$SW", enc.scaledW.toString())
+                .replace("\$SH", enc.scaledH.toString())
+                .replace("\$PW", physW.toString())
+                .replace("\$PH", physH.toString())
             val resp = llm.chatMessage(
                 listOf(ChatMsg(role = "user", contentParts = listOf(
-                    ContentPart(type = "text", text = DESCRIBE_PROMPT),
-                    ContentPart(type = "image_url", imageUrl = ContentImage("data:image/jpeg;base64," + b64)),
+                    ContentPart(type = "text", text = prompt),
+                    ContentPart(type = "image_url", imageUrl = ContentImage("data:image/jpeg;base64," + enc.b64)),
                 ))),
                 null,
             )
-            resp.content.trim().ifEmpty { BuiltinTools.err("视觉模型返回空内容，请重试") }
+            val raw = resp.content.trim().ifEmpty { return BuiltinTools.err("视觉模型返回空内容，请重试") }
+            android.util.Log.i("yunkai", "grounding raw(200): " + raw.take(200))
+            val elements = extractElements(raw, physW.toFloat() / enc.scaledW, physH.toFloat() / enc.scaledH)
+            if (elements != null) android.util.Log.i("yunkai", "grounded " + elements.items.size + " elems: " +
+                elements.items.joinToString { it.type + "@" + it.x + "," + it.y })
+            if (elements == null) raw   // 视觉模型没按 JSON 输出：退回散文转述（降级可用）
+            else buildString {
+                append("页面：").append(elements.pageSummary).append('\n')
+                append("可点击元素（坐标已换算为屏幕物理像素，propose_plan 的 tap 直接使用）：\n")
+                for (e in elements.items) {
+                    append("- [${e.type}] ${e.text} → tap(${e.x}, ${e.y})\n")
+                }
+            }
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             BuiltinTools.err("视觉转述失败: " + (e.message ?: "未知错误"))
         }
+    }
+}
+
+// 视觉接地解析：从视觉模型输出里抠 JSON 元素数组，坐标按 缩放图→物理 比例换算
+//（sx = 物理宽/缩放宽，sy = 物理高/缩放高；元素给中心点 x+w/2, y+h/2）。
+// 返回 null = 没抠到合法数组（调用方退回散文转述）。
+private data class GroundedElement(val type: String, val text: String, val x: Int, val y: Int)
+private data class GroundedPage(val pageSummary: String, val items: List<GroundedElement>)
+
+private fun extractElements(raw: String, sx: Float, sy: Float): GroundedPage? {
+    val arrStart = raw.indexOf('[')
+    if (arrStart < 0) return null
+    val arrEnd = raw.lastIndexOf(']')
+    if (arrEnd <= arrStart) return null
+    val arr = try {
+        kotlinx.serialization.json.Json.parseToJsonElement(raw.substring(arrStart, arrEnd + 1))
+            as? kotlinx.serialization.json.JsonArray ?: return null
+    } catch (_: Exception) {
+        return null
+    }
+    fun prim(v: kotlinx.serialization.json.JsonElement?): String? =
+        (v as? kotlinx.serialization.json.JsonPrimitive)?.content
+    fun num(v: kotlinx.serialization.json.JsonElement?): Double? =
+        (v as? kotlinx.serialization.json.JsonPrimitive)?.content?.toDoubleOrNull()
+    val items = arr.mapNotNull { el ->
+        val o = el as? kotlinx.serialization.json.JsonObject ?: return@mapNotNull null
+        val cx = num(o["x"]) ?: return@mapNotNull null
+        val cy = num(o["y"]) ?: return@mapNotNull null
+        val w = num(o["w"]) ?: 0.0
+        val h = num(o["h"]) ?: 0.0
+        GroundedElement(
+            type = prim(o["type"]) ?: "元素",
+            text = (prim(o["text"]) ?: "").take(40),
+            x = ((cx + w / 2) * sx).toInt().coerceIn(0, 9999),
+            y = ((cy + h / 2) * sy).toInt().coerceIn(0, 9999),
+        )
+    }
+    if (items.isEmpty()) return null
+    return GroundedPage(raw.substringBefore('[').trim().take(150), items)
+}
+
+// 自绘输入框降级末级（2026-10-08 微信搜索页实测：a11y 树只有 1 个节点，SET_TEXT/PASTE 无处可施）：
+// 长按聚焦点呼出系统粘贴菜单 → 视觉定位「粘贴」项 → 点击。x,y = 计划里前置 tap 的坐标
+//（Input 前总有聚焦 tap，服务侧 lastTap 已记录）。剪贴板由调用方预置。
+internal suspend fun ScreenSenseService.longPressPasteInput(app: YunkaiApp, text: String): Boolean {
+    if (lastTapX == Int.MIN_VALUE) return false
+    runCatching {
+        val cm = app.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        cm.setPrimaryClip(android.content.ClipData.newPlainText("yk", text))
+    }.onFailure { android.util.Log.w("yunkai", "clipboard set failed: ${it.message}") }
+    if (!performLongPress(lastTapX.toFloat(), lastTapY.toFloat())) return false
+    delay(900)   // 等粘贴菜单弹出
+    val bmp = captureScreen() ?: return false
+    val physW = bmp.width; val physH = bmp.height
+    val enc = ScreenCapture.encode(bmp)
+    bmp.recycle()
+    val prompt = PASTE_MENU_PROMPT
+        .replace("\$SW", enc.scaledW.toString())
+        .replace("\$SH", enc.scaledH.toString())
+    return try {
+        val llm = LlmClient(app.configStore.load())
+        val resp = llm.chatMessage(
+            listOf(ChatMsg(role = "user", contentParts = listOf(
+                ContentPart(type = "text", text = prompt),
+                ContentPart(type = "image_url", imageUrl = ContentImage("data:image/jpeg;base64," + enc.b64)),
+            ))),
+            null,
+        )
+        val els = extractElements(resp.content.trim(), physW.toFloat() / enc.scaledW, physH.toFloat() / enc.scaledH)
+            ?: return false
+        val paste = els.items.firstOrNull { it.text.contains("粘贴") || it.text.contains("Paste", true) }
+            ?: return false
+        android.util.Log.i("yunkai", "paste menu found at ${paste.x},${paste.y}")
+        performTap(paste.x.toFloat(), paste.y.toFloat())
+    } catch (e: Exception) {
+        if (e is kotlinx.coroutines.CancellationException) throw e
+        android.util.Log.w("yunkai", "longPressPaste failed: ${e.message}")
+        false
     }
 }
 

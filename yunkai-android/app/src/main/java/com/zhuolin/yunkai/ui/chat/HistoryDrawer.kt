@@ -72,10 +72,37 @@ fun HistoryDrawer(
     onNewConversation: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenConversation: (Long) -> Unit,
-    onDeleteConversation: (Conv) -> Unit,
+    // 会话管理三操作（2026-10-07 用户定案：长按=菜单制，删除退役——归档是唯一出口）
+    onRename: (Conv) -> Unit,
+    onTogglePin: (Conv) -> Unit,
+    onArchive: (Conv) -> Unit,
 ) {
     val glass = LocalGlassScheme.current
     val scope = rememberCoroutineScope()
+    var menuTarget by remember { mutableStateOf<Conv?>(null) }
+    menuTarget?.let { c ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { menuTarget = null },
+            title = { Text(c.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            text = {
+                Column {
+                    androidx.compose.material3.TextButton(onClick = { menuTarget = null; onRename(c) }) {
+                        Text("✎ 重命名", color = TextDark)
+                    }
+                    androidx.compose.material3.TextButton(onClick = { menuTarget = null; onTogglePin(c) }) {
+                        Text(if (c.pinned) "📌 取消置顶" else "📌 置顶", color = TextDark)
+                    }
+                    androidx.compose.material3.TextButton(onClick = { menuTarget = null; onArchive(c) }) {
+                        Text("🗄 归档（30 天后自动删除）", color = TextDark)
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { menuTarget = null }) { Text("取消") }
+            },
+        )
+    }
     val panelW = LocalConfiguration.current.screenWidthDp.dp * 0.80f
     val panelWf = panelW.value // Float，单位 dp
     val hiddenXf = -panelWf
@@ -111,8 +138,10 @@ fun HistoryDrawer(
                     .fillMaxHeight()
                     .fillMaxWidth(0.80f) // 收窄给拉头留外部空间：展开时拉头停在抽屉右缘之外
                     .offset(x = offsetX.value.dp)
-                    .background(glass.glassBgStrong) // 双层同色叠加：玻璃提实（遮罩+玻璃组合）
-                    .background(glass.glassBgStrong)
+                    // 实底（2026-10-07 用户拍板）：会话列表是阅读面，一律不透底——
+                    // 原双层 glassBgStrong 在深色通透皮肤下仅 ~26% 不透明度，壁纸/聊天文字透出难读；
+                    // paperBase 是各皮肤的不透明基色（深浅/两皮肤各自成立），不受面板底色档位影响
+                    .background(glass.paperBase)
                     .statusBarsPadding() // 抽屉头部避让状态栏
                     .navigationBarsPadding()
                     .padding(top = 16.dp)
@@ -186,7 +215,7 @@ fun HistoryDrawer(
                         modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        items(convs, key = { "${it.id}_${it.updatedAt}" }) { c ->
+                        items(convs, key = { "${it.id}_${it.updatedAt}_${it.pinned}" }) { c ->
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -194,11 +223,15 @@ fun HistoryDrawer(
                                     .border(GlassTokens.BORDER_W.dp, glass.glassBorder, RoundedCornerShape(12.dp))
                                     .combinedClickable(
                                         onClick = { onOpenConversation(c.id) },
-                                        onLongClick = { onDeleteConversation(c) },
+                                        onLongClick = { menuTarget = c },
                                     )
                                     .padding(12.dp),
                             ) {
-                                Text(c.title, fontSize = 15.sp, color = TextDark, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(
+                                    if (c.pinned) "📌 " + c.title else c.title,
+                                    fontSize = 15.sp, color = TextDark,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                )
                                 Text(timeLabel(c.updatedAt), fontSize = 12.sp, color = TextFaint)
                             }
                         }

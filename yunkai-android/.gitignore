@@ -14,3 +14,7 @@ _dump.json
 _tmp/
 tests/fullflow/reports/**/artifacts/*.preferences_pb
 *.preferences_pb
+.superpowers/
+tests/fullflow/reports/**/artifacts/
+tests/fullflow/tools/out_*.pb
+tests/fullflow/tools/__pycache__/

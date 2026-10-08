@@ -111,7 +111,12 @@ data class JsonSchema(
 data class SearchHit(val title: String, val url: String, val snippet: String)
 
 // 会话列表行（conversations 表的 UI 视图）
-data class Conv(val id: Long = 0, val title: String = "", val updatedAt: Long = 0)
+data class Conv(
+    val id: Long = 0,
+    val title: String = "",
+    val updatedAt: Long = 0,
+    val pinned: Boolean = false,   // 置顶：主列表固定最上方分区
+)
 
 // 消息行（messages 表的 UI 视图）
 data class Msg(
@@ -122,6 +127,9 @@ data class Msg(
     val plain: String = "",     // assistant 剥标签纯文本
     val turnNo: Int = 0,        // assistant 从 1 递增
     val createdAt: Long = 0,
+    // 消息生命周期（2026-10-07「发消息没回」治理 B）：pending=生成中 / done=完成 / failed=失败
+    val status: String = "done",
+    val error: String = "",     // failed 时的错误原文（重发角标展示用）
 )
 
 // 应用配置（DataStore 持久化；键与字段同名）

@@ -28,15 +28,12 @@ class ScreenSenseService : AccessibilityService() {
     }
 
     // 断开提示去抖：MIUI 对侧载应用会高频闪断重绑（真机实测 80s 内 3 次），
-    // 5s 后仍未重绑才提示，避免闪断期间「已断开」toast 骚扰
+    // 5s 后仍未重绑才算真断——运行时看护（2026-10-07 用户定案）：后台发通知、
+    // 前台/回 app 弹修复引导（A11yWatchdog），替代旧 toast（点掉即逝，无行动入口）
     private val mainHandler = Handler(Looper.getMainLooper())
     private val disconnectNotice = Runnable {
         if (instance == null) {
-            android.widget.Toast.makeText(
-                this,
-                "云开屏幕感知已断开，如需继续请在系统设置中重新开启",
-                android.widget.Toast.LENGTH_LONG,
-            ).show()
+            A11yWatchdog.onConfirmedDisconnected(this)
         }
     }
 
@@ -45,6 +42,7 @@ class ScreenSenseService : AccessibilityService() {
         android.util.Log.i("yunkai", "a11y onServiceConnected (fgPkg=${lastForegroundPkg ?: "null"})")
         instance = this
         mainHandler.removeCallbacks(disconnectNotice)
+        A11yWatchdog.onReconnected(this)
         restoreBallIfEnabled()
     }
 
@@ -55,6 +53,7 @@ class ScreenSenseService : AccessibilityService() {
         instance = this
         super.onRebind(intent)
         mainHandler.removeCallbacks(disconnectNotice)
+        A11yWatchdog.onReconnected(this)
         restoreBallIfEnabled()
     }
 
@@ -159,10 +158,22 @@ class ScreenSenseService : AccessibilityService() {
     }
 
     // ── 手势基元（M2a）：全部 dispatchGesture 实现，坐标屏幕系 ──
+    // 最后一次 tap 的屏幕坐标（Input 长按粘贴降级用：计划里 Input 前总有聚焦用的 tap）
+    var lastTapX = Int.MIN_VALUE
+    var lastTapY = Int.MIN_VALUE
+
     fun performTap(x: Float, y: Float): Boolean {
+        lastTapX = x.toInt(); lastTapY = y.toInt()
         val path = android.graphics.Path().apply { moveTo(x, y) }
         val b = android.accessibilityservice.GestureDescription.Builder()
             .addStroke(android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, 10L))
+        return dispatchGesture(b.build(), null, null)
+    }
+
+    fun performLongPress(x: Float, y: Float, durMs: Long = 900L): Boolean {
+        val path = android.graphics.Path().apply { moveTo(x, y) }
+        val b = android.accessibilityservice.GestureDescription.Builder()
+            .addStroke(android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, durMs))
         return dispatchGesture(b.build(), null, null)
     }
 
@@ -194,22 +205,38 @@ class ScreenSenseService : AccessibilityService() {
         return t.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
     }
 
-    // 无坐标输入：找当前 focused editable 注入文本（Input 动作执行用；聚焦由计划里的前置 tap 负责）
+    // 无坐标输入：找当前 focused editable 注入文本（Input 动作执行用；聚焦由计划里的前置 tap 负责）。
+    // 三级级联+写后验证（2026-10-08 微信搜索页实测：SET_TEXT 返回 true 但自绘控件忽略内容——
+    // 「动作成功」不等于「文本写入」，必须回读比对）：①SET_TEXT+回读 ②PASTE+回读 ③长按+视觉粘贴。
     fun setTextFocused(text: String): Boolean {
         val root = rootInActiveWindow ?: return false
         val queue = ArrayDeque<AccessibilityNodeInfo>()
         queue.add(root)
         var n = 0
+        val args = android.os.Bundle().apply {
+            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+        }
         while (queue.isNotEmpty() && n < 600) {
             val cur = queue.removeFirst(); n++
             if (cur.isEditable && cur.isFocused) {
-                val args = android.os.Bundle().apply {
-                    putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+                cur.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+                android.os.SystemClock.sleep(200)
+                if (cur.text?.toString()?.contains(text.take(8)) == true) {
+                    android.util.Log.i("yunkai", "input via SET_TEXT(focused) verified")
+                    return true
                 }
-                return cur.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+                // SET_TEXT 假成功：同节点改走 PASTE 再回读
+                if (cur.performAction(AccessibilityNodeInfo.ACTION_PASTE)) {
+                    android.os.SystemClock.sleep(300)
+                    if (cur.text?.toString()?.contains(text.take(8)) == true) {
+                        android.util.Log.i("yunkai", "input via PASTE(focused) verified")
+                        return true
+                    }
+                }
             }
             for (i in 0 until cur.childCount) cur.getChild(i)?.let { queue.add(it) }
         }
+        // ③ 剪贴板已备好，走长按+视觉粘贴（longPressPasteInput，Input 分支调用方兜底）
         return false
     }
 

@@ -49,6 +49,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
@@ -96,7 +97,13 @@ fun ChatScreen(embedded: Boolean = false, onOpenSettings: () -> Unit, onOpenCanv
     val glass = LocalGlassScheme.current
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
-    var deleteTarget by remember { mutableStateOf<Conv?>(null) }
+    // 会话管理（2026-10-07 定案）：重命名对话框目标（长按菜单触发）
+    var renameTarget by remember { mutableStateOf<Conv?>(null) }
+    var renameText by remember { mutableStateOf("") }
+    // 消息操作条（2026-10-07 用户定案）：值=点按的那条消息 id，-1=无；点空白处/再点收起
+    var activeActionMsg by remember { mutableStateOf(-1L) }
+    // 消息删除确认：值=待删除的 msgs 下标
+    var deleteMsgTarget by remember { mutableStateOf(-1) }
     // ===== 一期附件：+ 面板（拍照/相册/文件）+ 多图 chips =====
     var showAttach by remember { mutableStateOf(false) }
     val pickImages = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
@@ -139,20 +146,57 @@ fun ChatScreen(embedded: Boolean = false, onOpenSettings: () -> Unit, onOpenCanv
             }
     }
 
-    // 删除会话确认弹窗（抽屉长按触发）
-    deleteTarget?.let { conv ->
+    // 重命名对话框（抽屉长按菜单 ✎ 触发）
+    renameTarget?.let { conv ->
         AlertDialog(
-            onDismissRequest = { deleteTarget = null },
-            title = { Text("删除对话") },
-            text = { Text("确定删除「${conv.title}」吗？") },
+            onDismissRequest = { renameTarget = null },
+            title = { Text("重命名会话") },
+            text = {
+                OutlinedTextField(
+                    value = renameText,
+                    onValueChange = { renameText = it },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
             confirmButton = {
                 TextButton(onClick = {
-                    deleteTarget = null
-                    scope.launch { vm.doDelete(conv.id, context) }
+                    val t = renameText
+                    val c = conv
+                    renameTarget = null
+                    scope.launch { vm.renameConversation(c.id, t) }
+                }) { Text("保存") }
+            },
+            dismissButton = {
+                TextButton(onClick = { renameTarget = null }) { Text("取消") }
+            },
+        )
+    }
+
+    // 会话切换版本号观察（2026-10-07 审查 R5）：任何 load() 路径（含归档当前会话/悬浮球
+    // ensureStarted）都递增 uiEpoch——瞬时 UI 态在此统一重置，操作条不再跨会话命中同 id 的
+    // 另一条消息（RenderMsg.id 每个会话都从 1 重排）
+    LaunchedEffect(vm.uiEpoch.value) {
+        activeActionMsg = -1L
+        deleteMsgTarget = -1
+    }
+
+    // 单条消息删除确认（操作条 🗑 触发）：删除该条+其后全部（与编辑同款截断语义，必须确认）
+    if (deleteMsgTarget >= 0) {
+        AlertDialog(
+            onDismissRequest = { deleteMsgTarget = -1 },
+            title = { Text("删除此消息") },
+            text = { Text("此条之后的所有消息也将被删除。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    val idx = deleteMsgTarget
+                    deleteMsgTarget = -1
+                    activeActionMsg = -1L
+                    vm.deleteFrom(idx)
                 }) { Text("删除", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
-                TextButton(onClick = { deleteTarget = null }) { Text("取消") }
+                TextButton(onClick = { deleteMsgTarget = -1 }) { Text("取消") }
             },
         )
     }
@@ -173,16 +217,44 @@ fun ChatScreen(embedded: Boolean = false, onOpenSettings: () -> Unit, onOpenCanv
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     items(vm.msgs, key = { it.id }) { m ->
+                        // 长按=复制某一部分（2026-10-07 用户定案）：SelectionContainer 提供系统选字
+                        androidx.compose.foundation.text.selection.SelectionContainer {
                         Column {
                             if (m.role != "user" && m.thinking.isNotEmpty()) {
                                 ThinkingRow(m)
                             }
-                            MessageItem(m, onOpenCanvas = {
-                                com.zhuolin.yunkai.ui.canvas.CanvasHolder.html = m.content
-                                onOpenCanvas()
-                            }, onEdit = {
-                                vm.startEdit(vm.msgs.indexOfFirst { it.id == m.id })
-                            })
+                            // 失败轮重发（B 治理）：仅文本轮给重试钮（附件本体未持久化，回输入框人工补）
+                            val canRetry = m.status == "failed" && m.dbId > 0L &&
+                                !m.content.contains("[附件") && !m.content.contains("[图片×")
+                            MessageItem(
+                                m,
+                                onOpenCanvas = {
+                                    com.zhuolin.yunkai.ui.canvas.CanvasHolder.html = m.content
+                                    onOpenCanvas()
+                                },
+                                actionsActive = activeActionMsg == m.id,
+                                onActivateActions = {
+                                    activeActionMsg = if (activeActionMsg == m.id) -1L else m.id
+                                },
+                                onEdit = {
+                                    activeActionMsg = -1L
+                                    vm.startEdit(vm.msgs.indexOfFirst { it.id == m.id })
+                                },
+                                onCopy = {
+                                    activeActionMsg = -1L
+                                    val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                                        as android.content.ClipboardManager
+                                    cm.setPrimaryClip(android.content.ClipData.newPlainText("msg", m.content))
+                                    android.widget.Toast.makeText(context, "已复制", android.widget.Toast.LENGTH_SHORT).show()
+                                },
+                                onDelete = {
+                                    deleteMsgTarget = vm.msgs.indexOfFirst { it.id == m.id }
+                                },
+                                onRetry = if (canRetry) {
+                                    { vm.retryFailed(context, m.dbId) }
+                                } else null,
+                            )
+                        }
                         }
                     }
                     // M3 继续任务：上一轮到顶时出现（符号优先），点击以轨迹续跑
@@ -331,6 +403,31 @@ fun ChatScreen(embedded: Boolean = false, onOpenSettings: () -> Unit, onOpenCanv
                         .background(glass.glassBgStrong)
                         .glassBorder(dockShape),
                 ) {
+                    // 编辑态标识条（2026-10-07 用户定案②③）：编辑中高亮提示+取消钮（取消=从快照恢复被截断消息）
+                    if (vm.editing.value) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 14.dp, end = 8.dp, top = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "✎ 正在编辑 — 此条之后的消息已暂存，发送后生效",
+                                fontSize = 11.sp, lineHeight = 14.sp,
+                                color = glass.accent,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text(
+                                "✕ 取消",
+                                fontSize = 12.sp,
+                                color = glass.textHi,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .clickable { vm.cancelEdit() }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                            )
+                        }
+                    }
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -352,7 +449,12 @@ fun ChatScreen(embedded: Boolean = false, onOpenSettings: () -> Unit, onOpenCanv
                         TextField(
                             value = vm.input.value,
                             onValueChange = { vm.input.value = it },
-                            placeholder = { Text("问我任何问题…", color = glass.textLow, fontSize = 14.sp) },
+                            placeholder = {
+                    Text(
+                        if (vm.editing.value) "编辑后发送即重新生成…" else "问我任何问题…",
+                        color = glass.textLow, fontSize = 14.sp,
+                    )
+                },
                         modifier = Modifier.weight(1f),
                         maxLines = 4,
                             textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = glass.textHi),
@@ -424,7 +526,9 @@ fun ChatScreen(embedded: Boolean = false, onOpenSettings: () -> Unit, onOpenCanv
             onOpenSettings()
         },
         onOpenConversation = { id -> vm.openConversation(id) },
-        onDeleteConversation = { c -> deleteTarget = c },
+        onRename = { c -> renameText = c.title; renameTarget = c },
+        onTogglePin = { c -> scope.launch { vm.togglePinConversation(c.id) } },
+        onArchive = { c -> scope.launch { vm.archiveConversation(c.id) } },
     )
 
     // 拉头（已拆至 ChatScreenChrome.kt）：全 app 只此一颗，展开时停在抽屉右缘之外（收起时停在屏幕左缘）

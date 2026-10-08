@@ -9,8 +9,10 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -53,36 +55,96 @@ internal fun Modifier.glassBorder(shape: androidx.compose.ui.graphics.Shape): Mo
 
 private val BubbleShadow = Color(0x66000000)
 
-// 消息渲染分发：user 气泡 / html 画布卡 / text 气泡
+// 消息渲染分发：user 气泡 / html 画布卡 / text 气泡。
+// 消息操作交互（2026-10-07 用户定案）：点按气泡 → 下方浮现操作条（编辑/复制/删除）；
+// 长按 → 系统文本选择（SelectionContainer 语义，用户要复制某一部分）。
+// 操作条状态由 ChatScreen 持有（activeActionMsg），点空白处收起。
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-internal fun MessageItem(m: RenderMsg, onOpenCanvas: () -> Unit, onEdit: () -> Unit = {}) {
+internal fun MessageItem(
+    m: RenderMsg,
+    onOpenCanvas: () -> Unit,
+    onEdit: () -> Unit = {},
+    onCopy: () -> Unit = {},
+    onDelete: () -> Unit = {},
+    actionsActive: Boolean = false,
+    onActivateActions: () -> Unit = {},
+    onRetry: (() -> Unit)? = null,
+) {
     val glass = LocalGlassScheme.current
     val maxBubble = (LocalConfiguration.current.screenWidthDp * 0.82f).dp
     Box(modifier = Modifier.fillMaxWidth()) {
         if (m.role == "user") {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.End) {
-                Text(
-                    m.content,
-                    fontSize = 14.sp,
-                    lineHeight = 23.sp,
-                    color = glass.textHi,
-                    modifier = Modifier
-                        .widthIn(max = maxBubble)
-                        .shadow(8.dp, RoundedCornerShape(
-                            topStart = GlassTokens.R_BUBBLE.dp, topEnd = GlassTokens.R_BUBBLE.dp,
-                            bottomEnd = GlassTokens.R_TIGHT.dp, bottomStart = GlassTokens.R_BUBBLE.dp,
-                        ), clip = false, ambientColor = BubbleShadow, spotColor = BubbleShadow)
-                        // 皮肤气泡：clear=双色同值（实色半透明）；aurora=品牌渐变
-                        .background(
-                            Brush.verticalGradient(listOf(glass.bubbleUserTop, glass.bubbleUser)),
-                            RoundedCornerShape(
+            Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = androidx.compose.ui.Alignment.End) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.End) {
+                    Text(
+                        m.content,
+                        fontSize = 14.sp,
+                        lineHeight = 23.sp,
+                        color = glass.textHi,
+                        modifier = Modifier
+                            .widthIn(max = maxBubble)
+                            .shadow(8.dp, RoundedCornerShape(
                                 topStart = GlassTokens.R_BUBBLE.dp, topEnd = GlassTokens.R_BUBBLE.dp,
                                 bottomEnd = GlassTokens.R_TIGHT.dp, bottomStart = GlassTokens.R_BUBBLE.dp,
-                            ),
+                            ), clip = false, ambientColor = BubbleShadow, spotColor = BubbleShadow)
+                            // 皮肤气泡：clear=双色同值（实色半透明）；aurora=品牌渐变
+                            .background(
+                                Brush.verticalGradient(listOf(glass.bubbleUserTop, glass.bubbleUser)),
+                                RoundedCornerShape(
+                                    topStart = GlassTokens.R_BUBBLE.dp, topEnd = GlassTokens.R_BUBBLE.dp,
+                                    bottomEnd = GlassTokens.R_TIGHT.dp, bottomStart = GlassTokens.R_BUBBLE.dp,
+                                ),
+                            )
+                            // 消息操作交互（2026-10-07 用户定案）：点按浮现编辑/复制/删除操作条；
+                            // 长按=系统文本选择（复制某一部分）——不挂 onLongClick，事件透给
+                            // 外层 SelectionContainer（空 lambda 也会消费长按，选字将永久失效）
+                            .combinedClickable(onClick = onActivateActions)
+                            .padding(horizontal = 17.dp, vertical = 13.dp),
+                    )
+                }
+                // 操作条：点按的那条气泡下方浮现（编辑/复制/删除）
+                if (actionsActive) {
+                    Row(
+                        modifier = Modifier
+                            .padding(top = 6.dp)
+                            .glassBorder(RoundedCornerShape(50))
+                            .background(glass.glassBg, RoundedCornerShape(50))
+                            .padding(horizontal = 4.dp, vertical = 2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        ActionItem("✎") { onEdit() }
+                        ActionItem("⧉") { onCopy() }
+                        ActionItem("🗑") { onDelete() }
+                    }
+                }
+                // 失败角标（2026-10-07 B 治理）：错误原文+重试钮常驻会话流，「发消息没回」不再无痕
+                if (m.status == "failed") {
+                    Row(
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                        modifier = Modifier.padding(top = 6.dp),
+                    ) {
+                        Text(
+                            "⚠ " + m.error.ifEmpty { "出错了" },
+                            fontSize = 11.sp, lineHeight = 15.sp, maxLines = 2,
+                            color = Color(0xFFFF8A80),
+                            modifier = Modifier.weight(1f, fill = false),
                         )
-                        .clickable { onEdit() }
-                        .padding(horizontal = 17.dp, vertical = 13.dp),
-                )
+                        if (onRetry != null) {
+                            Text(
+                                "↻ 重试",
+                                fontSize = 12.sp,
+                                color = glass.textHi,
+                                modifier = Modifier
+                                    .padding(start = 10.dp)
+                                    .glassBorder(RoundedCornerShape(50))
+                                    .clickable { onRetry() }
+                                    .padding(horizontal = 10.dp, vertical = 5.dp),
+                            )
+                        }
+                    }
+                }
             }
         } else if (m.kind == ReplyKind.HTML) {
             CanvasCard(html = m.content, onOpen = onOpenCanvas)
@@ -105,6 +167,20 @@ internal fun MessageItem(m: RenderMsg, onOpenCanvas: () -> Unit, onEdit: () -> U
             }
         }
     }
+}
+
+// 操作条单项：符号钮（用户偏好：符号>文字），玻璃系
+@Composable
+private fun ActionItem(symbol: String, onClick: () -> Unit) {
+    val glass = LocalGlassScheme.current
+    Text(
+        symbol,
+        fontSize = 14.sp,
+        color = glass.textHi,
+        modifier = Modifier
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+    )
 }
 
 // M3 继续任务 chip：上一轮到顶后出现；符号优先（用户偏好），玻璃系描边弱化不抢正文

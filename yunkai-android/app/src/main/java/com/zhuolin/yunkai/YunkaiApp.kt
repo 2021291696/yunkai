@@ -10,6 +10,7 @@ import com.zhuolin.yunkai.store.ConversationRepo
 import com.zhuolin.yunkai.store.MessageRepo
 import com.zhuolin.yunkai.store.SkillRepo
 import com.zhuolin.yunkai.store.YunkaiDb
+import com.zhuolin.yunkai.service.screen.longPressPasteInput
 import com.zhuolin.yunkai.ui.chat.ChatViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -71,7 +72,9 @@ class YunkaiApp : Application() {
                         com.zhuolin.yunkai.service.screen.ClickIndicator.show(svc, action.x2, action.y2)
                         svc.performSwipe(action.x1.toFloat(), action.y1.toFloat(), action.x2.toFloat(), action.y2.toFloat(), action.durMs)
                     }
-                    is com.zhuolin.yunkai.service.screen.WriteAction.Input -> svc.setTextFocused(action.text)
+                    is com.zhuolin.yunkai.service.screen.WriteAction.Input -> svc.setTextFocused(action.text) ||
+                        // 自绘输入框降级末级：长按聚焦点呼出粘贴菜单+视觉定位「粘贴」（微信搜索页实测）
+                        svc.longPressPasteInput(this, action.text)
                     is com.zhuolin.yunkai.service.screen.WriteAction.OpenApp -> {
                         val intent = packageManager.getLaunchIntentForPackage(action.pkg)
                         if (intent != null) {
@@ -108,6 +111,31 @@ class YunkaiApp : Application() {
         })
         // 二期 PDF 抽取：PdfBox-Android 需要初始化资源加载器（字体/编码表），否则抽文本抛错
         com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(applicationContext)
+        // 消息生命周期（2026-10-07 B 治理）：开局把残留 pending 轮收为 failed——进程死亡/被杀的
+        // 生成轮不再「蒸发」，失败角标+重试钮在会话流里可见（失败原因标注「应用退出」）
+        appScope.launch {
+            try {
+                messageRepo.failAllPending("生成中断（应用退出）")
+                // 无障碍组件禁用态自愈兜底：重置的两步组件开关若被进程死亡打断，服务卡在
+                // DISABLED——系统无障碍列表从此不显示本 app，用户「去开启也找不到」
+                runCatching {
+                    val comp = android.content.ComponentName(this@YunkaiApp, com.zhuolin.yunkai.service.screen.ScreenSenseService::class.java)
+                    if (packageManager.getComponentEnabledSetting(comp) ==
+                        android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED) {
+                        packageManager.setComponentEnabledSetting(
+                            comp, android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                            android.content.pm.PackageManager.DONT_KILL_APP,
+                        )
+                        Log.i(TAG, "a11y component stuck DISABLED, re-enabled")
+                    }
+                }
+                // 归档 30 天保留期清扫（2026-10-07 会话管理）：超期归档连 messages 级联彻底删
+                val purged = conversationRepo.purgeExpired(taskStateDao)
+                if (purged > 0) Log.i(TAG, "purged $purged expired archived conversations")
+            } catch (e: Exception) {
+                Log.e(TAG, "startup cleanup failed: ${e.message}")
+            }
+        }
         // 首启播种内置技能（幂等：无同名行才插；失败不影响启动）
         appScope.launch {
             try {

@@ -1,29 +1,27 @@
 package com.zhuolin.yunkai.ui.chat
 
 import android.content.Context
-import android.util.Log
 import android.widget.Toast
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.zhuolin.yunkai.YunkaiApp
-import com.zhuolin.yunkai.model.AgentSkill
 import com.zhuolin.yunkai.model.ChatMsg
-import com.zhuolin.yunkai.model.Msg
-import com.zhuolin.yunkai.memory.PrivacyGate
-import com.zhuolin.yunkai.service.AgentLoop
-import com.zhuolin.yunkai.service.HtmlGuard
-import com.zhuolin.yunkai.service.LoopEvent
-import com.zhuolin.yunkai.model.ContentImage
 import com.zhuolin.yunkai.model.ContentPart
+import com.zhuolin.yunkai.model.Msg
+import com.zhuolin.yunkai.service.LoopEvent
 import com.zhuolin.yunkai.service.ReplyKind
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
-// 消息流渲染单元：role='user'|'assistant'；kind='html'|'text'（画布卡/文本气泡）
-data class RenderMsg(val id: Long, val role: String, val content: String, val kind: String, val thinking: String = "", val steps: Int = 0, val thinkingCollapsed: Boolean = true)
+// 消息流渲染单元：role='user'|'assistant'；kind='html'|'text'（画布卡/文本气泡）。
+// dbId=messages 表行 id（失败重发/状态收口用）；status/error=消息生命周期（B 治理，
+// 发送管线在 ChatViewModelSend.kt）：failed 行渲染错误角标+重试钮
+data class RenderMsg(
+    val id: Long, val role: String, val content: String, val kind: String,
+    val thinking: String = "", val steps: Int = 0, val thinkingCollapsed: Boolean = true,
+    val dbId: Long = 0, val status: String = "done", val error: String = "",
+)
 
 // 对话页状态：发送管线走 AgentLoop（onEvent 实时推时间线；取消旗标 genId 失配即停）
 // 一期附件：图片（多图≤5，压缩后走多模态 contentParts）或 txt（单文件≤5MB/正文3万字截断）
@@ -69,6 +67,10 @@ class ChatViewModel(internal val app: YunkaiApp) : ViewModel() {
     // M3 继续任务：上一轮到顶（hitLimit）后为真，UI 出「▶ 继续」；换会话时按 task_state 恢复
     var canContinue = mutableStateOf(false)
     var convId: Long = -1L
+    // 会话切换版本号：load() 递增，ChatScreen 观察它重置操作条/确认弹窗等瞬时 UI 态
+    //（修「归档当前会话 → load(-1) 不经过抽屉回调 → 操作条残留命中新会话同 id 消息」）
+    var uiEpoch = mutableStateOf(0)
+        private set
     internal var nextId: Long = 1L
     internal var genId: Long = 0L
     private var initialized = false
@@ -78,11 +80,11 @@ class ChatViewModel(internal val app: YunkaiApp) : ViewModel() {
     // 思考流与回答流独立计时，互不吞帧。
     private var lastStreamFlushAt = 0L
     private var lastThinkingFlushAt = 0L
-    private fun flushStream(partial: String) {
+    internal fun flushStream(partial: String) {
         val now = System.currentTimeMillis()
         if (now - lastStreamFlushAt >= 90) { lastStreamFlushAt = now; streamText.value = partial }
     }
-    private fun flushThinking(acc: String) {
+    internal fun flushThinking(acc: String) {
         val now = System.currentTimeMillis()
         if (now - lastThinkingFlushAt >= 90) { lastThinkingFlushAt = now; thinking.value = acc }
     }
@@ -111,6 +113,27 @@ class ChatViewModel(internal val app: YunkaiApp) : ViewModel() {
         // 鸿蒙版靠 replaceUrl 换新页实例天然规避，移植成单 Activity + 原地换会话后必须显式作废
         genId += 1
         loading.value = false
+        // 编辑态跨会话必须作废（2026-10-07 用户报「切换对话后还是上一个对话框的内容」）：
+        // 先把旧会话被截断的消息从快照恢复（否则切走=旧会话静默丢一截），再清编辑标识与输入框——
+        // 编辑锁会话，不跟随切换
+        if (editing.value) {
+            val snapshot = editSnapshot
+            editSnapshot = emptyList()
+            editing.value = false
+            viewModelScope.launch {
+                for ((m, kind) in snapshot) app.messageRepo.addRestored(m, kind)
+            }
+        }
+        input.value = ""
+        // 跨会话串台治理（2026-10-07 审查 R2/Y7）：排队问题、失败角标、半截流式文本都是
+        // 会话级状态，不随 load 清就会在新会话渲染/误发送
+        queued.value = ""
+        failed.value = false
+        streamText.value = ""
+        thinking.value = ""
+        steps.value = 0
+        canContinue.value = false
+        uiEpoch.value += 1   // UI 侧瞬时状态（操作条/弹窗）观察此版本号重置
         convId = id
         msgs.clear()
         turns.clear()
@@ -143,6 +166,7 @@ class ChatViewModel(internal val app: YunkaiApp) : ViewModel() {
             msgs.add(RenderMsg(
                 id = nextId++, role = m.role, content = m.content,
                 kind = if (m.role == "assistant") ReplyKind.detect(m.content) else ReplyKind.TEXT,
+                dbId = m.id, status = m.status, error = m.error,
             ))
         }
     }
@@ -177,7 +201,19 @@ class ChatViewModel(internal val app: YunkaiApp) : ViewModel() {
 
     // uri 图片压缩/附件抽取已拆至 ChatAttachments.kt（门0 P5 收口）
 
+    // 编辑态随发送终结（2026-10-07 审查 R1）：截断从此永久生效、快照作废——
+    // 否则编辑条残留，之后点 ✕ 会把快照旧消息回写在新问答之后（重复且持久化，
+    // 并使 add() 的 turn_no=max+1 与快照旧行撞号，污染摘要边界判定）
+    fun discardEdit() {
+        if (editing.value) {
+            editing.value = false
+            editSnapshot = emptyList()
+        }
+    }
+
     fun cancelLoading() {
+        // 取消=genId 失配 → AgentLoop 抛 CANCELLED_MSG → send 管线 catch 里 markFailed("已取消")
+        // 统一收口（此处不再补刀：failAllPending 会误伤同会话其它在途/排队轮的 pending 行）
         genId += 1
         loading.value = false
     }
@@ -208,14 +244,26 @@ class ChatViewModel(internal val app: YunkaiApp) : ViewModel() {
         send(context)
     }
 
-    // 编辑已发送消息：截断删除该条及其之后，内容回填输入框（改完重发即重新生成）
+    // 编辑重发（2026-10-07 用户定案终态）：点 ✎ 直接进编辑态（无弹窗）——被截断的消息先存内存
+    // 快照（editSnapshot），UI 出编辑标识条；「取消」从快照原样恢复（含 DB 回写），不再不可逆真删。
+    // 发送即真截断（deleteSnapshot）：重发成功后快照才作废。
+    var editing = mutableStateOf(false)
+        private set
+    private var editSnapshot: List<Pair<Msg, String>> = emptyList()   // (消息行, kind)
+
     fun startEdit(index: Int) {
-        if (loading.value || index < 0 || index >= turns.size) return
+        if (loading.value || editing.value || index < 0 || index >= turns.size) return
+        // 同步段先完成全部状态翻转（快照+editing 立即生效）：置位若留到协程尾部，连点两行 ✎
+        // 会覆盖快照且 DB 被截断两次——中间的行既不在快照也不在库，永久丢失
+        val fromId = turns[index].id
+        val text = msgs.getOrNull(index)?.content ?: return
+        editSnapshot = turns.drop(index).map { it to kindOfRow(it) }
+        editing.value = true
         viewModelScope.launch {
-            val fromId = turns[index].id
-            val text = msgs.getOrNull(index)?.content ?: return@launch
-            // 忆枢 M2 编辑重发防护（协议 §4.4）：截断点落入已摘要跨度（被删首行 id ≤ 边界 assistant 行 id）
-            // → 摘要已涵盖将被改写的内容，清空摘要状态防陈旧
+            // 抢发守卫：协程排队期间用户已 ↑ 发送（discardEdit 终结编辑）→ 放弃截断，
+            // 旧消息原地保留、新消息追加在末尾——两边内容都不丢
+            if (!editing.value) return@launch
+            // 忆枢 M2 编辑重发防护（协议 §4.4）：截断点落入已摘要跨度 → 清空摘要状态防陈旧
             val state = app.conversationRepo.summaryState(convId)
             if (state != null && state.untilTurn > 0) {
                 val rows = app.messageRepo.listByConv(convId)
@@ -236,231 +284,30 @@ class ChatViewModel(internal val app: YunkaiApp) : ViewModel() {
         }
     }
 
+    private fun kindOfRow(m: Msg): String =
+        if (m.role == "assistant" && com.zhuolin.yunkai.service.ReplyKind.detect(m.content) == com.zhuolin.yunkai.service.ReplyKind.HTML) "html" else "text"
+
+    // 取消编辑：从快照恢复被截断的消息（DB 回写+UI 重建），输入框还原
+    fun cancelEdit() {
+        if (!editing.value) return
+        // editing 立即复位+快照先取本地副本：恢复循环是 N 次 Room 写，期间再点 ✕ 或切会话
+        // 会触发第二个恢复协程，同一快照回写两遍（全部消息翻倍且持久化）
+        editing.value = false
+        val snapshot = editSnapshot
+        editSnapshot = emptyList()
+        input.value = ""
+        viewModelScope.launch {
+            for ((m, kind) in snapshot) {
+                app.messageRepo.addRestored(m, kind)
+            }
+            loadTurns()
+        }
+    }
+
     // 忆枢 M2 会话摘要编排（协议 §4.4）：窗口超阈值 → 最旧一半轮次交给主模型压缩 ≤300 字，
     // 追加进 conversations.summary 并前移换出边界。任何异常静默跳过（摘要属增益）。
     internal suspend fun maybeSummarize(cfg: com.zhuolin.yunkai.model.AppConfig) {
         summarizeIfNeeded(app, cfg, convId)
-    }
-
-    // 发送管线：@提及解析 → 构建 history → AgentLoop.run（onEvent 实时推时间线）→ 画布卡/气泡入库渲染。
-    // 净空语义：唯一落库点=真实回答成功之后（取消/抛错/写库失败都不留记录）；
-    // 草稿会话此刻才 create，user 行先于 assistant 行写入
-    fun send(context: Context) {
-        val items = picked.value           // 附件快照：发送期间增删不影响本轮
-        val q0 = input.value.trim()
-        if (q0.isEmpty() && items.isEmpty()) return
-        if (loading.value) {
-            // 生成中：排队不打断，答完自动发出
-            if (q0.isNotEmpty()) queued.value = if (queued.value.isEmpty()) q0 else queued.value + "\n" + q0
-            input.value = ""
-            return
-        }
-        input.value = ""
-        failed.value = false
-        val gen = genId + 1
-        genId = gen
-        loading.value = true
-        timeline.clear()
-        streamText.value = ""
-        thinking.value = ""
-        steps.value = 0
-
-        // 用户气泡先上屏（草稿会话此时尚未落库）；带附件时正文追加摘要行
-        val attachSummary = if (items.isEmpty()) "" else buildString {
-            val imgs = items.count { it.isImage }
-            val files = items.filter { !it.isImage }
-            if (imgs > 0) append("\n\n[图片×$imgs]")
-            for (f in files) append("\n[附件 ${f.name}]")
-        }
-        val userText = q0 + attachSummary
-        msgs.add(RenderMsg(nextId++, "user", userText, ReplyKind.TEXT))
-        // 门0 W-B2：会话身份在发送时快照——落库窄窗内用户 load() 切走（convId 被重指、msgs/nextId
-        // 重置）也不能把回答串写进别的会话或撞 key；回答永远归档进 sendConv
-        val sendConv = convId
-
-        viewModelScope.launch {
-            try {
-                val cfg = app.configStore.load()
-                if (cfg.baseUrl.isEmpty() || cfg.apiKey.isEmpty() || cfg.model.isEmpty()) {
-                    failed.value = true
-                    input.value = q0   // 失败还原输入，用户不必重打
-                    toast(context, "请先在设置页配置 API 地址/密钥/模型")
-                    msgs.removeAt(msgs.size - 1)
-                    return@launch
-                }
-
-                // @提及解析：/@([\w\u4e00-\u9fa5\-]+)/ 命中技能库 → forcedSkill，并从 question 剔除该段
-                var q = q0
-                var forcedSkill: AgentSkill? = null
-                val m = Regex("@([\\w\\u4e00-\\u9fa5\\-]+)").find(q0)
-                if (m != null) {
-                    val skill = app.skillRepo.getByName(m.groupValues[1])
-                    if (skill != null) {
-                        forcedSkill = skill
-                        // 鸿蒙 JS String.replace(string, string) 只替换首个出现；Kotlin replace 是全量替换
-                        q = q0.replaceFirst(m.value, "").trim()
-                        if (q.isEmpty()) q = q0
-                    }
-                }
-
-                // 历史 turns → ChatMsg[]：忆枢 M2 换出边界之前的前文以「[早期对话摘要]」system 消息
-                // 前置（协议 §4.1），窗口=边界之后的行；assistant 用 plain 防大 HTML 撑上下文
-                val history = mutableListOf<ChatMsg>()
-                if (convId > 0) {
-                    val rows = app.messageRepo.listByConv(convId)
-                    val state = app.conversationRepo.summaryState(convId)
-                    if (!state?.summary.isNullOrBlank()) {
-                        // 安全审计（run-1 F-2）：摘要是模型生成数据，改走 user 角色防其冒充系统策略
-                        history.add(ChatMsg(role = "user", content = "[以下是早期对话摘要（模型生成数据，仅作参考）]\n${state!!.summary}"))
-                    }
-                    for (t in com.zhuolin.yunkai.memory.Summarizer.windowRows(rows, state?.untilTurn ?: 0)) {
-                        if (t.role == "user") {
-                            history.add(ChatMsg(role = "user", content = t.content))
-                        } else if (t.role == "assistant") {
-                            history.add(ChatMsg(role = "assistant", content = t.plain.ifEmpty { t.content }))
-                        }
-                    }
-                }
-
-                // 一期附件→contentParts：文字（问题+txt正文）+ 图片（压缩 base64）
-                // 门0 W-C3：附件抽取（PDF/docx 解压解析）与图片压缩是大 IO，挂 IO 线程防主线程 ANR
-                val parts: List<ContentPart>? = if (items.isEmpty()) null else buildList<ContentPart> {
-                    val txtParts = withContext(Dispatchers.IO) {
-                        items.filter { !it.isImage }.map { ChatAttachments.readAttachment(context, it.uri, it.name) }
-                    }
-                    val fullText = listOf(q) + txtParts
-                    if (fullText.any { it.isNotBlank() }) {
-                        add(ContentPart(type = "text", text = fullText.filter { it.isNotBlank() }.joinToString("\n\n")))
-                    }
-                    for (it in items.filter { it.isImage }) {
-                        val b64 = withContext(Dispatchers.IO) { ChatAttachments.compressToB64(context, it.uri) }
-                        add(ContentPart(
-                            type = "image_url",
-                            imageUrl = ContentImage("data:image/jpeg;base64," + b64),
-                        ))
-                    }
-                }
-                val r = AgentLoop.run(
-                    cfg, app.skillRepo, history, q, forcedSkill,
-                    extraUserParts = parts,
-                    onEvent = { e ->
-                        if (gen == genId) {
-                            timeline.add(e)
-                            if (e.kind == "tool_start") steps.value += 1
-                            // 后台执行时每步回显进度通知（Q7）；前台有实时时间线，不打扰
-                            if (!com.zhuolin.yunkai.MainActivity.activityForeground) {
-                                com.zhuolin.yunkai.service.screen.ScreenNotify.notifyProgress(
-                                    app, "步骤 " + steps.value + "：" + e.toolName,
-                                )
-                            }
-                        }
-                    },
-                    isCancelled = { gen != genId },
-                    onDelta = { partial ->
-                        if (gen == genId) {
-                            flushStream(partial)
-                        }
-                    },
-                    onThinking = { acc ->
-                        if (gen == genId) {
-                            flushThinking(acc)
-                        }
-                    },
-                    extraTools = com.zhuolin.yunkai.service.tools.createM2Tools(app) + screenTools() +
-                        com.zhuolin.yunkai.memory.createMemoryTools(app.memoryStore) {
-                            app.configStore.load().memoryGear
-                        },
-                    memory = app.memoryStore,
-                    maxSteps = cfg.maxSteps,
-                )
-                if (gen != genId) return@launch
-
-                // 输出形态（全 app 唯一口径）：sanitize 通过且 sanitize 后内容仍以 <!DOCTYPE/<html 开头
-                // 才算画布——防散文夹 `<html` 子串被 sanitize 的 includes 语义误判成画布；
-                // 入库 content=safe，reload 时 ReplyKind.detect 与本次判定天然一致；否则纯文本气泡
-                var content = r.answer
-                var kind = ReplyKind.TEXT
-                val safe = HtmlGuard.sanitize(content)
-                if (safe != null && ReplyKind.detect(safe) == ReplyKind.HTML) {
-                    content = safe
-                    kind = ReplyKind.HTML
-                }
-
-                // 门0 W-B2：落库窄窗收敛——targetConv 以发送时快照为准；期间 load() 切走
-                // （convId 被重指/msgs 重置）时回答照常归档进原会话，但不再触碰当前 UI 状态
-                //（msgs/title/picked），杜绝「回答串写进新会话 + nextId 撞车崩」的毫秒级窄窗
-                val switched = convId != sendConv
-                val targetConv = when {
-                    sendConv > 0 -> sendConv
-                    switched -> app.conversationRepo.create("新对话")   // 草稿被切走：新建会话归档本轮
-                    else -> app.conversationRepo.create("新对话").also { convId = it }
-                }
-                app.messageRepo.add(targetConv, "user", PrivacyGate.redact(userText, app.configStore.load().memoryGear), ReplyKind.TEXT)
-                app.messageRepo.add(targetConv, "assistant", PrivacyGate.redact(content, app.configStore.load().memoryGear), kind)
-                app.conversationRepo.setTitleIfPlaceholder(targetConv, q0.ifEmpty { "图片提问" })
-                app.conversationRepo.touch(targetConv)
-                if (!switched) {
-                    refreshConvs()
-                    for (c in convs) {
-                        if (c.id == convId) {
-                            title.value = c.title
-                            break
-                        }
-                    }
-                    msgs.add(RenderMsg(nextId++, "assistant", content, kind, thinking = thinking.value, steps = steps.value))
-                    picked.value = emptyList()    // 发送成功即清空（失败保留可重试）
-                    loadTurns()
-                }
-                // 后台完成：结果通知静默送达（Q7），点入看完整回答（切走时以归档会话标题通知）
-                if (!com.zhuolin.yunkai.MainActivity.activityForeground) {
-                    com.zhuolin.yunkai.service.screen.ScreenNotify.notifyResult(
-                        app, title.value, com.zhuolin.yunkai.service.screen.notifySummary(content),
-                    )
-                }
-                // M3 到顶处理：轨迹持久化供「继续」续跑（归档会话身份 targetConv）；正常作答清掉旧轨迹
-                if (r.hitLimit && r.trace != null) {
-                    app.taskStateDao.upsert(com.zhuolin.yunkai.store.TaskStateEntity(
-                        conversation_id = targetConv,
-                        // 落库前瘦身：带图轮 contentParts 的 base64 换占位文本，防 task_state 膨胀
-                        trace_json = traceJson.encodeToString(
-                            kotlinx.serialization.builtins.ListSerializer(com.zhuolin.yunkai.model.ChatMsg.serializer()),
-                            stripTraceForPersist(r.trace),
-                        ),
-                        step_used = r.steps,
-                        updated_at = System.currentTimeMillis(),
-                    ))
-                    if (!switched) canContinue.value = true
-                } else {
-                    app.taskStateDao.delete(targetConv)
-                    if (!switched) canContinue.value = false
-                }
-                // 忆枢 M2 会话摘要（协议 §4.4）：落库成功后检查窗口阈值，超限则摘要换出最旧一半轮次。
-                // 失败静默跳过（摘要属增益，绝不让已成功的回答报错）；在 finally 之前，避免排队补发抢先
-                maybeSummarize(cfg)
-            } catch (e: Exception) {
-                if (gen == genId) {
-                    failed.value = true
-                    val em = e.message ?: ""
-                    if (em != AgentLoop.CANCELLED_MSG) {
-                        input.value = q0   // 失败还原输入，与附件保留策略一致
-                        Log.e("yunkai", "send failed: $em")
-                        toast(context, "出错了：$em")
-                    }
-                }
-            } finally {
-                if (gen == genId) {
-                    loading.value = false
-                    streamText.value = ""
-                    com.zhuolin.yunkai.service.screen.ScreenNotify.cancelProgress(app)
-                    val q = queued.value
-                    if (q.isNotEmpty()) {
-                        queued.value = ""
-                        input.value = q
-                        send(context)
-                    }
-                }
-            }
-        }
     }
 
     // ===== 抽屉动作 =====
@@ -482,14 +329,55 @@ class ChatViewModel(internal val app: YunkaiApp) : ViewModel() {
         load(id)
     }
 
-    suspend fun doDelete(id: Long, context: Context) {
-        // 删会话前先清 task_state：该表无外键，会话删除后到顶轨迹行会变孤儿残留
-        app.taskStateDao.delete(id)
-        app.conversationRepo.remove(id)
-        toast(context, "已删除")
-        refreshConvs()
-        if (id == convId) {
-            load(-1L)
+    // 单条消息删除（操作条 🗑）：与编辑重发同款截断语义（删该条+其后全部，摘要边界防护同款），
+    // 但不回填输入框
+    fun deleteFrom(index: Int) {
+        if (loading.value || index < 0 || index >= turns.size) return
+        viewModelScope.launch {
+            val fromId = turns[index].id
+            val state = app.conversationRepo.summaryState(convId)
+            if (state != null && state.untilTurn > 0) {
+                val rows = app.messageRepo.listByConv(convId)
+                val boundary = rows.lastOrNull { it.role == "assistant" && it.turnNo <= state.untilTurn }
+                if (boundary != null && fromId <= boundary.id) {
+                    app.conversationRepo.clearSummary(convId)
+                }
+            }
+            app.messageRepo.deleteFromPosition(convId, fromId)
+            if (app.taskStateDao.get(convId) != null) {
+                app.taskStateDao.delete(convId)
+                canContinue.value = false
+            }
+            for (k in turns.size - 1 downTo index) turns.removeAt(k)
+            for (k in msgs.size - 1 downTo index) msgs.removeAt(k)
         }
     }
+
+    // ===== 会话管理（2026-10-07 定案：重命名/置顶/归档；直接删除退役）=====
+    fun renameConversation(id: Long, newTitle: String) {
+        viewModelScope.launch {
+            app.conversationRepo.rename(id, newTitle)
+            refreshConvs()
+            if (id == convId) {
+                title.value = newTitle.trim().ifEmpty { title.value }
+            }
+        }
+    }
+
+    fun togglePinConversation(id: Long) {
+        viewModelScope.launch {
+            app.conversationRepo.togglePin(id)
+            refreshConvs()
+        }
+    }
+
+    fun archiveConversation(id: Long) {
+        viewModelScope.launch {
+            app.conversationRepo.archive(id)
+            toast(app, "已归档（30 天后自动删除）")
+            refreshConvs()
+            if (id == convId) load(-1L)   // 归档当前会话 → 回新对话草稿
+        }
+    }
+
 }

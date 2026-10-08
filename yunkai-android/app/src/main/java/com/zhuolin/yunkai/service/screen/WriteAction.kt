@@ -32,8 +32,14 @@ sealed class WriteAction {
         // （局部函数里的 return 只作用于局部函数自身，不能替他向外返回）。
         fun fromObj(obj: JsonObject): WriteAction? {
             val type = (obj["type"] as? JsonPrimitive)?.content ?: return null
-            fun i(k: String): Int? = (obj[k] as? JsonPrimitive)?.content?.toIntOrNull()
-            fun l(k: String): Long? = (obj[k] as? JsonPrimitive)?.content?.toLongOrNull()
+            // 坐标容错（2026-10-08 微信链路实测「动作字段格式非法」高频源）：模型常输出
+            // 小数坐标（640.5）或数字字面量——取 content 字符串后先试 int 再试 double 四舍五入
+            fun i(k: String): Int? = (obj[k] as? JsonPrimitive)?.content?.let {
+                it.toIntOrNull() ?: it.toDoubleOrNull()?.toInt()
+            }
+            fun l(k: String): Long? = (obj[k] as? JsonPrimitive)?.content?.let {
+                it.toLongOrNull() ?: it.toDoubleOrNull()?.toLong()
+            }
             fun s(k: String): String = (obj[k] as? JsonPrimitive)?.content ?: ""
             if (type == "tap") {
                 val x = i("x") ?: return null
@@ -66,9 +72,10 @@ sealed class WriteAction {
 }
 
 // 校验：坐标在屏幕界内、文本非空。boundW/boundH 来自调用方的 displayMetrics。
+// 错误消息带合法范围值：模型凭它一次自愈（否则「坐标越界」四个字要盲猜屏幕尺寸）
 fun WriteAction.validate(boundW: Int, boundH: Int): String? = when (this) {
-    is WriteAction.Tap -> if (x in 0..boundW && y in 0..boundH) null else "tap 坐标越界 ($x,$y)"
-    is WriteAction.Swipe -> if (x1 in 0..boundW && y1 in 0..boundH && x2 in 0..boundW && y2 in 0..boundH) null else "swipe 坐标越界"
+    is WriteAction.Tap -> if (x in 0..boundW && y in 0..boundH) null else "tap 坐标越界 ($x,$y)，合法范围 x:0..$boundW y:0..$boundH"
+    is WriteAction.Swipe -> if (x1 in 0..boundW && y1 in 0..boundH && x2 in 0..boundW && y2 in 0..boundH) null else "swipe 坐标越界，合法范围 x:0..$boundW y:0..$boundH"
     is WriteAction.Input -> if (text.isNotEmpty()) null else "input 文本为空"
     is WriteAction.OpenApp -> if (pkg.isNotEmpty()) null else "open_app 缺少包名"
     else -> null

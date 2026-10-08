@@ -13,6 +13,7 @@ import com.zhuolin.yunkai.service.HtmlGuard
 import com.zhuolin.yunkai.service.ReplyKind
 
 internal fun ChatViewModel.resumeTask(context: Context) {
+    discardEdit()   // 续跑轮落在被编辑会话时终结编辑态（同 send 口径）
     if (loading.value || convId <= 0) return
     val gen = genId + 1
     genId = gen
@@ -25,6 +26,8 @@ internal fun ChatViewModel.resumeTask(context: Context) {
     viewModelScope.launch {
         try {
             val cfg = app.configStore.load()
+            // 挂起期间被切走：失败态不许落进新会话（与 send 管线配置早退同款守卫）
+            if (gen != genId) return@launch
             if (cfg.baseUrl.isEmpty() || cfg.apiKey.isEmpty() || cfg.model.isEmpty()) {
                 failed.value = true
                 canContinue.value = true

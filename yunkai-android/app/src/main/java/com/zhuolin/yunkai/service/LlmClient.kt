@@ -59,6 +59,12 @@ class LlmClient(private val cfg: AppConfig) {
         const val HTTP_RETRIES: Int = 2
         const val RETRY_BACKOFF_MS: Long = 1000L
 
+        // 流式自愈（2026-10-07「发消息没回」治理 C+A）：SSE 读间隔看门狗 + 零 delta 断流重连。
+        // OkHttp readTimeout 按读间隔计——SSE 30s 无字节即判死，不再干等 600s；
+        // 断流时一个字都没吐过则整请求静默重连 1 次（重复内容风险为零），已有输出维持原语义上抛。
+        const val STREAM_STALL_TIMEOUT_MS: Long = 30_000L
+        const val STREAM_RECOVERY_RETRIES: Int = 1
+
         // 门0 W-C5：进程级共享 OkHttpClient——每次 send 新建 LlmClient 时 TLS 连接池无法复用，
         // 白付握手延迟；超时配置全实例一致，共享无副作用
         private val sharedClient: OkHttpClient = OkHttpClient.Builder()
@@ -121,16 +127,28 @@ class LlmClient(private val cfg: AppConfig) {
 
     private val client: OkHttpClient get() = sharedClient
 
+    // 测试注入点：看门狗阈值默认 30s，单测用 MockWebServer 调短
+    internal var stallTimeoutMs: Long = STREAM_STALL_TIMEOUT_MS
+
+    // 流式专用 client：共享连接池/线程池，只收紧读间隔（OkHttp 按读间隔计，长连接保活不受影响）
+    private fun stallGuardClient(): OkHttpClient = sharedClient.newBuilder()
+        .readTimeout(stallTimeoutMs, TimeUnit.MILLISECONDS)
+        .build()
+
     // 带重试的请求执行：连接失败（IOException）与 5xx/429 重试 HTTP_RETRIES 次（线性退避），
     // 其余 4xx 直接抛（密钥/参数错重试无意义）。成功响应（含流式的 body）由调用方 use{} 消费。
     // cancelled（门0 W-C2）：调用方取消旗标——看门狗协程 400ms 轮询，命中即 cancel() 在途 socket，
     // 否则 readTimeout(600s) 期间 IO 线程被占死、用户取消后仍白跑整段读。必须在 IO 线程调用。
-    private suspend fun executeWithRetry(req: Request, cancelled: (() -> Boolean)?): Response = coroutineScope {
+    private suspend fun executeWithRetry(
+        req: Request,
+        cancelled: (() -> Boolean)?,
+        httpClient: OkHttpClient = sharedClient,
+    ): Response = coroutineScope {
         var lastErr: Exception? = null
         for (attempt in 0..HTTP_RETRIES) {
             if (attempt > 0) delay(RETRY_BACKOFF_MS * attempt)
             if (cancelled?.invoke() == true) break
-            val call = client.newCall(req)
+            val call = httpClient.newCall(req)
             val watcher = cancelled?.let { flag ->
                 launch {
                     while (!flag.invoke()) {
@@ -228,86 +246,100 @@ class LlmClient(private val cfg: AppConfig) {
             .header("Authorization", "Bearer ${cfg.apiKey}")
             .post(buildRequestBody(useModel, messages, tools, stream = true).toRequestBody("application/json".toMediaType()))
             .build()
-        // 只对「拿到响应前」的失败重试（连接失败/5xx/429）；流式读中断裂不重试——
-        // 此时 onDelta 已外发部分文本，重试会让 UI 出现重复内容。
-        // cancelled 透传看门狗（W-C2）：流式首字节前挂死也能被用户取消打断
-        executeWithRetry(req, cancelled).use { resp ->
-            val source = resp.body?.source() ?: throw Exception("LLM 响应无 body")
-            var content = StringBuilder()
-            var think = StringBuilder()   // reasoning_content 累计（思考流）
-            // tool_calls 分片组装：index → (id, name, arguments)，arguments 顺序拼接
-            val tcIds = mutableMapOf<Int, String>()
-            val tcNames = mutableMapOf<Int, String>()
-            val tcArgs = mutableMapOf<Int, StringBuilder>()
-            var tcOrder: MutableList<Int> = mutableListOf()
-            var sawDone = false
-
-            fun applyDelta(delta: JsonObject?) {
-                if (delta == null) return
-                val r = delta["reasoning_content"] ?: delta["reasoning"]
-                if (r is JsonPrimitive && r.isString && r.content.isNotEmpty()) {
-                    think.append(r.content)
-                    onThinking?.invoke(think.toString())
-                }
-                val c = delta["content"]
-                if (c is JsonPrimitive && c.isString && c.content.isNotEmpty()) {
-                    content.append(c.content)
-                    onDelta(content.toString())
-                }
-                val tcs = delta["tool_calls"]
-                if (tcs is JsonArray) {
-                    for (e in tcs) {
-                        val tc = e as? JsonObject ?: continue
-                        val idx = (tc["index"] as? JsonPrimitive)?.content?.toIntOrNull() ?: 0
-                        if (!tcArgs.containsKey(idx)) {
-                            tcOrder.add(idx)
-                            tcArgs[idx] = StringBuilder()
-                            val id = (tc["id"] as? JsonPrimitive)?.content
-                            if (!id.isNullOrEmpty()) tcIds[idx] = id
-                            val fn = tc["function"] as? JsonObject
-                            val name = (fn?.get("name") as? JsonPrimitive)?.content
-                            if (!name.isNullOrEmpty()) tcNames[idx] = name
-                        } else {
-                            val id = (tc["id"] as? JsonPrimitive)?.content
-                            if (!id.isNullOrEmpty() && !tcIds.containsKey(idx)) tcIds[idx] = id
-                            val fn = tc["function"] as? JsonObject
-                            val name = (fn?.get("name") as? JsonPrimitive)?.content
-                            if (!name.isNullOrEmpty() && !tcNames.containsKey(idx)) tcNames[idx] = name
-                        }
-                        val fa = (tc["function"] as? JsonObject)?.get("arguments")
-                        if (fa is JsonPrimitive && fa.isString) tcArgs[idx]!!.append(fa.content)
-                        else if (fa != null) tcArgs[idx]!!.append(fa.toString())   // 门0 W-C7：对象/数组形态归一为 JSON 文本
-                    }
-                }
-            }
-
+        // 流式自愈（2026-10-07「发消息没回」治理 C+A）：
+        // C 看门狗——流式客户端读间隔收紧到 STREAM_STALL_TIMEOUT_MS，SSE 半路挂死 30s 判死
+        //   （拿到响应前的失败仍走 executeWithRetry 的既有重试）；
+        // A 零 delta 重连——读中断裂但本次连接一个字都没吐（emitted=false）时整请求静默重连
+        //   STREAM_RECOVERY_RETRIES 次；已有输出维持原语义直接上抛（重试会让 UI 重复上屏）；
+        // [DONE] 缺失按中断处理——EOF 静默当成功会把截断回答当完整落库，污染净空语义。
+        var recoveryLeft = STREAM_RECOVERY_RETRIES
+        while (true) {
+            var emitted = false
             try {
-                while (true) {
-                    val line = source.readUtf8Line() ?: break
-                    if (!line.startsWith("data:")) continue
-                    val payload = line.removePrefix("data:").trim()
-                    if (payload == "[DONE]") { sawDone = true; break }
-                    if (payload.isEmpty()) continue
-                    val obj = runCatching { bodyJson.parseToJsonElement(payload) }.getOrNull() as? JsonObject
-                        ?: continue
-                    val choices = obj["choices"] as? JsonArray ?: continue
-                    if (choices.isEmpty()) continue
-                    applyDelta((choices[0] as? JsonObject)?.get("delta") as? JsonObject)
-                }
-            } catch (e: IOException) {
-                // 门0 W-C2：取消旗标命中导致的断流按「用户取消」收敛（上层静默吞），
-                // 否则按网络错上抛
-                if (cancelled?.invoke() == true) throw Exception(AgentLoop.CANCELLED_MSG)
-                throw e
-            }
+                return@withContext executeWithRetry(req, cancelled, stallGuardClient()).use { resp ->
+                    val source = resp.body?.source() ?: throw Exception("LLM 响应无 body")
+                    var content = StringBuilder()
+                    var think = StringBuilder()   // reasoning_content 累计（思考流）
+                    // tool_calls 分片组装：index → (id, name, arguments)，arguments 顺序拼接
+                    val tcIds = mutableMapOf<Int, String>()
+                    val tcNames = mutableMapOf<Int, String>()
+                    val tcArgs = mutableMapOf<Int, StringBuilder>()
+                    var tcOrder: MutableList<Int> = mutableListOf()
+                    var sawDone = false
 
-            val toolCalls: List<ToolCall>? = if (tcOrder.isEmpty()) null else tcOrder.mapNotNull { idx ->
-                val id = tcIds[idx] ?: "call_$idx"
-                val name = tcNames[idx] ?: return@mapNotNull null
-                ToolCall(id = id, type = "function", function = com.zhuolin.yunkai.model.FunctionCall(
-                    name = name, arguments = tcArgs[idx]?.toString() ?: "{}"))
+                    fun applyDelta(delta: JsonObject?) {
+                        if (delta == null) return
+                        val r = delta["reasoning_content"] ?: delta["reasoning"]
+                        if (r is JsonPrimitive && r.isString && r.content.isNotEmpty()) {
+                            think.append(r.content)
+                            emitted = true
+                            onThinking?.invoke(think.toString())
+                        }
+                        val c = delta["content"]
+                        if (c is JsonPrimitive && c.isString && c.content.isNotEmpty()) {
+                            content.append(c.content)
+                            emitted = true
+                            onDelta(content.toString())
+                        }
+                        val tcs = delta["tool_calls"]
+                        if (tcs is JsonArray) {
+                            for (e in tcs) {
+                                val tc = e as? JsonObject ?: continue
+                                val idx = (tc["index"] as? JsonPrimitive)?.content?.toIntOrNull() ?: 0
+                                if (!tcArgs.containsKey(idx)) {
+                                    tcOrder.add(idx)
+                                    tcArgs[idx] = StringBuilder()
+                                    val id = (tc["id"] as? JsonPrimitive)?.content
+                                    if (!id.isNullOrEmpty()) tcIds[idx] = id
+                                    val fn = tc["function"] as? JsonObject
+                                    val name = (fn?.get("name") as? JsonPrimitive)?.content
+                                    if (!name.isNullOrEmpty()) tcNames[idx] = name
+                                } else {
+                                    val id = (tc["id"] as? JsonPrimitive)?.content
+                                    if (!id.isNullOrEmpty() && !tcIds.containsKey(idx)) tcIds[idx] = id
+                                    val fn = tc["function"] as? JsonObject
+                                    val name = (fn?.get("name") as? JsonPrimitive)?.content
+                                    if (!name.isNullOrEmpty() && !tcNames.containsKey(idx)) tcNames[idx] = name
+                                }
+                                val fa = (tc["function"] as? JsonObject)?.get("arguments")
+                                if (fa is JsonPrimitive && fa.isString) { tcArgs[idx]!!.append(fa.content); emitted = true }
+                                else if (fa != null) { tcArgs[idx]!!.append(fa.toString()); emitted = true }   // 门0 W-C7：对象/数组形态归一为 JSON 文本
+                            }
+                        }
+                    }
+
+                    while (true) {
+                        val line = source.readUtf8Line() ?: break
+                        if (!line.startsWith("data:")) continue
+                        val payload = line.removePrefix("data:").trim()
+                        if (payload == "[DONE]") { sawDone = true; break }
+                        if (payload.isEmpty()) continue
+                        val obj = runCatching { bodyJson.parseToJsonElement(payload) }.getOrNull() as? JsonObject
+                            ?: continue
+                        val choices = obj["choices"] as? JsonArray ?: continue
+                        if (choices.isEmpty()) continue
+                        applyDelta((choices[0] as? JsonObject)?.get("delta") as? JsonObject)
+                    }
+                    if (!sawDone) throw IOException("流式响应中断（未收到结束标记，内容可能不完整）")
+
+                    val toolCalls: List<ToolCall>? = if (tcOrder.isEmpty()) null else tcOrder.mapNotNull { idx ->
+                        val id = tcIds[idx] ?: "call_$idx"
+                        val name = tcNames[idx] ?: return@mapNotNull null
+                        ToolCall(id = id, type = "function", function = com.zhuolin.yunkai.model.FunctionCall(
+                            name = name, arguments = tcArgs[idx]?.toString() ?: "{}"))
+                    }
+                    OpenAiMessage(content = content.toString(), toolCalls = toolCalls)
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: IOException) {
+                // 门0 W-C2：取消旗标命中导致的断流按「用户取消」收敛（上层静默吞）
+                if (cancelled?.invoke() == true) throw Exception(AgentLoop.CANCELLED_MSG)
+                if (emitted || recoveryLeft <= 0) throw e
+                recoveryLeft--
+                delay(RETRY_BACKOFF_MS)
             }
-            OpenAiMessage(content = content.toString(), toolCalls = toolCalls)
         }
+        @Suppress("UNREACHABLE_CODE") throw IllegalStateException("unreachable")   // while(true) 只经 return/throw 离开
     }
 }

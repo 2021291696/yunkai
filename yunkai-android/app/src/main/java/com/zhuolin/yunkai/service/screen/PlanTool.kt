@@ -25,8 +25,9 @@ class PlanTool(private val app: YunkaiApp) : AgentTool() {
         "（type: tap/swipe/input/back/home/finished；tap 带 x,y（用 read_screen 快照坐标）；" +
         "swipe 带 x1,y1,x2,y2,durMs；input 带 text（输入到当前聚焦的输入框，" +
         "若需先点输入框则在 plan 里前置一个 tap）；每项带 label 中文说明；" +
-        "可选 confirm:true 标记该动作需要用户确认——只标真正危险的动作" +
-        "（支付/密码/把内容发送给他人等），普通操作不要标）。" +
+        "可选 confirm:true 标记该动作需要用户确认——只标真正危险且不可逆的动作" +
+        "（支付/付款/删除数据等）；给联系人发消息/表情/图片是常规操作，不要标——" +
+        "用户明确指示即代表确认，发送前不再暂停。" +
         "打扰程度由用户设置决定：完全访问=全部自动执行；AI 自审（默认）=你标记的动作与敏感操作暂停等确认；" +
         "事事过问=所有输入动作都暂停。敏感页始终自动急停（完全访问除外）。" +
         "计划提交后不要重复提交，等待本工具结果；某步彻底失败时计划中止并在结果里给出原因，" +
@@ -45,14 +46,17 @@ class PlanTool(private val app: YunkaiApp) : AgentTool() {
 
         val targetPkg = ((obj["target_pkg"] as? JsonPrimitive)?.content ?: "").trim()
         if (targetPkg.isEmpty()) return BuiltinTools.err("缺少 target_pkg：计划必须声明目标应用包名")
+        // 微信/QQ 自绘应用硬拒（2026-10-08 用户定案）：读屏与输入都不可靠，不提交计划——
+        // 双保险第二道（第一道=AGENT_SYSTEM 条款 7 让模型直接告知用户）
+        if (targetPkg == "com.tencent.mm" || targetPkg == "com.tencent.mobileqq") {
+            return BuiltinTools.err("微信/QQ 为自绘应用，当前版本无法代操作。请直接告知用户：暂时无法操作微信/QQ，" +
+                "建议用户手动完成微信/QQ 内的操作；其他应用仍可正常代操作")
+        }
         // 安全审计（run-1 F-3）：summary 供计划卡向用户展示计划目的——确认绑定的是参数而非仅标签
         val summary = ((obj["summary"] as? JsonPrimitive)?.content ?: "").trim()
 
-        submits += 1
-        if (submits > MAX_PLANS_PER_TURN) {
-            return BuiltinTools.err("同一轮提交计划已达上限（$MAX_PLANS_PER_TURN 次）。" +
-                "请基于已有工具结果总结进展、直接回答用户；确需继续操作请让用户发起新指令")
-        }
+        // 配额只计「通过校验、真正提交执行」的计划（2026-10-08 微信链路实测）：格式错误的计划
+        // 根本没执行，若也烧配额，模型三连格式错就把 3 次预算烧光，整轮任务必然失败
 
         // 确认模式（设置页三档；未匹配值回退 SMART，与 ConfigStore.sanitizeConfirmMode 同口径）
         val mode = when (app.configStore.getConfirmMode()) {
@@ -61,8 +65,13 @@ class PlanTool(private val app: YunkaiApp) : AgentTool() {
             else -> ConfirmMode.SMART
         }
 
-        // 逐项解析+校验：任一项非法即整体拒绝（不做「跳过坏项照跑」——计划是原子承诺）
+        // 逐项解析+校验：任一项非法即整体拒绝（不做「跳过坏项照跑」——计划是原子承诺）。
+        // 错误消息带 action schema 摘要：模型凭它一次自愈，不致盲猜格式连错烧步数
         val dm = app.resources.displayMetrics
+        val schemaHint =
+            "动作格式：tap:{type:\"tap\",x,y 整数像素坐标}；swipe:{x1,y1,x2,y2,durMs 可选}；" +
+            "input:{text 非空}；back/home/finished；open_app 由计划头部自动添加无需手写；" +
+            "本机屏幕 ${dm.widthPixels}x${dm.heightPixels}，坐标不得越界"
         val modelConfirm = extractConfirmFlags(arr)
         val actions = ArrayList<WriteAction>(arr.size + 1)
         val labels = ArrayList<String>(arr.size + 1)
@@ -71,19 +80,31 @@ class PlanTool(private val app: YunkaiApp) : AgentTool() {
         actions.add(WriteAction.OpenApp(targetPkg))
         labels.add("打开目标应用")
         for (i in arr.indices) {
-            val item = arr[i] as? JsonObject ?: return BuiltinTools.err("plan 第 ${i + 1} 项不是对象")
+            val item = arr[i] as? JsonObject ?: return BuiltinTools.err("plan 第 ${i + 1} 项不是对象。$schemaHint")
             val action = WriteAction.fromObj(item)
-                ?: return BuiltinTools.err("plan 第 ${i + 1} 项非法（type 或字段有误）")
+                ?: return BuiltinTools.err("plan 第 ${i + 1} 项非法（type 或字段有误）。$schemaHint")
             action.validate(dm.widthPixels, dm.heightPixels)?.let {
-                return BuiltinTools.err("plan 第 ${i + 1} 项非法：$it")
+                return BuiltinTools.err("plan 第 ${i + 1} 项非法：$it。$schemaHint")
             }
             actions.add(action)
             val label = ((item["label"] as? JsonPrimitive)?.content ?: "").trim()
             labels.add(label.ifEmpty { "步骤 ${i + 1}" })
         }
 
+        // 配额只计「通过校验、真正提交执行」的计划（2026-10-08 微信链路实测）：格式错误的计划
+        // 根本没执行，若也烧配额，模型三连格式错就把 3 次预算烧光，整轮任务必然失败
+        submits += 1
+        if (submits > MAX_PLANS_PER_TURN) {
+            return BuiltinTools.err("同一轮提交计划已达上限（$MAX_PLANS_PER_TURN 次）。" +
+                "请基于已有工具结果总结进展、直接回答用户；确需继续操作请让用户发起新指令")
+        }
+
         val exec = app.writePlanExecutor
         val planId = "p" + System.currentTimeMillis()
+        // 观测打点：计划内容逐动作可见（tap 坐标/输入文本），链路排查必备
+        android.util.Log.i("yunkai", "plan#$submits submit: " + actions.mapIndexed { idx, a ->
+            "[$idx]$a"
+        }.joinToString(" → ") + " confirm=$modelConfirm mode=$mode")
         if (!exec.submit(planId, actions, labels, sensitiveHint = false, summary = summary,
                 targetPkg = targetPkg, mode = mode, modelConfirm = modelConfirm)) {
             return BuiltinTools.err("已有写操作计划在进行中，请等它结束（或等用户取消）后再提交")

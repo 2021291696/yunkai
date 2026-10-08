@@ -68,7 +68,7 @@ import kotlinx.coroutines.withContext
 // （联网方式三选已下线：agent 自主决定何时搜索，searchMode 字段保留不迁移）
 // M1c：记忆隐私三选（strict/standard/free，选中即写 ConfigStore）+ 记忆管理页入口。
 @Composable
-fun SettingsScreen(onOpenSkills: () -> Unit = {}, onOpenMemory: () -> Unit = {}, onBack: () -> Unit = {}) {
+fun SettingsScreen(onOpenSkills: () -> Unit = {}, onOpenMemory: () -> Unit = {}, onOpenArchived: () -> Unit = {}, onBack: () -> Unit = {}) {
     val app = LocalContext.current.applicationContext as YunkaiApp
     val vm: SettingsViewModel = viewModel(factory = viewModelFactory { initializer { SettingsViewModel(app) } })
     val context = LocalContext.current
@@ -176,6 +176,9 @@ fun SettingsScreen(onOpenSkills: () -> Unit = {}, onOpenMemory: () -> Unit = {},
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
+        // ===== 必要权限体检卡（2026-10-07 用户拍板）：无障碍三态/通知/获取应用列表，实时状态+引导 =====
+        PermissionHealthCard()
+
         // ===== 外观卡片：设计（皮肤）+ 主题模式 =====
         GlassCard {
             Text("外观", fontSize = 16.sp, color = TextMuted)
@@ -200,6 +203,19 @@ fun SettingsScreen(onOpenSkills: () -> Unit = {}, onOpenMemory: () -> Unit = {},
                 ThemeOption(ConfigStore.PANEL_OPACITY_SOLID, "实底", panelOpacity, pickPanelOpacity)
             }
             Text("悬浮面板的底色浓度，实底最易读；默认「适中」。写入即生效", fontSize = 10.sp, color = TextFaint)
+        }
+
+        // ===== 会话管理：归档区入口（2026-10-07 定案）=====
+        GlassCard {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onOpenArchived() },
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                Text("🗄 归档", fontSize = 15.sp, color = MaterialTheme.colorScheme.onBackground, modifier = Modifier.weight(1f))
+                Text("›", fontSize = 18.sp, color = TextFaint)
+            }
         }
 
         // ===== 任务卡片：步数三档（M3，忆枢协议 §2 MAX_STEPS_OPTIONS） =====

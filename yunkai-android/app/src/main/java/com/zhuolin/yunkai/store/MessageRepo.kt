@@ -31,13 +31,43 @@ class MessageRepo(private val dao: MsgDao) {
         ))
     }
 
+    // ===== 消息生命周期（2026-10-07「发消息没回」治理 B）=====
+    // 发送即落库：pending 用户行（历史诚实的第一块砖），返回行 id 供状态收口
+    suspend fun addPendingUser(convId: Long, content: String): Long = dao.insert(MsgEntity(
+        conversation_id = convId, role = "user", content = content,
+        plain = "", turn_no = 0,
+        created_at = System.currentTimeMillis(), kind = "text",
+        status = "pending",
+    ))
+
+    suspend fun markDone(id: Long) = dao.setStatus(id, "done", "")
+    suspend fun markFailed(id: Long, error: String) = dao.setStatus(id, "failed", error.take(300))
+    suspend fun markPending(id: Long) = dao.setStatus(id, "pending", "")
+
+    // 编辑取消恢复：按原行内容原样回写（新 id；会话内相对顺序由调用方按快照原序保证）
+    suspend fun addRestored(m: Msg, kind: String) = dao.insert(MsgEntity(
+        conversation_id = m.convId, role = m.role, content = m.content,
+        plain = m.plain, turn_no = m.turnNo,
+        created_at = m.createdAt, kind = kind,
+        status = m.status, error = m.error,   // 保原态：失败行恢复后仍是 failed（重试钮不丢）
+    ))
+
+    // 开局清扫：进程死亡/被杀残留的 pending 轮收为 failed（失败角标+重试钮在会话流可见）
+    suspend fun failAllPending(error: String): Int = dao.failAllPending(error)
+
+    suspend fun getById(id: Long): Msg? = dao.getById(id)?.let { toMsg(it) }
+
     // SELECT * FROM messages WHERE conversation_id=? ORDER BY id ASC
-    suspend fun listByConv(convId: Long): List<Msg> = dao.listByConv(convId).map {
-        Msg(
-            id = it.id, convId = it.conversation_id, role = it.role, content = it.content,
-            plain = it.plain, turnNo = it.turn_no, createdAt = it.created_at,
-        )
-    }
+    suspend fun listByConv(convId: Long): List<Msg> = dao.listByConv(convId).map { toMsg(it) }
+
+    // 历史上下文只取完成轮：pending（在途）/ failed（从未被回答）不进 LLM 上下文
+    suspend fun listDoneByConv(convId: Long): List<Msg> = dao.listDoneByConv(convId).map { toMsg(it) }
+
+    private fun toMsg(e: MsgEntity) = Msg(
+        id = e.id, convId = e.conversation_id, role = e.role, content = e.content,
+        plain = e.plain, turnNo = e.turn_no, createdAt = e.created_at,
+        status = e.status, error = e.error,
+    )
 
     // 按（会话, 轮次）取 assistant 原文；无则空串
     suspend fun getHtmlByTurn(convId: Long, turnNo: Int): String = dao.getHtmlByTurn(convId, turnNo) ?: ""

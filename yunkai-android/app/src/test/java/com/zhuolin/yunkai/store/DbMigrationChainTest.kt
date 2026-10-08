@@ -28,7 +28,7 @@ class DbMigrationChainTest {
     @Test
     fun `迁移链覆盖从 2 起的全部版本且无重复`() {
         val covered = DB_MIGRATIONS.map { it.startVersion }.sorted()
-        assertEquals(listOf(2, 3, 4), covered)
+        assertEquals(listOf(2, 3, 4, 5, 6), covered)
         assertEquals(DB_MIGRATIONS.size, DB_MIGRATIONS.map { it.startVersion }.toSet().size)
     }
 
